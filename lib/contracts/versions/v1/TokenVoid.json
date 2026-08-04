@@ -1,0 +1,978 @@
+{
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "typeId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "typeName",
+          "type": "string"
+        }
+      ],
+      "name": "BurnTypeAdded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
+      ],
+      "name": "EmergencyWithdraw",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "burnId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "burner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "burnTypeId",
+          "type": "uint256"
+        }
+      ],
+      "name": "TokensBurned",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "DEAD_ADDRESS",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_typeName",
+          "type": "string"
+        }
+      ],
+      "name": "addBurnType",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "burnCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "burnRecords",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "burner",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "burnTypeId",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_burnTypeId",
+          "type": "uint256"
+        }
+      ],
+      "name": "burnTokens",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "burnTypeCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "name": "burnTypeIds",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "burnTypeRecordCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "burnTypeRecordIndex",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "burnTypes",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_token",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "_recipient",
+          "type": "address"
+        }
+      ],
+      "name": "emergencyWithdraw",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getAllBurnTypes",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "typeIds",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "string[]",
+          "name": "typeNames",
+          "type": "string[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBurnRecords",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "burner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "timestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "burnTypeId",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TestTokenVoid.BurnRecord[]",
+          "name": "records",
+          "type": "tuple[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "total",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_startTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_endTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBurnRecordsByTimeRange",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "burner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "timestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "burnTypeId",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TestTokenVoid.BurnRecord[]",
+          "name": "records",
+          "type": "tuple[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "total",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_token",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBurnRecordsByToken",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "burner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "timestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "burnTypeId",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TestTokenVoid.BurnRecord[]",
+          "name": "records",
+          "type": "tuple[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "total",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_burnTypeId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBurnRecordsByType",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "burner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "timestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "burnTypeId",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TestTokenVoid.BurnRecord[]",
+          "name": "records",
+          "type": "tuple[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "total",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_typeName",
+          "type": "string"
+        }
+      ],
+      "name": "getBurnTypeId",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_typeId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBurnTypeName",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_burnTypeId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBurnTypeRecordCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_token",
+          "type": "address"
+        }
+      ],
+      "name": "getBurnedAmount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_token",
+          "type": "address"
+        }
+      ],
+      "name": "getTokenBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getTotalBurnCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_token",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_burnTypeId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTotalBurnedByType",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_user",
+          "type": "address"
+        }
+      ],
+      "name": "getUserBurnCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_user",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_offset",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "getUserBurnRecords",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "burner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "timestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "burnTypeId",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct TestTokenVoid.BurnRecord[]",
+          "name": "records",
+          "type": "tuple[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "total",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_testToken",
+          "type": "address"
+        }
+      ],
+      "name": "init",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "isOwner",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "testToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "totalBurnedPerToken",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "userBurnCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "userBurnIndex",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
+  ],
+  "bytecode": "0x6080806040523461001657612002908161001c8239f35b600080fdfe6080604081815260049081361015610022575b505050361561002057600080fd5b005b600092833560e01c9081630b1eca6c1461131e575080630ccfbdcf146112d857806319ab453c146111525780631f5c20ec146108a157806324dccfd3146111255780633aecd0e3146110c35780633d751d5d146110a65780633f70dda81461108957806349d7207714610fc95780634e6fd6c414610fac578063524773ce14610407578063551512de14610d9557806357bfb60314610d785780636895179d14610d4f578063715018a614610ced5780637b5f777614610a3e578063825911a0146108d957806382be4395146108a15780638da5cb5b146108755780638e81c64d146106025780638f32d59b146105d75780639c16c729146105ad578063aaa87c7f14610581578063b02a5cef14610506578063b38723f81461049f578063b4799fb414610467578063c469baef14610426578063c792a4f414610407578063caa0cdb7146103ac578063cb15dfc514610372578063dc77d128146102cd578063dd3422e8146102a5578063edb5ff8b146102825763f2fde38b03610012573461027e57602036600319011261027e576101ba611443565b9083549260018060a01b0390818560101c16916101d8833314611c6d565b841692831561022c5750507f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e08580a362010000600160b01b031990911660109190911b62010000600160b01b031617815580f35b906020608492519162461bcd60e51b8352820152602660248201527f4f776e61626c653a206e6577206f776e657220697320746865207a65726f206160448201526564647265737360d01b6064820152fd5b8280fd5b8382346102a157816003193601126102a1576020906002549051908152f35b5080fd5b50903461027e57602036600319011261027e576020928291358152600a845220549051908152f35b508290346102a1576020928360031936011261027e578361dead60246001600160a01b036102f9611443565b16936103068515156119e8565b855194859384926370a0823160e01b84528301525afa928315610367578093610332575b505051908152f35b909192508382813d8311610360575b61034b81836113fe565b8101031261035d57505190838061032a565b80fd5b503d610341565b8251903d90823e3d90fd5b50823461035d57606036600319011261035d575061039b6103a892604435906024359035611e5d565b929091519283928361145e565b0390f35b50903461027e57602036600319011261027e57816103a8936103e89235801515806103fb575b6103db90611679565b81526003602052206115d4565b9051918291602083526020830190611575565b506002548111156103d2565b8382346102a157816003193601126102a1576020906005549051908152f35b8382346102a157806003193601126102a15760209181906001600160a01b0361044d611443565b168152600984528181206024358252845220549051908152f35b8382346102a15760203660031901126102a15760209181906001600160a01b0361048f611443565b1681526007845220549051908152f35b503461027e57602036600319011261027e578060c0938335815260066020522080549260018060a01b0392836001840154169360028401541690600560038501549385015494015494815196875260208701528501526060840152608083015260a0820152f35b50913461035d575060206105193661152b565b919082855193849283378101848152030190205490811561053e575060209151908152f35b606490602084519162461bcd60e51b8352820152601860248201527f4275726e207479706520646f6573206e6f7420657869737400000000000000006044820152fd5b8382346102a1578060209261059536611515565b908252600b8552828220908252845220549051908152f35b50903461027e57602036600319011261027e57816103a8936103e8923581526003602052206115d4565b8382346102a157816003193601126102a15760209160018060a01b03905460101c1633149051908152f35b503461027e5761061136611515565b6001546001600160a01b0391908690831661062d8115156119e8565b610638851515611cb8565b82151580610869575b61064a90611679565b8551906323b872dd60e01b8252338883015261dead60248301528560448301528160648160209b8c945af190811561085f578291610832575b50156108015782600154169260058054809861069e82611e42565b6106aa83821015611f96565b83558a8951946106b9866113cc565b8386528186018981528b87019033825260608801928c8452600660808a019542875260a08b01988d8a528c52528d8a20985189558060018a01925116916bffffffffffffffffffffffff60a01b92838254161790556002890192511690825416179055516003860155519084015551910155828152600787528481205461074c6107438683611e50565b91821015611f96565b83825260078852858220553381526008875284812054600988528582208183528852868683205561077f61074382611e42565b3382526008885285822055818152600a8752848082205491600b8952818120838252895287828220556107bd6107b484611e42565b93841015611f96565b838152600a895220558351928352428684015283830152837fe810ced6eba7011f4acf2cebee094fed1dfaf0b06640966f5f7949adac78cdeb60603394a451908152f35b845162461bcd60e51b8152808701889052600b60248201526a109d5c9b8819985a5b195960aa1b6044820152606490fd5b6108529150883d8a11610858575b61084a81836113fe565b810190611d03565b38610683565b503d610840565b86513d84823e3d90fd5b50600254831115610641565b8382346102a157816003193601126102a1579054905160109190911c6001600160a01b03168152602090f35b8382346102a15760203660031901126102a15760209181906001600160a01b036108c9611443565b1681526008845220549051908152f35b50823461035d578060031936011261035d57600254906108f882611737565b936109028361171f565b9261090f855194856113fe565b80845261091b8161171f565b91602091601f19809401855b818110610a2f575050845b8181106109cc5750505084519480860190865286518091528160608701970190845b8181106109b857505050848603818601528351918287528187019082808560051b8a0101960194975b84891061098a5787870388f35b90919293949584806109a6838686600196030188528a51611575565b9801940198019791909493929461097d565b825189529783019791830191600101610954565b6001819694959601808211610a1c5790816001926109ea838d611769565b528552600386526109fc8986206115d4565b610a06828a611769565b52610a118189611769565b500194939294610932565b634e487b7160e01b855260118452602485fd5b60608882018601528401610927565b508290346102a157610a4f3661152b565b610a6960018060a09794971b03855460101c163314611c6d565b8015610caa57825194818187378582810184815260209788910301902054610c6757610a96600254611793565b9485600255858152600387528481209367ffffffffffffffff8411610c5457918591879493610ac5875461159a565b601f8111610bfa575b508196601f8611600114610b69579582917f67cb691f09fa3602bd1091a0f86455122ff764ba83277df6ae086a2a0f3044d39787839a819691610b5e575b508560011b906000198760031b1c19161790555b8b8651809286888337868201908152030190205583519485938b8552818c86015285850137828201840152601f01601f19168101030190a251908152f35b90508601358e610b0c565b8083528a83208b98601f198816855b818110610bdc5750899a50917f67cb691f09fa3602bd1091a0f86455122ff764ba83277df6ae086a2a0f3044d3999391898097969410610bc2575b5050600185811b019055610b20565b870135600019600388901b60f8161c191690558d80610bb3565b8783013584558e9b8e9b508d99506001909401939283019201610b78565b9187919395965080945052888320601f860160051c8101918a8710610c4a575b918996959391601f8a96940160051c01905b818110610c395750610ace565b8381558a9750899550600101610c2c565b9091508190610c1a565b634e487b7160e01b825260419052602490fd5b835162461bcd60e51b8152808401879052601860248201527f4275726e207479706520616c72656164792065786973747300000000000000006044820152606490fd5b506020606492519162461bcd60e51b8352820152601960248201527f54797065206e616d652063616e6e6f7420626520656d707479000000000000006044820152fd5b833461035d578060031936011261035d57805481601082901c6001600160a01b0316610d1a338214611c6d565b7f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e08280a362010000600160b01b031916815580f35b8382346102a157816003193601126102a15760015490516001600160a01b039091168152602090f35b8382346102a1576103a89061039b610d8f366114eb565b91611d1b565b509190346102a15760603660031901126102a157610db1611443565b602493908435906001600160a01b036044358181169290839003610fa857610de082885460101c163314611c6d565b1693610ded8515156119e8565b8115610f6657610dfe831515611cb8565b83516370a0823160e01b815230828201526020919082818a818a5afa908115610ee7579085918991610f31575b5010610ef157845163a9059cbb60e01b81528382820152848982015282816044818b8b5af1908115610ee7578891610eca575b5015610e9657507faaeda929aa102e867049528ec7cd2499e3a2f8846e736ae7935f234dfbf500d9949596508351928352820152a280f35b60118860649387519362461bcd60e51b85528401528201527015da5d1a191c985dd85b0819985a5b1959607a1b6044820152fd5b610ee19150833d85116108585761084a81836113fe565b38610e5e565b86513d8a823e3d90fd5b601a8860649387519362461bcd60e51b85528401528201527f496e73756666696369656e7420746f6b656e2062616c616e63650000000000006044820152fd5b809250848092503d8311610f5f575b610f4a81836113fe565b81010312610f5b5784905138610e2b565b8780fd5b503d610f40565b606490601988602087519362461bcd60e51b85528401528201527f496e76616c696420726563697069656e742061646472657373000000000000006044820152fd5b8680fd5b8382346102a157816003193601126102a1576020905161dead8152f35b50823461035d578160031936011261035d57610fe3611443565b91602435928315158061107d575b610ffd90949394611679565b828452600a60209081528285205494936001600160a01b03928316918591825b88811061102e576020888851908152f35b818452600b8352868420818552835286842054845260068352868420858760018301541614611061575b5060010161101d565b9761107661074360036001949b015483611e50565b9790611058565b50600254841115610ff1565b8382346102a1576103a89061039b6110a036611515565b90611b75565b8382346102a1576103a89061039b6110bd366114eb565b91611a2c565b508290346102a1576020928360031936011261027e57836001600160a01b036110ea611443565b16916110f78315156119e8565b60248451809481936370a0823160e01b835230908301525afa92831561036757809361033257505051908152f35b50823461035d57608036600319011261035d575061039b6103a89260643590604435906024359035611858565b833461035d57602036600319011261035d5761116c611443565b81549060ff90818360081c169283158094816112ce575b61118c906116bc565b6112bd575b508354828160081c169081158092816112b3575b6111ae906116bc565b6112a2575b50845462010000600160b01b0319811633601081901b62010000600160b01b03169182178855909290877f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e08180a361128d575b50508354828160081c1692611225841594859283611282575b506116bc565b611271575b5060018060a01b03166bffffffffffffffffffffffff60a01b6001541617600155611263575b6112575780f35b805461ff001916815580f35b815461ff0019168255611250565b61ffff19166101011784558461122a565b90508316158861121f565b610100600160b01b0319161784558480611206565b61ffff1916610101178555856111b3565b50818516156111a5565b61ffff191661010117845584611191565b5081841615611183565b50903461027e57602036600319011261027e5760209282913580151580611312575b61130390611679565b8152600a845220549051908152f35b506002548111156112fa565b828585346102a1576020938460031936011261027e5781359267ffffffffffffffff8085116102a157366023860112156102a157848401359081116113b957611370601f8201601f19168801846113fe565b80835286830194366024838301011161027e579187826113a89795936024839896018737830101528551948593849251928391611420565b820190815203019020549051908152f35b634e487b7160e01b825260418452602482fd5b60c0810190811067ffffffffffffffff8211176113e857604052565b634e487b7160e01b600052604160045260246000fd5b90601f8019910116810190811067ffffffffffffffff8211176113e857604052565b60005b8381106114335750506000910152565b8181015183820152602001611423565b600435906001600160a01b038216820361145957565b600080fd5b9291906040906040850160408652815180915260609160608701926020809201946000915b84831061149857505050505060209150930152565b865180518752808501516001600160a01b039081168887015281840151168784015280820151878301526080808201519088015260a090810151908701529583019560c090950194600190920191611483565b6060906003190112611459576004356001600160a01b038116810361145957906024359060443590565b6040906003190112611459576004359060243590565b9060206003198301126114595760043567ffffffffffffffff9283821161145957806023830112156114595781600401359384116114595760248483010111611459576024019190565b9060209161158e81518092818552858086019101611420565b601f01601f1916010190565b90600182811c921680156115ca575b60208310146115b457565b634e487b7160e01b600052602260045260246000fd5b91607f16916115a9565b906040519182600082546115e78161159a565b908184526020946001916001811690816000146116575750600114611618575b505050611616925003836113fe565b565b600090815285812095935091905b81831061163f5750506116169350820101388080611607565b85548884018501529485019487945091830191611626565b9250505061161694925060ff191682840152151560051b820101388080611607565b1561168057565b60405162461bcd60e51b8152602060048201526014602482015273125b9d985b1a5908189d5c9b881d1e5c1948125160621b6044820152606490fd5b156116c357565b60405162461bcd60e51b815260206004820152602e60248201527f496e697469616c697a61626c653a20636f6e747261637420697320616c72656160448201526d191e481a5b9a5d1a585b1a5e995960921b6064820152608490fd5b67ffffffffffffffff81116113e85760051b60200190565b906117418261171f565b61174e60405191826113fe565b828152809261175f601f199161171f565b0190602036910137565b805182101561177d5760209160051b010190565b634e487b7160e01b600052603260045260246000fd5b60001981146117a25760010190565b634e487b7160e01b600052601160045260246000fd5b6040516020810181811067ffffffffffffffff8211176113e8576040526000815290565b906117e68261171f565b6040906117f660405191826113fe565b8381528093611807601f199161171f565b019160005b8381106118195750505050565b6020908251611827816113cc565b60008152826000818301526000858301526000606083015260006080830152600060a083015282860101520161180c565b939291909160059060055460009661186f82611737565b95885b8381106119905750505050858310156119805782866118918383611e50565b61189d83821015611f96565b1115611962576118ae915086611fb3565b916118b8836117dc565b9360005b8481106118cc5750505050509190565b806118ee6118dc60019386611e50565b6118e886821015611f96565b84611769565b51600052602060068152856040806000209080519361190c856113cc565b82548552868060a01b039081888501541690860152600283015416908401526003810154606084015260048101546080840152015460a08201526119508289611769565b5261195b8188611769565b50016118bc565b61196f6118ae9282611e50565b61197b82821015611f96565b611fb3565b5050505061198c6117b8565b9190565b806000526006602052600460406000200154828482101591826119dd575b50506119bd575b600101611872565b986119d5818b6119cf6001948c611769565b52611793565b9990506119b5565b1115905082386119ae565b156119ef57565b60405162461bcd60e51b8152602060048201526015602482015274496e76616c696420746f6b656e206164647265737360581b6044820152606490fd5b909291926005805494600095611a4181611737565b94875b828110611b2e5750505085831015611980578286611a628383611e50565b611a6e83821015611f96565b1115611b2157611a7f915086611fb3565b91611a89836117dc565b9360005b848110611a9d5750505050509190565b80611aad6118dc60019386611e50565b516000526020600681528560408060002090805193611acb856113cc565b82548552868060a01b039081888501541690860152600283015416908401526003810154606084015260048101546080840152015460a0820152611b0f8289611769565b52611b1a8188611769565b5001611a8d565b61196f611a7f9282611e50565b6000818152600660205260409020600101546001600160a01b03838116911614611b5b575b600101611a44565b97611b6d818a6119cf6001948b611769565b989050611b53565b60058054939284831015611c62578285611b8f8383611e50565b611b9b83821015611f96565b1115611c5557611bac915085611fb3565b90611bb6826117dc565b9260005b838110611bc957505050509190565b80611bd660019284611e50565b611be284821015611f96565b6000526020600681528460408060002090805193611bff856113cc565b82548552868060a01b039081888501541690860152600283015416908401526003810154606084015260048101546080840152015460a0820152611c438288611769565b52611c4e8187611769565b5001611bba565b61196f611bac9282611e50565b50505061198c6117b8565b15611c7457565b606460405162461bcd60e51b815260206004820152602060248201527f4f776e61626c653a2063616c6c6572206973206e6f7420746865206f776e65726044820152fd5b15611cbf57565b606460405162461bcd60e51b815260206004820152602060248201527f416d6f756e74206d7573742062652067726561746572207468616e207a65726f6044820152fd5b90816020910312611459575180151581036114595790565b6001600160a01b03908116600081815260086020908152604080832054979693959491939192909188861015611e33578589611d578383611e50565b611d6383821015611f96565b1115611e2657611d74915089611fb3565b94611d7e866117dc565b96825b878110611d945750505050505050509190565b60019082855260098852858520611dab8286611e50565b611db786821015611f96565b86528852858520548552600688528585206005875191611dd6836113cc565b805483528985820154168b84015289600282015416898401526003810154606084015260048101546080840152015460a0820152611e14828c611769565b52611e1f818b611769565b5001611d81565b61196f611d749282611e50565b5050505050505061198c6117b8565b90600182018092116117a257565b919082018092116117a257565b9092919281151580611f8a575b611e7390611679565b6000828152602090600a602052604090818120549687851015611f7c578488611e9c8383611e50565b611ea883821015611f96565b1115611f6f57611eb9915088611fb3565b93611ec3856117dc565b95825b868110611ed857505050505050509190565b600190828552600b8752858520611eef8286611e50565b611efb86821015611f96565b86528752858520548552600687528585206005875191611f1a836113cc565b80548352848060a01b038086830154168b850152600282015416898401526003810154606084015260048101546080840152015460a0820152611f5d828b611769565b52611f68818a611769565b5001611ec6565b61196f611eb99282611e50565b50505050505061198c6117b8565b50600254821115611e6a565b15611f9d57565b634e487b7160e01b600052600160045260246000fd5b90611fc082821115611f96565b81039081116117a2579056fea264697066735822122066d8b39950431f6a5c2c6770de8ec43c8a744520fc3f87bd46e5bc05f854eb3e64736f6c63430008180033"
+}

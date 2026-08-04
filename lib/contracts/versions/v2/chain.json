@@ -1,0 +1,22 @@
+{
+  "97": {
+    "chainName": "BNB Smart Chain Testnet",
+    "tokenAddress": "0xF5384649560806Ffc9B5406a3946DDc4CA23e308",
+    "hubAddress": "0x932985AeED319a6097DfC7fB2E5776619aFE38A4",
+    "sessionManagerAddress": "0xf268941f0F4938368ae7f8de5B770ECBd2B3643f",
+    "tokenVoidAddress": "",
+    "adminAddress": "0x3356ec280f80B2D15aFB0CF09A69cC7ef33d854f",
+    "voidOwnerAddress": "",
+    "rewardEligibilityRegistryAddress": ""
+  },
+  "56": {
+    "chainName": "BNB Smart Chain",
+    "tokenAddress": "0x51E6Ac1533032E72e92094867fD5921e3ea1bfa0",
+    "hubAddress": "0xc638D636eD23395d27848695aB19cF91c28E16d0",
+    "sessionManagerAddress": "0x2a8509d91d0A1d26E9cc1617A190CeF86b2E90c2",
+    "tokenVoidAddress": "0xbA664Eb753bD75cE86EF1F0B651ABF4Ad0D9C30A",
+    "adminAddress": "0x585EBA5655270D41abE9E76651B17dEd4Cd35bCF",
+    "voidOwnerAddress": "",
+    "rewardEligibilityRegistryAddress": ""
+  }
+}

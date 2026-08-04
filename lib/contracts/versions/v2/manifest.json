@@ -1,0 +1,20 @@
+{
+  "version": "v2",
+  "label": "PR boost stake-based redesign, v1.0.2 (GameHub + DailySessionManager)",
+  "date": "2026-08-03T17:04:45.378Z",
+  "gitCommit": "a3de74083f71e2192af96bcd4dea5a4ced970333",
+  "contracts": [
+    "DailySessionManager.json",
+    "DailySessionManagerProxy.json",
+    "GameHub.json",
+    "GameHubProxy.json",
+    "PaymentSplitter.json",
+    "PaymentSplitterProxy.json",
+    "RewardEligibilityRegistry.json",
+    "RewardEligibilityRegistryProxy.json",
+    "TestToken.json",
+    "TokenVoid.json",
+    "UpgradeableBeacon.json",
+    "chain.json"
+  ]
+}

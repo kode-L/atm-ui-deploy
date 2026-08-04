@@ -1,0 +1,14 @@
+[
+  {
+    "version": "v1",
+    "label": "Initial platform deployment - GameHub cross-instance aggregation + PR Boost hub event",
+    "date": "2026-07-16T15:16:12.472Z",
+    "gitCommit": "1edb713df817f34efde844d34aad90743323985f"
+  },
+  {
+    "version": "v2",
+    "label": "PR boost stake-based redesign, v1.0.2 (GameHub + DailySessionManager)",
+    "date": "2026-08-03T17:04:45.378Z",
+    "gitCommit": "a3de74083f71e2192af96bcd4dea5a4ced970333"
+  }
+]

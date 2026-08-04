@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "label": "Initial platform deployment - GameHub cross-instance aggregation + PR Boost hub event",
+  "date": "2026-07-16T15:16:12.472Z",
+  "gitCommit": "1edb713df817f34efde844d34aad90743323985f",
+  "contracts": [
+    "DailySessionManager.json",
+    "DailySessionManagerProxy.json",
+    "GameHub.json",
+    "GameHubProxy.json",
+    "PaymentSplitter.json",
+    "PaymentSplitterProxy.json",
+    "TestToken.json",
+    "TokenVoid.json",
+    "UpgradeableBeacon.json"
+  ]
+}

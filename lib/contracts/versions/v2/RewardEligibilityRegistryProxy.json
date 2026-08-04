@@ -1,0 +1,120 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "impl",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "preAdmin",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "newAdmin",
+          "type": "address"
+        }
+      ],
+      "name": "AdminChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "impl",
+          "type": "address"
+        }
+      ],
+      "name": "Upgraded",
+      "type": "event"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "fallback"
+    },
+    {
+      "inputs": [],
+      "name": "admin",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newAdmin",
+          "type": "address"
+        }
+      ],
+      "name": "changeAdmin",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "logic",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newLogic",
+          "type": "address"
+        }
+      ],
+      "name": "upgrad",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
+  ],
+  "bytecode": "0x60806040908082523461019c576020816104a5803803809161002182856101a1565b83398101031261019c57516001600160a01b03811680820361019c577fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d610380546001600160a01b031990811633179091557f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc80549091169091179055815163555e432f60e11b60208201908152600482526001600160401b03928285019184831184841017610180576000938493875251915af4903d15610196573d908111610180578251906100fa601f8201601f1916602001836101a1565b8152600060203d92013e5b1561011757516102e090816101c58239f35b5162461bcd60e51b815260206004820152603560248201527f526577617264456c69676962696c697479526567697374727950726f78793a2060448201527f696e697469616c697a6174696f6e206661696c656400000000000000000000006064820152608490fd5b634e487b7160e01b600052604160045260246000fd5b50610105565b600080fd5b601f909101601f19168101906001600160401b038211908210176101805760405256fe60806040526004361015610015575b3661023b57005b60003560e01c806331079f6e146100555780638f28397014610050578063d7dfa0dd1461004b5763f851a4400361000e576101bb565b610185565b610106565b346100df576020610065366100e4565b60008051602061026b833981519152546001600160a01b03919061008c90831633146101f1565b60008051602061028b83398151915280546001600160a01b031916929091169182179055604051907fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b600080a260018152f35b600080fd5b60209060031901126100df576004356001600160a01b03811681036100df5790565b346100df577f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f6040610137366100e4565b60008051602061026b8339815191528054916001600160a01b039061015f33838616146101f1565b16809260018060a01b0319161790558151908082526020820152a1602060405160018152f35b346100df5760003660031901126100df5760008051602061028b833981519152546040516001600160a01b039091168152602090f35b346100df5760003660031901126100df5760008051602061026b833981519152546040516001600160a01b039091168152602090f35b156101f857565b60405162461bcd60e51b815260206004820152601b60248201527a263ab1b0a837b93c3c9d1021b0b63632b9103737ba1030b236b4b760291b6044820152606490fd5b60008051602061028b833981519152546000808092368280378136915af43d82803e15610266573d90f35b3d90fdfeb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbca2646970667358221220c4e2c15ec1c07e3ff2513d09506edf56e27e07b479c619ff696848a4f9de6bc064736f6c63430008180033"
+}
