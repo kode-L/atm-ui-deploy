@@ -141,6 +141,8 @@ export default function AdminSection() {
   const [cfCheckLoading, setCfCheckLoading] = useState(false);
   const [cfCheckedRange, setCfCheckedRange] = useState<{ from: string; to: string } | null>(null);
 
+  const [cfBlockedAtDateKey, setCfBlockedAtDateKey] = useState<number | null>(null);
+
   // Shared cached lists (loaded once, used by operators, reward types, rules sections)
   const [cachedOperators, setCachedOperators] = useState<CachedOperator[]>([]);
   const [cachedRewardTypes, setCachedRewardTypes] = useState<CachedRewardType[]>([]);
@@ -563,6 +565,7 @@ export default function AdminSection() {
     setCfCheckResults({});
     setCfCheckAllFinalized(null);
     setCfCheckedRange(null);
+    setCfBlockedAtDateKey(null);
   }, [cfOperator, cfUserList, cfFromDateKey, cfToDateKey]);
 
   const CF_CHECK_BATCH_SIZE = 25;
@@ -580,20 +583,35 @@ export default function AdminSection() {
     from: number,
     ceiling: number,
     maxRangeLength: number
-  ): Promise<number | null> => {
+  ): Promise<{ to: number | null; blockedAt: number | null }> => {
     const hardCap = Math.min(ceiling, from + maxRangeLength - 1);
-    let lastFinalized: number | null = null;
+
+    const [boundOperator, sessionDurationRaw, sessionStartOffsetRaw] = await Promise.all([
+      contract.boundOperator(),
+      contract.sessionDuration(),
+      contract.sessionStartOffset(),
+    ]);
+    const sessionDuration = sessionDurationRaw.toNumber();
+    const sessionStartOffset = sessionStartOffsetRaw.toNumber();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const windowEnded = (dateKey: number) => nowSec >= (dateKey + 1) * sessionDuration + sessionStartOffset;
+
+    let lastSafe: number | null = null;
     for (let d = from; d <= hardCap; d += CF_CHECK_BATCH_SIZE) {
       const batchEnd = Math.min(d + CF_CHECK_BATCH_SIZE - 1, hardCap);
       const batchKeys: number[] = [];
       for (let k = d; k <= batchEnd; k++) batchKeys.push(k);
-      const flags: boolean[] = await Promise.all(batchKeys.map(k => contract.dailyPointsFinalized(k)));
-      for (let i = 0; i < flags.length; i++) {
-        if (!flags[i]) return lastFinalized;
-        lastFinalized = batchKeys[i];
+      const operatorFinalizedFlags: boolean[] = await Promise.all(
+        batchKeys.map(k => contract.operatorDayFinalized(k, boundOperator))
+      );
+      for (let i = 0; i < operatorFinalizedFlags.length; i++) {
+        const dk = batchKeys[i];
+        const safe = operatorFinalizedFlags[i] || windowEnded(dk);
+        if (!safe) return { to: lastSafe, blockedAt: dk };
+        lastSafe = dk;
       }
     }
-    return lastFinalized;
+    return { to: lastSafe, blockedAt: null };
   }, []);
 
   // Read-only "before" preview — an upper-bound estimate of what batchSyncCarryForward would
@@ -634,14 +652,20 @@ export default function AdminSection() {
       const typedTo = parseInt(cfToDateKey);
       const ceiling = !isNaN(typedTo) ? Math.min(typedTo, cfCutoverDateKey - 1) : cfCutoverDateKey - 1;
 
-      const to = await findSafeToDateKey(c, from, ceiling, maxSyncRange);
+      const { to, blockedAt } = await findSafeToDateKey(c, from, ceiling, maxSyncRange);
+      setCfBlockedAtDateKey(blockedAt);
       if (to === null) {
         setCfCheckAllFinalized(false);
-        setTxStatus({ status: 'error', error: `dateKey ${from} ("From") isn't finalized yet — nothing safe to sync.` });
+        setTxStatus({
+          status: 'error',
+          error: blockedAt !== null
+            ? `dateKey ${blockedAt}'s game window hasn't ended yet, so nothing is safe to sync starting from ${from} — matches could still be settled for it. Wait for its window to end (or lower "From"), then check this range again.`
+            : `dateKey ${from} ("From")'s game window hasn't ended yet — nothing safe to sync.`,
+        });
         return;
       }
-      // setCfToDateKey(String(to));
-      // setCfCheckAllFinalized(true);
+      setCfToDateKey(String(to));
+      setCfCheckAllFinalized(true);
 
       const dateKeys: number[] = [];
       for (let d = from; d <= to; d++) dateKeys.push(d);
@@ -711,12 +735,18 @@ export default function AdminSection() {
     const maxSyncRange = maxSyncRangeRaw.toNumber();
     const typedTo = parseInt(cfToDateKey);
     const ceiling = !isNaN(typedTo) ? Math.min(typedTo, cfCutoverDateKey - 1) : cfCutoverDateKey - 1;
-    const to = await findSafeToDateKey(readContract, from, ceiling, maxSyncRange);
+    const { to, blockedAt } = await findSafeToDateKey(readContract, from, ceiling, maxSyncRange);
+    setCfBlockedAtDateKey(blockedAt);
     if (to === null) {
-      setTxStatus({ status: 'error', error: `dateKey ${from} ("From") isn't finalized yet — nothing safe to sync.` });
+      setTxStatus({
+        status: 'error',
+        error: blockedAt !== null
+          ? `dateKey ${blockedAt}'s game window hasn't ended yet, so nothing is safe to sync starting from ${from} — matches could still be settled for it. Wait for its window to end, then try again.`
+          : `dateKey ${from} ("From")'s game window hasn't ended yet — nothing safe to sync.`,
+      });
       return;
     }
-    // setCfToDateKey(String(to));
+    setCfToDateKey(String(to));
 
     setTxStatus({ status: 'pending', message: 'Checking which wallets have new points in range...' });
     const instanceContract = new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, signer);
@@ -2319,7 +2349,15 @@ export default function AdminSection() {
 
             {cfCheckAllFinalized === false && (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-xs text-yellow-400">
-                ⚠️ dateKey {cfFromDateKey} (&quot;From&quot;) isn&apos;t finalized yet — nothing safe to sync from here. Lower &quot;From&quot; or wait for it to finalize.
+                ⚠️ {cfBlockedAtDateKey !== null
+                  ? <>dateKey {cfBlockedAtDateKey}&apos;s game window hasn&apos;t ended yet, so nothing is safe to sync starting from {cfFromDateKey} — matches could still be settled for it. Wait for its window to end (or lower &quot;From&quot;), then check this range again.</>
+                  : <>dateKey {cfFromDateKey} (&quot;From&quot;)&apos;s game window hasn&apos;t ended yet — nothing safe to sync from here. Lower &quot;From&quot; or wait for its window to end.</>}
+              </div>
+            )}
+
+            {cfCheckAllFinalized === true && cfBlockedAtDateKey !== null && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-xs text-yellow-400">
+                ⚠️ Range stopped at dateKey {cfToDateKey} — dateKey {cfBlockedAtDateKey}&apos;s game window hasn&apos;t ended yet (matches could still be settled for it), so anything from {cfBlockedAtDateKey} onward is excluded from this sync. Nothing is skipped or lost — once its window ends, re-check to extend the range past it. Note: syncing through a dateKey whose operator-day isn&apos;t finalized yet will auto-finalize it as part of the same transaction, which also releases that day&apos;s collected entry fees to the operator&apos;s splitter.
               </div>
             )}
 
