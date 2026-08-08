@@ -1,0 +1,22 @@
+{
+  "version": "v3",
+  "label": "ATM Voucher system (new) + GameHub/DailySessionManager voucher-redemption integration, RewardEligibilityRegistry hub link, carry-forward-sync removal, storage-layout fixes",
+  "date": "2026-08-08T12:08:28.547Z",
+  "gitCommit": "461e3c47d833903bf3b89845e1359bdda20b166b",
+  "contracts": [
+    "ATMVoucher.json",
+    "ATMVoucherProxy.json",
+    "DailySessionManager.json",
+    "DailySessionManagerProxy.json",
+    "GameHub.json",
+    "GameHubProxy.json",
+    "PaymentSplitter.json",
+    "PaymentSplitterProxy.json",
+    "RewardEligibilityRegistry.json",
+    "RewardEligibilityRegistryProxy.json",
+    "TestToken.json",
+    "TokenVoid.json",
+    "UpgradeableBeacon.json",
+    "chain.json"
+  ]
+}

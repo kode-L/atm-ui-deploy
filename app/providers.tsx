@@ -13,6 +13,8 @@ import {
   DEFAULT_TOKEN_ADDRESS_MAINNET,
   DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS,
   DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET,
+  DEFAULT_ATM_VOUCHER_ADDRESS,
+  DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET,
   networkStorageKey,
 } from '@/lib/contracts/config';
 import { getFallbackProvider } from '@/lib/contracts/rpc-provider';
@@ -50,6 +52,7 @@ function Web3Provider({ children }: { children: ReactNode }) {
   const [hubAddress, setHubAddress] = useState('');
   const [sessionManagerAddress, setSessionManagerAddress] = useState('');
   const [rewardEligibilityRegistryAddress, setRewardEligibilityRegistryAddressState] = useState('');
+  const [atmVoucherAddress, setAtmVoucherAddressState] = useState('');
   const [splitters, setSplitters] = useState<{ address: string; label: string }[]>([]);
   const [activeSplitter, setActiveSplitterState] = useState('');
   const [walletRole, setWalletRole] = useState<WalletRole | null>(null);
@@ -87,6 +90,11 @@ function Web3Provider({ children }: { children: ReactNode }) {
     // override is read back normally here.
     const savedRegistry = localStorage.getItem(networkStorageKey('dg_rewardEligibilityRegistryAddress', netNs));
     setRewardEligibilityRegistryAddressState(savedRegistry || (isMainnet ? DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET : DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS));
+
+    // atmVoucherAddress is likewise a standalone contract, unaffected by the
+    // token/hub/sessionManager mainnet/testnet mix-up noted above.
+    const savedAtmVoucher = localStorage.getItem(networkStorageKey('dg_atmVoucherAddress', netNs));
+    setAtmVoucherAddressState(savedAtmVoucher || (isMainnet ? DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET : DEFAULT_ATM_VOUCHER_ADDRESS));
 
     // Load splitters array
     try {
@@ -126,6 +134,10 @@ function Web3Provider({ children }: { children: ReactNode }) {
   const saveRewardEligibilityRegistryAddress = (a: string) => {
     setRewardEligibilityRegistryAddressState(a);
     localStorage.setItem(networkStorageKey('dg_rewardEligibilityRegistryAddress', netNs), a);
+  };
+  const saveAtmVoucherAddress = (a: string) => {
+    setAtmVoucherAddressState(a);
+    localStorage.setItem(networkStorageKey('dg_atmVoucherAddress', netNs), a);
   };
   const addSplitter = (addr: string, label: string) => {
     setSplitters(prev => {
@@ -271,12 +283,14 @@ function Web3Provider({ children }: { children: ReactNode }) {
     initialized,
     connect, disconnect, openNetworkPicker,
     tokenAddress, hubAddress, sessionManagerAddress, rewardEligibilityRegistryAddress,
+    atmVoucherAddress,
     splitters, activeSplitter,
     setTokenAddress: saveTokenAddress,
     resetTokenAddress,
     setHubAddress: saveHubAddress,
     setSessionManagerAddress: saveSessionManagerAddress,
     setRewardEligibilityRegistryAddress: saveRewardEligibilityRegistryAddress,
+    setAtmVoucherAddress: saveAtmVoucherAddress,
     addSplitter, removeSplitter, setActiveSplitter,
     walletRole, roleLoading, operatorName, operatorInstance,
   };

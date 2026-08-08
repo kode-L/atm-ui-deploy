@@ -10,5 +10,11 @@
     "label": "PR boost stake-based redesign, v1.0.2 (GameHub + DailySessionManager)",
     "date": "2026-08-03T17:04:45.378Z",
     "gitCommit": "a3de74083f71e2192af96bcd4dea5a4ced970333"
+  },
+  {
+    "version": "v3",
+    "label": "ATM Voucher system (new) + GameHub/DailySessionManager voucher-redemption integration, RewardEligibilityRegistry hub link, carry-forward-sync removal, storage-layout fixes",
+    "date": "2026-08-08T12:08:28.547Z",
+    "gitCommit": "461e3c47d833903bf3b89845e1359bdda20b166b"
   }
 ]

@@ -9,6 +9,7 @@ type ChainDefaults = {
   adminAddress?: string;
   voidOwnerAddress?: string;
   rewardEligibilityRegistryAddress?: string;
+  atmVoucherAddress?: string;
 };
 
 // Per-chainId default contract addresses (keyed by chainId as a string, e.g. "97", "56").
@@ -76,6 +77,11 @@ export const DEFAULT_VOID_OWNER_ADDRESS = process.env.NEXT_PUBLIC_VOID_OWNER_ADD
 // fleet. Set after deploying from the Reward Eligibility Registry tab.
 export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'rewardEligibilityRegistryAddress');
 
+// ATMVoucher proxy — standalone ERC-721 voucher contract, unrelated to the GameHub fleet
+// (though GameHub can optionally point at one via setATMVoucher). Set after deploying
+// from the ATM Vouchers tab.
+export const DEFAULT_ATM_VOUCHER_ADDRESS = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'atmVoucherAddress');
+
 // Same set of defaults, but for BSC Mainnet — deployments are independent per network,
 // so mainnet gets its own fallbacks (chain.json's "56" entry, env var still wins) alongside
 // the testnet ones above.
@@ -87,6 +93,7 @@ export const DEFAULT_TOKEN_VOID_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_TOKEN_
 export const DEFAULT_ADMIN_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ADMIN_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'adminAddress');
 export const DEFAULT_VOID_OWNER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_VOID_OWNER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'voidOwnerAddress');
 export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'rewardEligibilityRegistryAddress');
+export const DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'atmVoucherAddress');
 
 export type NetworkKey = 'testnet' | 'mainnet';
 

@@ -6,7 +6,7 @@ import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import { getExplorerAddressUrl } from '@/lib/contracts/config';
-import { Network, RefreshCw, UserPlus, UserMinus, CheckCircle, Copy, Check, ExternalLink, Link2 } from 'lucide-react';
+import { Network, RefreshCw, UserPlus, UserMinus, CheckCircle, Copy, Check, ExternalLink, Link2, IdCard, Ticket } from 'lucide-react';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 
 interface HubOperator {
@@ -26,10 +26,12 @@ interface HubInfo {
   sessionDuration: number;
   finalizationGracePeriod: number;
   prBoostGracePeriod: number;
+  rewardEligibilityRegistry: string;
+  atmVoucher: string;
 }
 
 export default function HubSection() {
-  const { provider, signer, isConnected, hubAddress, sessionManagerAddress, setSessionManagerAddress, activeSplitter, chainId } = useWeb3();
+  const { provider, signer, isConnected, hubAddress, sessionManagerAddress, setSessionManagerAddress, activeSplitter, chainId, rewardEligibilityRegistryAddress, atmVoucherAddress } = useWeb3();
   const [txStatus, setTxStatus] = useState<{ status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string }>({ status: 'idle' });
   const [hubInfo, setHubInfo] = useState<HubInfo | null>(null);
   const [operators, setOperators] = useState<HubOperator[]>([]);
@@ -48,6 +50,12 @@ export default function HubSection() {
   const [linkInstance, setLinkInstance] = useState('');
   const [linkName, setLinkName] = useState('');
 
+  // Linked contracts (setRewardEligibilityRegistry / setATMVoucher on the hub itself —
+  // separate from the useWeb3 addresses below, which just pick which contract each standalone
+  // tab points at; these two calls are what actually make GameHub reference them on-chain).
+  const [newRewardRegistry, setNewRewardRegistry] = useState('');
+  const [newAtmVoucher, setNewAtmVoucher] = useState('');
+
   const getHub = useCallback((withSigner = false) => {
     if (!hubAddress) return null;
     const signerOrProvider = withSigner ? signer : provider;
@@ -61,7 +69,7 @@ export default function HubSection() {
     setLoading(true);
     setError('');
     try {
-      const [adminWallet, paymentToken, beacon, impl, offset, duration, grace, prBoostGrace, opAddrs] = await Promise.all([
+      const [adminWallet, paymentToken, beacon, impl, offset, duration, grace, prBoostGrace, rewardEligibilityRegistry, atmVoucher, opAddrs] = await Promise.all([
         hub.adminWallet(),
         hub.paymentToken(),
         hub.beacon(),
@@ -70,6 +78,8 @@ export default function HubSection() {
         hub.sessionDuration(),
         hub.finalizationGracePeriod(),
         hub.prBoostGracePeriod(),
+        hub.rewardEligibilityRegistry(),
+        hub.atmVoucher(),
         hub.getOperators(),
       ]);
       setHubInfo({
@@ -81,6 +91,8 @@ export default function HubSection() {
         sessionDuration: Number(duration),
         finalizationGracePeriod: Number(grace),
         prBoostGracePeriod: Number(prBoostGrace),
+        rewardEligibilityRegistry,
+        atmVoucher,
       });
       const records: HubOperator[] = [];
       for (const addr of opAddrs) {
@@ -107,6 +119,12 @@ export default function HubSection() {
   }, [getHub]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Convenience pre-fill from whatever's loaded in the standalone Reward Eligibility
+  // Registry / ATM Vouchers tabs — still freely editable, and only fills once (won't
+  // clobber a manually-typed value or overwrite after the field's been touched).
+  useEffect(() => { if (rewardEligibilityRegistryAddress && !newRewardRegistry) setNewRewardRegistry(rewardEligibilityRegistryAddress); }, [rewardEligibilityRegistryAddress, newRewardRegistry]);
+  useEffect(() => { if (atmVoucherAddress && !newAtmVoucher) setNewAtmVoucher(atmVoucherAddress); }, [atmVoucherAddress, newAtmVoucher]);
 
   const registerOperator = async () => {
     const hub = getHub(true);
@@ -173,6 +191,46 @@ export default function HubSection() {
     }
   };
 
+  const handleSetRewardRegistry = async () => {
+    const hub = getHub(true);
+    const target = newRewardRegistry.trim();
+    if (!hub || !ethers.utils.isAddress(target)) {
+      setTxStatus({ status: 'error', error: 'Invalid Reward Eligibility Registry address' });
+      return;
+    }
+    setTxStatus({ status: 'pending', message: 'Linking Reward Eligibility Registry to the hub...' });
+    try {
+      const tx = await hub.setRewardEligibilityRegistry(target);
+      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
+      await tx.wait();
+      setTxStatus({ status: 'success', hash: tx.hash, message: `GameHub now references Reward Eligibility Registry at ${target}.` });
+      setNewRewardRegistry('');
+      fetchAll();
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+  };
+
+  const handleSetAtmVoucher = async () => {
+    const hub = getHub(true);
+    const target = newAtmVoucher.trim();
+    if (!hub || !ethers.utils.isAddress(target)) {
+      setTxStatus({ status: 'error', error: 'Invalid ATM Voucher address' });
+      return;
+    }
+    setTxStatus({ status: 'pending', message: 'Linking ATM Voucher to the hub...' });
+    try {
+      const tx = await hub.setATMVoucher(target);
+      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
+      await tx.wait();
+      setTxStatus({ status: 'success', hash: tx.hash, message: `GameHub now references ATM Voucher at ${target}.` });
+      setNewAtmVoucher('');
+      fetchAll();
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+  };
+
   const removeOperator = async (operator: string) => {
     const hub = getHub(true);
     if (!hub) return;
@@ -199,6 +257,7 @@ export default function HubSection() {
     setTimeout(() => setCopied(''), 2000);
   };
 
+  const isZero = (a: string) => !a || a === ethers.constants.AddressZero;
   const fmtAddr = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
   const fmtDate = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString() : '—');
   const fmtDuration = (s: number) => (s % 3600 === 0 ? `${s / 3600}h` : s % 60 === 0 ? `${s / 60}m` : `${s}s`);
@@ -279,12 +338,87 @@ export default function HubSection() {
               <p className="text-[11px] text-txt-secondary">Operators</p>
               <p className="font-medium">{operators.length} ({operators.filter(o => o.active).length} active)</p>
             </div>
+            <div>
+              <p className="text-[11px] text-txt-secondary">Reward Eligibility Registry</p>
+              {isZero(hubInfo.rewardEligibilityRegistry) ? (
+                <p className="font-medium text-yellow-400">Not linked</p>
+              ) : (
+                <code className="text-xs text-accent font-mono">{fmtAddr(hubInfo.rewardEligibilityRegistry)}</code>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] text-txt-secondary">ATM Voucher</p>
+              {isZero(hubInfo.atmVoucher) ? (
+                <p className="font-medium text-yellow-400">Not linked</p>
+              ) : (
+                <code className="text-xs text-accent font-mono">{fmtAddr(hubInfo.atmVoucher)}</code>
+              )}
+            </div>
           </div>
           <p className="text-[11px] text-txt-secondary mt-3">
             Schedule config and the reward-type catalog are managed on the hub (Admin tab) and broadcast to every active instance.
           </p>
         </Card>
       )}
+
+      {/* Linked contracts */}
+      <Card title="Linked Contracts" icon={<Link2 className="w-4 h-4 text-accent" />}>
+        <p className="text-xs text-txt-secondary mb-3">
+          Points the hub at the standalone Reward Eligibility Registry / ATM Voucher deployments so GameHub can reference them on-chain — separate from which address each of those tabs itself talks to. Requires DEFAULT_ADMIN_ROLE on the hub.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-surface-tertiary rounded-lg p-3">
+            <label className="text-[11px] text-txt-secondary flex items-center gap-1 mb-1.5"><IdCard className="w-3.5 h-3.5" /> Reward Eligibility Registry</label>
+            {hubInfo && (
+              isZero(hubInfo.rewardEligibilityRegistry) ? (
+                <div className="flex items-center gap-1.5 mb-2 text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                  <span className="text-red-400 font-medium">Not Linked</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 mb-2 text-xs flex-wrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                  <span className="text-green-400 font-medium">Linked</span>
+                  <code className="text-txt-secondary font-mono">{fmtAddr(hubInfo.rewardEligibilityRegistry)}</code>
+                </div>
+              )
+            )}
+            <input value={newRewardRegistry} onChange={e => setNewRewardRegistry(e.target.value)} placeholder="0x..." className={`${inputCls} mb-2`} />
+            <button
+              onClick={handleSetRewardRegistry}
+              disabled={!isConnected || !newRewardRegistry.trim()}
+              className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2 rounded-lg text-sm transition-colors"
+            >
+              Set Reward Eligibility Registry
+            </button>
+          </div>
+          <div className="bg-surface-tertiary rounded-lg p-3">
+            <label className="text-[11px] text-txt-secondary flex items-center gap-1 mb-1.5"><Ticket className="w-3.5 h-3.5" /> ATM Voucher</label>
+            {hubInfo && (
+              isZero(hubInfo.atmVoucher) ? (
+                <div className="flex items-center gap-1.5 mb-2 text-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                  <span className="text-red-400 font-medium">Not Linked</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 mb-2 text-xs flex-wrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                  <span className="text-green-400 font-medium">Linked</span>
+                  <code className="text-txt-secondary font-mono">{fmtAddr(hubInfo.atmVoucher)}</code>
+                </div>
+              )
+            )}
+            <input value={newAtmVoucher} onChange={e => setNewAtmVoucher(e.target.value)} placeholder="0x..." className={`${inputCls} mb-2`} />
+            <button
+              onClick={handleSetAtmVoucher}
+              disabled={!isConnected || !newAtmVoucher.trim()}
+              className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2 rounded-lg text-sm transition-colors"
+            >
+              Set ATM Voucher
+            </button>
+          </div>
+        </div>
+      </Card>
 
       {/* Register operator */}
       <Card title="Register Operator" icon={<UserPlus className="w-4 h-4 text-accent" />}>

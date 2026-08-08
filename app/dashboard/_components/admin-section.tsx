@@ -105,44 +105,6 @@ export default function AdminSection() {
   const [ruleOnChain, setRuleOnChain] = useState<Record<number, boolean>>({}); // original on-chain state
   const [ruleLoading, setRuleLoading] = useState(false);
 
-  // ── Carry-Forward Sync (Admin Override) — batchSyncCarryForward is per-instance
-  // (dailyPointsFinalized/dailyUserPoints live on each operator's own instance), so this
-  // needs an operator selection to resolve the right instance, same as reward rules above.
-  // batchSyncCarryForward is resumable (a wallet can be topped up again later) and takes
-  // the whole wallet list in one on-chain call (single admin signature, atomic — one wallet
-  // with nothing new in the given range reverts everyone else too, see doBatchSyncCarryForward).
-  const [cfOperator, setCfOperator] = useState('');
-  const [cfCutoverDateKey, setCfCutoverDateKey] = useState<number | null>(null);
-  const [cfUsersText, setCfUsersText] = useState(''); // one wallet per line (or comma-separated)
-  const [cfFromDateKey, setCfFromDateKey] = useState('');
-  const [cfToDateKey, setCfToDateKey] = useState('');
-  const [cfUserStatuses, setCfUserStatuses] = useState<Record<string, { alreadySynced: boolean; carryForwardPoints: string; firstDateKeyPoints: string | null }>>({});
-  const [cfInfoLoading, setCfInfoLoading] = useState(false);
-  // Discovered via event scan (DailyUserPointsCredited/Adjusted/Updated all share the same
-  // indexed layout: dateKey, user, updatedBy) — dateKey => the earliest one seen for that
-  // user, so "From" can be prefilled to somewhere that actually has their data instead of
-  // dateKey 0 (which predates the platform entirely and would just revert as unfinalized).
-  const [cfDiscoveredUsers, setCfDiscoveredUsers] = useState<Record<string, number>>({});
-  const [cfDiscovering, setCfDiscovering] = useState(false);
-  const [cfScanInfo, setCfScanInfo] = useState<{ oldestScannedBlock: number; complete: boolean } | null>(null);
-  // How far back to scan, in real days — this is a testnet/dev deployment with
-  // sessionDuration set to minutes, not 24h, so dateKey itself is a useless proxy for real
-  // elapsed time (it's already in the millions); the actual history worth covering is a
-  // handful of real days, which this converts to a block count using a live-sampled
-  // average block time (BSC block times drift, so a hardcoded constant would over/undershoot).
-  const [cfScanDays, setCfScanDays] = useState('8');
-  const [cfScanTargetBlock, setCfScanTargetBlock] = useState<number | null>(null);
-  // Before/after preview for the currently-entered [From, To] range: sums getDailyUserPoints
-  // per wallet across the whole range (batched, since range can be up to MAX_SYNC_RANGE=500
-  // dateKeys) and projects the post-sync balance — same math syncCarryForward itself does,
-  // run read-only first so the admin can sanity-check before spending gas / signing.
-  const [cfCheckResults, setCfCheckResults] = useState<Record<string, { sumOfRangePoints: string; projectedBalanceAfterSync: string }>>({});
-  const [cfCheckAllFinalized, setCfCheckAllFinalized] = useState<boolean | null>(null);
-  const [cfCheckLoading, setCfCheckLoading] = useState(false);
-  const [cfCheckedRange, setCfCheckedRange] = useState<{ from: string; to: string } | null>(null);
-
-  const [cfBlockedAtDateKey, setCfBlockedAtDateKey] = useState<number | null>(null);
-
   // Shared cached lists (loaded once, used by operators, reward types, rules sections)
   const [cachedOperators, setCachedOperators] = useState<CachedOperator[]>([]);
   const [cachedRewardTypes, setCachedRewardTypes] = useState<CachedRewardType[]>([]);
@@ -176,6 +138,11 @@ export default function AdminSection() {
   // \u2500\u2500 Withdraw \u2500\u2500
   const [withdrawTo, setWithdrawTo] = useState('');
   const [withdrawAmt, setWithdrawAmt] = useState('');
+
+  // \u2500\u2500 Reward Eligibility Registry (hub-wide) \u2500\u2500
+  const [rewardEligibilityRegistryOnChain, setRewardEligibilityRegistryOnChain] = useState<string>('');
+  const [rewardEligibilityRegistryInput, setRewardEligibilityRegistryInput] = useState('');
+  const [rewardEligibilityRegistryLoading, setRewardEligibilityRegistryLoading] = useState(false);
 
   const getContract = () => {
     if (!signer || !sessionManagerAddress) return null;
@@ -393,382 +360,6 @@ export default function AdminSection() {
       return exec(`Set Rule #${changedIds[0]}`, () => instanceContract.setOperatorRewardRule(ruleOperator, changedIds[0], changedAllowed[0]), () => { refreshAfterChange(); loadRulesForOperator(ruleOperator); });
     }
     return exec(`Batch Set ${changedIds.length} Rules`, () => instanceContract.batchSetOperatorRewardRules(ruleOperator, changedIds, changedAllowed), () => { refreshAfterChange(); loadRulesForOperator(ruleOperator); });
-  };
-
-  // Carry-Forward Sync — one wallet address per line/comma in the textarea; dedupe + drop
-  // anything that doesn't parse as an address so a stray blank line can't turn into a
-  // wasted tx.
-  const cfUserList = useMemo(() => Array.from(new Set(
-    cfUsersText.split(/[\n,]+/).map(s => s.trim()).filter(s => s && ethers.utils.isAddress(s))
-  )), [cfUsersText]);
-
-  // Loads the operator instance's cutover dateKey — the ceiling findSafeToDateKey searches up
-  // to. "To" is intentionally left alone here (stays optional/auto); "From" is NOT defaulted
-  // to 0 either: dateKey 0 predates the platform entirely, and "Load All Users" below fills it
-  // in from each user's actual earliest dateKey with points instead.
-  const loadOperatorCutover = useCallback(async (operator: string) => {
-    const instanceAddr = getOperatorInstanceAddress(operator);
-    if (!provider || !instanceAddr || !operator) {
-      setCfCutoverDateKey(null);
-      return;
-    }
-    try {
-      const c = new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, provider);
-      const cutoverRaw = await c.carryForwardCutoverDateKey();
-      const cutover = cutoverRaw?.toNumber?.() ?? Number(cutoverRaw);
-      setCfCutoverDateKey(cutover);
-    } catch {
-      setCfCutoverDateKey(null);
-    }
-  }, [provider, getOperatorInstanceAddress]);
-
-  useEffect(() => {
-    // Switching operators invalidates any previously discovered users/scan progress — they
-    // belong to a different instance's event log.
-    setCfDiscoveredUsers({});
-    setCfScanInfo(null);
-    setCfScanTargetBlock(null);
-    if (cfOperator) {
-      loadOperatorCutover(cfOperator);
-    } else {
-      setCfCutoverDateKey(null);
-      setCfFromDateKey('');
-      setCfToDateKey('');
-    }
-  }, [cfOperator, loadOperatorCutover]);
-
-  // Discover every wallet that's ever had points recorded on this instance, and the
-  // earliest dateKey each one shows up at — there's no on-chain enumerable user list, so
-  // this scans DailyUserPointsCredited/Adjusted/Updated event logs (all 3 share the same
-  // indexed layout: dateKey, user, updatedBy — every points-changing code path emits one of
-  // them, including batchUpdateDailyUserPoints's per-user loop). Public RPC endpoints cap
-  // both the block range and rate of eth_getLogs calls, so this walks backward from the
-  // latest block in bounded chunks and stops (keeping whatever it found) the moment a chunk
-  // errors, rather than trying to force the whole window in one go — "Scan Further Back"
-  // resumes toward the same target from the oldest block already covered.
-  const CF_SCAN_CHUNK_SIZE = 2000;
-  const CF_SCAN_CHUNKS_PER_CLICK = 60; // ~120k blocks per click at typical BSC block times
-  const CF_AVG_BLOCK_TIME_SAMPLE_DEPTH = 5000;
-  const CF_POINTS_EVENT_TOPICS = [
-    ethers.utils.id('DailyUserPointsCredited(uint256,address,uint256,int256,address)'),
-    ethers.utils.id('DailyUserPointsAdjusted(uint256,address,int256,int256,address)'),
-    ethers.utils.id('DailyUserPointsUpdated(uint256,address,int256,int256,address)'),
-  ];
-
-  const discoverUsersWithPoints = useCallback(async (operator: string, resume?: boolean) => {
-    const instanceAddr = getOperatorInstanceAddress(operator);
-    if (!provider || !instanceAddr || !operator) return;
-    setCfDiscovering(true);
-    try {
-      let cursor: number;
-      let targetBlock: number;
-      let found: Record<string, number>;
-
-      if (resume && cfScanInfo && cfScanTargetBlock !== null) {
-        cursor = cfScanInfo.oldestScannedBlock - 1;
-        targetBlock = cfScanTargetBlock;
-        found = { ...cfDiscoveredUsers };
-      } else {
-        const latestBlock = await provider.getBlockNumber();
-        const days = Math.max(0.1, parseFloat(cfScanDays) || 8);
-        const sampleDepth = Math.min(CF_AVG_BLOCK_TIME_SAMPLE_DEPTH, latestBlock);
-        let avgBlockTime = 3; // BSC-typical fallback if the sample lookup below fails
-        try {
-          const [latestBlockInfo, sampleBlockInfo] = await Promise.all([
-            provider.getBlock(latestBlock),
-            provider.getBlock(latestBlock - sampleDepth),
-          ]);
-          if (sampleDepth > 0) avgBlockTime = Math.max(0.5, (latestBlockInfo.timestamp - sampleBlockInfo.timestamp) / sampleDepth);
-        } catch { /* keep fallback */ }
-        const blockSpan = Math.ceil((days * 86400) / avgBlockTime);
-        targetBlock = Math.max(0, latestBlock - blockSpan);
-        cursor = latestBlock;
-        found = {};
-        setCfScanTargetBlock(targetBlock);
-      }
-
-      let hitError = false;
-      for (let i = 0; i < CF_SCAN_CHUNKS_PER_CLICK && cursor >= targetBlock; i++) {
-        const from = Math.max(targetBlock, cursor - CF_SCAN_CHUNK_SIZE + 1);
-        try {
-          const logs = await provider.getLogs({ address: instanceAddr, fromBlock: from, toBlock: cursor, topics: [CF_POINTS_EVENT_TOPICS] });
-          for (const log of logs) {
-            const user = ethers.utils.getAddress('0x' + log.topics[2].slice(26)).toLowerCase();
-            const dateKey = ethers.BigNumber.from(log.topics[1]).toNumber();
-            if (found[user] === undefined || dateKey < found[user]) found[user] = dateKey;
-          }
-        } catch {
-          hitError = true;
-          break;
-        }
-        cursor = from - 1;
-      }
-      setCfDiscoveredUsers(found);
-      setCfScanInfo({ oldestScannedBlock: cursor + 1, complete: !hitError && cursor < targetBlock });
-      const addrs = Object.keys(found);
-      if (addrs.length > 0) {
-        setCfUsersText(addrs.join('\n'));
-        setCfFromDateKey(String(Math.min(...Object.values(found))));
-      }
-    } finally {
-      setCfDiscovering(false);
-    }
-  }, [provider, getOperatorInstanceAddress, cfDiscoveredUsers, cfScanInfo, cfScanTargetBlock, cfScanDays]);
-
-  // Per-wallet informational state (has this wallet ever been synced before, and its current
-  // balance) — no longer a blocking gate, since sync is resumable; doBatchSyncCarryForward
-  // does its own live callStatic eligibility check right before sending.
-  // firstDateKeyPoints is a direct getDailyUserPoints(dateKey, user) read for whichever
-  // dateKey the event scan found first for that user — a targeted lookup like this only
-  // works once you already have both the user and the dateKey; it's exactly what discovery
-  // (event scan / pasted address) is for, not a substitute for it.
-  const loadCarryForwardUserStatuses = useCallback(async (operator: string, users: string[]) => {
-    const instanceAddr = getOperatorInstanceAddress(operator);
-    if (!provider || !instanceAddr || users.length === 0) {
-      setCfUserStatuses({});
-      return;
-    }
-    setCfInfoLoading(true);
-    try {
-      const c = new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, provider);
-      const entries = await Promise.all(users.map(async (u) => {
-        const key = u.toLowerCase();
-        const firstDateKey = cfDiscoveredUsers[key];
-        try {
-          const [synced, balanceRaw, firstDayPointsRaw] = await Promise.all([
-            c.hasSyncedCarryForward(u),
-            c.carryForwardPoints(u),
-            firstDateKey !== undefined ? c.getDailyUserPoints(firstDateKey, u) : Promise.resolve(null),
-          ]);
-          return [key, {
-            alreadySynced: synced,
-            carryForwardPoints: ethers.utils.formatEther(balanceRaw),
-            firstDateKeyPoints: firstDayPointsRaw !== null ? ethers.utils.formatEther(firstDayPointsRaw) : null,
-          }] as const;
-        } catch {
-          return [key, { alreadySynced: false, carryForwardPoints: '0', firstDateKeyPoints: null }] as const;
-        }
-      }));
-      setCfUserStatuses(Object.fromEntries(entries));
-    } finally {
-      setCfInfoLoading(false);
-    }
-  }, [provider, getOperatorInstanceAddress, cfDiscoveredUsers]);
-
-  useEffect(() => {
-    loadCarryForwardUserStatuses(cfOperator, cfUserList);
-  }, [cfOperator, cfUserList, loadCarryForwardUserStatuses]);
-
-  // Clear any previous preview once operator/wallets/range change so a stale projection
-  // can't be misread as current — re-running Check Range is cheap, staleness isn't obvious otherwise.
-  useEffect(() => {
-    setCfCheckResults({});
-    setCfCheckAllFinalized(null);
-    setCfCheckedRange(null);
-    setCfBlockedAtDateKey(null);
-  }, [cfOperator, cfUserList, cfFromDateKey, cfToDateKey]);
-
-  const CF_CHECK_BATCH_SIZE = 25;
-
-  // Scans forward (batched) from `from` for the longest contiguous run of finalized dateKeys,
-  // capped at `ceiling` (inclusive) and `maxRangeLength` days. Both the preview and the actual
-  // sync use this for "To" instead of trusting whatever's typed in the field — post-cutover
-  // points already auto-accrue on their own with no button, so the only thing this whole
-  // section exists for is the one-time pre-cutover backfill, and the only real constraint on
-  // it is "which pre-cutover days are actually finalized". Auto-detecting that means a stale
-  // or manually-typed "To" can never produce a SyncRangeInvalid or SyncRangeNotFinalized
-  // revert. Returns null if `from` itself isn't finalized yet (nothing safe to sync).
-  const findSafeToDateKey = useCallback(async (
-    contract: ethers.Contract,
-    from: number,
-    ceiling: number,
-    maxRangeLength: number
-  ): Promise<{ to: number | null; blockedAt: number | null }> => {
-    const hardCap = Math.min(ceiling, from + maxRangeLength - 1);
-
-    const [boundOperator, sessionDurationRaw, sessionStartOffsetRaw] = await Promise.all([
-      contract.boundOperator(),
-      contract.sessionDuration(),
-      contract.sessionStartOffset(),
-    ]);
-    const sessionDuration = sessionDurationRaw.toNumber();
-    const sessionStartOffset = sessionStartOffsetRaw.toNumber();
-    const nowSec = Math.floor(Date.now() / 1000);
-    const windowEnded = (dateKey: number) => nowSec >= (dateKey + 1) * sessionDuration + sessionStartOffset;
-
-    let lastSafe: number | null = null;
-    for (let d = from; d <= hardCap; d += CF_CHECK_BATCH_SIZE) {
-      const batchEnd = Math.min(d + CF_CHECK_BATCH_SIZE - 1, hardCap);
-      const batchKeys: number[] = [];
-      for (let k = d; k <= batchEnd; k++) batchKeys.push(k);
-      const operatorFinalizedFlags: boolean[] = await Promise.all(
-        batchKeys.map(k => contract.operatorDayFinalized(k, boundOperator))
-      );
-      for (let i = 0; i < operatorFinalizedFlags.length; i++) {
-        const dk = batchKeys[i];
-        const safe = operatorFinalizedFlags[i] || windowEnded(dk);
-        if (!safe) return { to: lastSafe, blockedAt: dk };
-        lastSafe = dk;
-      }
-    }
-    return { to: lastSafe, blockedAt: null };
-  }, []);
-
-  // Read-only "before" preview — an upper-bound estimate of what batchSyncCarryForward would
-  // credit, without spending gas or requiring a signature. It's an upper bound (not exact)
-  // because sync is resumable: the contract tracks each wallet's synced-through cursor
-  // internally (no getter for it), so a wallet with a prior sync may skip some days in this
-  // range that this preview still counts — doBatchSyncCarryForward gets the real, exact
-  // answer per wallet via callStatic right before sending. "To" is always auto-detected via
-  // findSafeToDateKey (an optional typed "To" only narrows the ceiling it searches up to) —
-  // never trusted as-is, so this can't itself surface SyncRangeInvalid/SyncRangeNotFinalized.
-  const checkSyncPreview = useCallback(async () => {
-    const instanceAddr = getOperatorInstanceAddress(cfOperator);
-    if (!provider || !instanceAddr) {
-      setTxStatus({ status: 'error', error: 'Select an operator first.' });
-      return;
-    }
-    if (cfUserList.length === 0) {
-      setTxStatus({ status: 'error', error: 'Enter at least one wallet address.' });
-      return;
-    }
-    const from = parseInt(cfFromDateKey);
-    if (isNaN(from)) {
-      setTxStatus({ status: 'error', error: 'Enter a valid "From" dateKey before checking.' });
-      return;
-    }
-    if (cfCutoverDateKey === null) {
-      setTxStatus({ status: 'error', error: 'Cutover dateKey hasn\'t loaded yet — select the operator again.' });
-      return;
-    }
-
-    setCfCheckLoading(true);
-    setCfCheckResults({});
-    setCfCheckAllFinalized(null);
-    try {
-      const c = new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, provider);
-      const maxSyncRangeRaw = await c.MAX_SYNC_RANGE();
-      const maxSyncRange = maxSyncRangeRaw.toNumber();
-      const typedTo = parseInt(cfToDateKey);
-      const ceiling = !isNaN(typedTo) ? Math.min(typedTo, cfCutoverDateKey - 1) : cfCutoverDateKey - 1;
-
-      const { to, blockedAt } = await findSafeToDateKey(c, from, ceiling, maxSyncRange);
-      setCfBlockedAtDateKey(blockedAt);
-      if (to === null) {
-        setCfCheckAllFinalized(false);
-        setTxStatus({
-          status: 'error',
-          error: blockedAt !== null
-            ? `dateKey ${blockedAt}'s game window hasn't ended yet, so nothing is safe to sync starting from ${from} — matches could still be settled for it. Wait for its window to end (or lower "From"), then check this range again.`
-            : `dateKey ${from} ("From")'s game window hasn't ended yet — nothing safe to sync.`,
-        });
-        return;
-      }
-      setCfToDateKey(String(to));
-      setCfCheckAllFinalized(true);
-
-      const dateKeys: number[] = [];
-      for (let d = from; d <= to; d++) dateKeys.push(d);
-
-      const entries = await Promise.all(cfUserList.map(async (u) => {
-        const key = u.toLowerCase();
-        let sum = ethers.BigNumber.from(0);
-        for (let i = 0; i < dateKeys.length; i += CF_CHECK_BATCH_SIZE) {
-          const batch = dateKeys.slice(i, i + CF_CHECK_BATCH_SIZE);
-          const pts = await Promise.all(batch.map(d => c.getDailyUserPoints(d, u)));
-          pts.forEach(p => { sum = sum.add(p); });
-        }
-        const currentBalanceRaw = await c.carryForwardPoints(u);
-        // Upper bound: doesn't know which days in range a prior sync may have already
-        // covered (see comment above checkSyncPreview) — always adds the full range sum.
-        const projected = currentBalanceRaw.add(sum);
-        return [key, {
-          sumOfRangePoints: ethers.utils.formatEther(sum),
-          projectedBalanceAfterSync: ethers.utils.formatEther(projected),
-        }] as const;
-      }));
-      setCfCheckResults(Object.fromEntries(entries));
-      setCfCheckedRange({ from: cfFromDateKey, to: String(to) });
-    } catch (e: any) {
-      setTxStatus({ status: 'error', error: `Range check failed: ${decodeError(e)}` });
-    } finally {
-      setCfCheckLoading(false);
-    }
-  }, [provider, cfOperator, cfUserList, cfFromDateKey, cfToDateKey, cfCutoverDateKey, findSafeToDateKey, getOperatorInstanceAddress]);
-
-  // batchSyncCarryForward is resumable — a wallet can be topped up with newly finalized
-  // days any number of times, so "synced before" no longer means ineligible. The contract
-  // tracks each wallet's synced-through cursor internally (not exposed as a getter), so the
-  // only way to know whether *this* range still has anything new for a given wallet is to
-  // ask the contract itself. It's also atomic across the whole wallet list — one wallet
-  // with nothing new in range would revert everyone else too — so each wallet is probed via
-  // callStatic (free, no gas, no signature) first, and only the ones that would actually
-  // succeed go into the real tx. "To" is auto-detected the same way checkSyncPreview does —
-  // no need to run that first, and no manually-typed "To" can ever push this into a revert.
-  const doBatchSyncCarryForward = async () => {
-    const instanceAddr = getOperatorInstanceAddress(cfOperator);
-    if (!cfOperator || !instanceAddr) {
-      setTxStatus({ status: 'error', error: 'Select an operator first.' });
-      return;
-    }
-    if (!signer || !provider) {
-      setTxStatus({ status: 'error', error: 'Connect your wallet first.' });
-      return;
-    }
-    const from = parseInt(cfFromDateKey);
-    if (isNaN(from)) {
-      setTxStatus({ status: 'error', error: 'Enter a valid "From" dateKey.' });
-      return;
-    }
-    if (cfCutoverDateKey === null) {
-      setTxStatus({ status: 'error', error: 'Cutover dateKey hasn\'t loaded yet — select the operator again.' });
-      return;
-    }
-    if (cfUserList.length === 0) {
-      setTxStatus({ status: 'error', error: 'Enter at least one wallet address.' });
-      return;
-    }
-
-    setTxStatus({ status: 'pending', message: 'Finding the latest finalized dateKey...' });
-    const readContract = new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, provider);
-    const maxSyncRangeRaw = await readContract.MAX_SYNC_RANGE();
-    const maxSyncRange = maxSyncRangeRaw.toNumber();
-    const typedTo = parseInt(cfToDateKey);
-    const ceiling = !isNaN(typedTo) ? Math.min(typedTo, cfCutoverDateKey - 1) : cfCutoverDateKey - 1;
-    const { to, blockedAt } = await findSafeToDateKey(readContract, from, ceiling, maxSyncRange);
-    setCfBlockedAtDateKey(blockedAt);
-    if (to === null) {
-      setTxStatus({
-        status: 'error',
-        error: blockedAt !== null
-          ? `dateKey ${blockedAt}'s game window hasn't ended yet, so nothing is safe to sync starting from ${from} — matches could still be settled for it. Wait for its window to end, then try again.`
-          : `dateKey ${from} ("From")'s game window hasn't ended yet — nothing safe to sync.`,
-      });
-      return;
-    }
-    setCfToDateKey(String(to));
-
-    setTxStatus({ status: 'pending', message: 'Checking which wallets have new points in range...' });
-    const instanceContract = new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, signer);
-    const eligible = await Promise.all(cfUserList.map(async (u) => {
-      try {
-        await instanceContract.callStatic.batchSyncCarryForward([u], from, to);
-        return true;
-      } catch {
-        return false;
-      }
-    }));
-    const targets = cfUserList.filter((_, i) => eligible[i]);
-    if (targets.length === 0) {
-      setTxStatus({ status: 'error', error: 'No eligible wallets — every pasted wallet already has this entire dateKey range synced. Try a later "From" or different wallets.' });
-      return;
-    }
-
-    await exec(
-      `Sync Carry-Forward (${targets.length} wallet${targets.length > 1 ? 's' : ''}, through dateKey ${to})`,
-      () => instanceContract.batchSyncCarryForward(targets, from, to),
-      () => loadCarryForwardUserStatuses(cfOperator, cfUserList)
-    );
   };
 
   const selectAllRules = (allowed: boolean) => {
@@ -1107,6 +698,43 @@ export default function AdminSection() {
     const seconds = Math.round(hrs * 3600);
     return exec('Set Grace Period (via Hub)', () => getHubContract().setFinalizationGracePeriod(seconds), loadScheduleConfig);
   };
+
+  // Reward Eligibility Registry — a single registry shared by every operator instance
+  // (read live from the hub, same as schedule config), so claimDailyPrBoost's cap check
+  // resolves the same registry no matter which instance a wallet claims through.
+  const loadRewardEligibilityRegistry = useCallback(async () => {
+    const c = getHubReadContract();
+    if (!c) return;
+    setRewardEligibilityRegistryLoading(true);
+    try {
+      const addr = await c.rewardEligibilityRegistry();
+      setRewardEligibilityRegistryOnChain(addr);
+    } catch {
+      setRewardEligibilityRegistryOnChain('');
+    } finally {
+      setRewardEligibilityRegistryLoading(false);
+    }
+  }, [getHubReadContract]);
+
+  useEffect(() => { loadRewardEligibilityRegistry(); }, [loadRewardEligibilityRegistry]);
+
+  const setRewardEligibilityRegistryOnHub = () => {
+    if (!ethers.utils.isAddress(rewardEligibilityRegistryInput)) {
+      setTxStatus({ status: 'error', error: 'Enter a valid registry contract address.' });
+      return;
+    }
+    return exec(
+      'Set Reward Eligibility Registry (via Hub)',
+      () => getHubContract().setRewardEligibilityRegistry(rewardEligibilityRegistryInput),
+      loadRewardEligibilityRegistry
+    );
+  };
+
+  const clearRewardEligibilityRegistryOnHub = () => exec(
+    'Clear Reward Eligibility Registry (via Hub)',
+    () => getHubContract().setRewardEligibilityRegistry(ethers.constants.AddressZero),
+    loadRewardEligibilityRegistry
+  );
 
   // Withdraw
   const withdraw = () => {
@@ -2187,191 +1815,6 @@ export default function AdminSection() {
         )}
       </Card>
 
-      {/* Carry-Forward Sync (Admin Override) */}
-      <Card>
-        <SectionHeader id="carryforward" label="Carry-Forward Sync (Admin Override)" icon={RefreshCw} />
-        {openSection === 'carryforward' && (
-          <div className="space-y-3 mt-2">
-            <p className="text-xs text-txt-secondary">
-              Admin-only backfill of one or more wallets&apos; pre-cutover finalized points into their carry-forward balance — every dateKey on or after the cutover already accrues into carry-forward automatically as it&apos;s earned, no button involved. Just set &quot;From&quot; (or use &quot;Load All Users&quot; below) and click Sync — &quot;To&quot; is auto-detected as the latest finalized pre-cutover dateKey, capped at 500 dateKeys per call, so you don&apos;t need to work out a safe range yourself. Resumable: re-running this later (e.g. once more pre-cutover days finalize, or to fix a range that was too narrow) tops a wallet up with only the newly-covered days — it never double-counts a day already synced. All wallets below go in a single on-chain transaction (one signature); each is checked first (free, no gas) so a wallet with nothing new in this exact range doesn&apos;t revert the whole batch. &quot;Range Sum&quot; / &quot;Projected After Sync&quot; are upper-bound estimates over the whole typed range — for a wallet synced before, the contract itself skips whatever it already covered, so the real result can come in lower than shown here.
-            </p>
-
-            {cacheLoading && (
-              <div className="flex items-center gap-2 text-xs text-txt-secondary py-2">
-                <RefreshCw className="w-3 h-3 animate-spin" /> Loading operators...
-              </div>
-            )}
-
-            {/* Operator selector — carry-forward state is per-instance, same resolution as Operator Reward Rules above */}
-            <div>
-              <label className="text-xs text-txt-secondary">Operator (resolves to that operator&apos;s instance)</label>
-              {cachedOperators.filter(o => o.active).length > 0 ? (
-                <select value={cfOperator} onChange={e => setCfOperator(e.target.value)} className={inputCls}>
-                  <option value="">— Select Operator —</option>
-                  {cachedOperators.filter(o => o.active).map(op => (
-                    <option key={op.address} value={op.address}>
-                      {op.name} ({op.address.slice(0, 6)}…{op.address.slice(-4)})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input value={cfOperator} onChange={e => setCfOperator(e.target.value)} placeholder="0x... (operator address)" className={inputCls} />
-              )}
-              {cfCutoverDateKey !== null && (
-                <p className="text-[11px] text-txt-secondary mt-1">Cutover dateKey: <span className="text-accent font-mono">{cfCutoverDateKey}</span> — &quot;To&quot; below prefilled to just under it; &quot;Load All Users&quot; fills in &quot;From&quot; from users&apos; actual earliest points.</p>
-              )}
-            </div>
-
-            <div className="flex gap-2 items-end">
-              <div>
-                <label className="text-xs text-txt-secondary">Days back to scan</label>
-                <input
-                  type="number"
-                  value={cfScanDays}
-                  onChange={e => setCfScanDays(e.target.value)}
-                  className={`${inputCls} w-20`}
-                  min="1"
-                />
-              </div>
-              <button
-                onClick={() => discoverUsersWithPoints(cfOperator)}
-                disabled={!cfOperator || cfDiscovering}
-                className={`shrink-0 px-4 ${btnCls}`}
-              >
-                {cfDiscovering ? <span className="inline-flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Scanning...</span> : 'Load All Users'}
-              </button>
-              {cfScanInfo && (
-                <p className="text-[11px] text-txt-secondary">
-                  {cfScanInfo.complete
-                    ? `Scanned the full ${cfScanDays}-day window — ${Object.keys(cfDiscoveredUsers).length} wallet(s) found.`
-                    : <>Rate-limited partway — reached block {cfScanInfo.oldestScannedBlock} ({Object.keys(cfDiscoveredUsers).length} wallet(s) so far) — <button onClick={() => discoverUsersWithPoints(cfOperator, true)} disabled={cfDiscovering} className="text-accent hover:underline">Scan Further Back</button></>
-                  }
-                </p>
-              )}
-            </div>
-            <p className="text-[10px] text-txt-secondary/70 -mt-2">
-              dateKey isn&apos;t real time here (sessionDuration is set to minutes for testing, not 24h), so this converts &quot;days back&quot; to a block range using a live-sampled average block time instead.
-            </p>
-
-            <div>
-              <label className="text-xs text-txt-secondary">Wallet(s) to sync on behalf of — one address per line (or comma-separated; "Load All Users" above fills this in)</label>
-              <textarea
-                value={cfUsersText}
-                onChange={e => setCfUsersText(e.target.value)}
-                placeholder={'0x...\n0x...'}
-                rows={4}
-                className={`${inputCls} resize-y`}
-              />
-              {cfUsersText.trim() && <p className="text-[11px] text-txt-secondary mt-1">{cfUserList.length} valid address{cfUserList.length !== 1 ? 'es' : ''} parsed.</p>}
-            </div>
-
-            {cfInfoLoading && (
-              <div className="flex items-center gap-2 text-xs text-txt-secondary py-1">
-                <RefreshCw className="w-3 h-3 animate-spin" /> Loading carry-forward state...
-              </div>
-            )}
-
-            {!cfInfoLoading && cfUserList.length > 0 && (
-              <div className="overflow-x-auto max-h-64">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-surface">
-                    <tr className="text-txt-secondary border-b border-white/10">
-                      <th className="text-left py-1.5 px-2">Wallet</th>
-                      <th className="text-right py-1.5 px-2">First DateKey w/ Points</th>
-                      <th className="text-right py-1.5 px-2">Points on First DateKey</th>
-                      <th className="text-right py-1.5 px-2">Range Sum (est.)</th>
-                      <th className="text-right py-1.5 px-2">Carry-Forward Balance</th>
-                      <th className="text-right py-1.5 px-2">Projected After Sync (est.)</th>
-                      <th className="text-right py-1.5 px-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cfUserList.map(u => {
-                      const key = u.toLowerCase();
-                      const status = cfUserStatuses[key];
-                      const firstDateKey = cfDiscoveredUsers[key];
-                      const check = cfCheckResults[key];
-                      const checkIsCurrent = !!cfCheckedRange && cfCheckedRange.from === cfFromDateKey && cfCheckedRange.to === cfToDateKey;
-                      const showCheck = check && checkIsCurrent;
-                      return (
-                        <tr key={u} className="border-b border-white/5">
-                          <td className="py-1.5 px-2 font-mono">{u.slice(0, 6)}…{u.slice(-4)}</td>
-                          <td className="text-right py-1.5 px-2 font-mono">{firstDateKey !== undefined ? firstDateKey : '—'}</td>
-                          <td className="text-right py-1.5 px-2 font-mono">{status?.firstDateKeyPoints ?? (firstDateKey !== undefined ? '…' : '—')}</td>
-                          <td className="text-right py-1.5 px-2 font-mono">{cfCheckLoading ? '…' : showCheck ? check.sumOfRangePoints : '—'}</td>
-                          <td className="text-right py-1.5 px-2 font-mono text-accent">{status ? status.carryForwardPoints : '…'}</td>
-                          <td className="text-right py-1.5 px-2 font-mono">
-                            {cfCheckLoading ? '…' : showCheck ? check.projectedBalanceAfterSync : '—'}
-                          </td>
-                          <td className="text-right py-1.5 px-2 text-txt-secondary">
-                            {!status ? '…' : status.alreadySynced ? 'synced before' : 'not yet synced'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-txt-secondary">From dateKey</label>
-                <input type="number" value={cfFromDateKey} onChange={e => setCfFromDateKey(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className="text-xs text-txt-secondary">To dateKey (optional — auto-detected if left as-is)</label>
-                <div className="flex gap-2">
-                  <input type="number" value={cfToDateKey} onChange={e => setCfToDateKey(e.target.value)} className={inputCls} placeholder="auto" />
-                  <button
-                    type="button"
-                    onClick={() => setCfToDateKey('')}
-                    disabled={!cfToDateKey}
-                    title="Clear override — always auto-detect the latest finalized pre-cutover dateKey"
-                    className="shrink-0 px-3 bg-surface-tertiary hover:bg-surface-tertiary/70 disabled:opacity-50 text-txt-secondary text-xs rounded-lg transition-colors"
-                  >
-                    Auto
-                  </button>
-                </div>
-              </div>
-            </div>
-            <p className="text-[11px] text-txt-secondary -mt-1">
-              Both buttons below auto-detect the latest finalized pre-cutover dateKey starting from &quot;From&quot; — a typed &quot;To&quot; only narrows how far they&apos;ll search, it&apos;s never trusted as-is, so it can&apos;t cause a revert.
-            </p>
-
-            <button
-              onClick={checkSyncPreview}
-              disabled={!cfOperator || cfUserList.length === 0 || !cfFromDateKey || cfCheckLoading}
-              className="w-full px-4 bg-surface-tertiary hover:bg-surface-tertiary/70 disabled:opacity-50 text-txt-secondary text-sm rounded-lg transition-colors py-2"
-            >
-              {cfCheckLoading ? <span className="inline-flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Checking range...</span> : 'Check Range (Before/After Preview)'}
-            </button>
-
-            {cfCheckAllFinalized === false && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-xs text-yellow-400">
-                ⚠️ {cfBlockedAtDateKey !== null
-                  ? <>dateKey {cfBlockedAtDateKey}&apos;s game window hasn&apos;t ended yet, so nothing is safe to sync starting from {cfFromDateKey} — matches could still be settled for it. Wait for its window to end (or lower &quot;From&quot;), then check this range again.</>
-                  : <>dateKey {cfFromDateKey} (&quot;From&quot;)&apos;s game window hasn&apos;t ended yet — nothing safe to sync from here. Lower &quot;From&quot; or wait for its window to end.</>}
-              </div>
-            )}
-
-            {cfCheckAllFinalized === true && cfBlockedAtDateKey !== null && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-xs text-yellow-400">
-                ⚠️ Range stopped at dateKey {cfToDateKey} — dateKey {cfBlockedAtDateKey}&apos;s game window hasn&apos;t ended yet (matches could still be settled for it), so anything from {cfBlockedAtDateKey} onward is excluded from this sync. Nothing is skipped or lost — once its window ends, re-check to extend the range past it. Note: syncing through a dateKey whose operator-day isn&apos;t finalized yet will auto-finalize it as part of the same transaction, which also releases that day&apos;s collected entry fees to the operator&apos;s splitter.
-              </div>
-            )}
-
-            <button
-              onClick={doBatchSyncCarryForward}
-              disabled={!isConnected || !cfOperator || cfUserList.length === 0 || !cfFromDateKey}
-              className={`w-full ${btnCls}`}
-            >
-              {cfUserList.length > 1 ? `Sync Carry-Forward (${cfUserList.length} wallets)` : 'Sync Carry-Forward'}
-            </button>
-          </div>
-        )}
-      </Card>
-
       {/* Schedule, Withdraw, Pause */}
       <Card>
         <SectionHeader id="misc" label="Schedule / Withdraw / Pause" icon={Lock} />
@@ -2451,6 +1894,17 @@ export default function AdminSection() {
                 <span className="text-xs text-txt-secondary self-center">hours</span>
               </div>
               <button onClick={setGracePeriod} disabled={!isConnected} className={`w-full ${btnCls}`}>Update Grace Period</button>
+            </div>
+            {/* Reward Eligibility Registry */}
+            <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
+              <h5 className="text-xs font-semibold text-accent">Reward Eligibility Registry</h5>
+              <p className="text-[11px] text-txt-secondary">Wires the hub to a RewardEligibilityRegistry contract. Once set, claimDailyPrBoost on every operator instance checks it for eligibility and caps the daily boost — same registry no matter which instance a wallet claims through.</p>
+              <p className="text-[11px] text-txt-secondary">Current: <span className="text-accent font-semibold font-mono">{rewardEligibilityRegistryLoading ? 'Loading…' : (rewardEligibilityRegistryOnChain && rewardEligibilityRegistryOnChain !== ethers.constants.AddressZero ? rewardEligibilityRegistryOnChain : 'Not set (unlimited)')}</span></p>
+              <input value={rewardEligibilityRegistryInput} onChange={e => setRewardEligibilityRegistryInput(e.target.value)} placeholder="0x..." className={inputCls} />
+              <div className="flex gap-2">
+                <button onClick={setRewardEligibilityRegistryOnHub} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Set Registry</button>
+                <button onClick={clearRewardEligibilityRegistryOnHub} disabled={!isConnected || !rewardEligibilityRegistryOnChain || rewardEligibilityRegistryOnChain === ethers.constants.AddressZero} className={`flex-1 ${btnOutlineCls}`}>Clear (Unlimited)</button>
+              </div>
             </div>
             {/* Withdraw */}
             <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
