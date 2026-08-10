@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
@@ -13,6 +13,7 @@ import {
   Rocket, ExternalLink, Copy, Check, RefreshCw, Ticket, Plus, Trash2, Search,
   ArrowUpCircle, ShieldCheck, KeyRound, Landmark, ListChecks, UserCheck,
   Lock, Unlock, Gift, Network, Ban, CheckCircle2, Wallet, Tag, CalendarClock,
+  Download, Upload,
 } from 'lucide-react';
 
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
@@ -39,6 +40,46 @@ const isZero = (a: string) => !a || a === ethers.constants.AddressZero;
 const fmtTs = (ts: number) => ts === 0 ? 'Never' : new Date(ts * 1000).toLocaleString();
 const toUnix = (dtLocal: string) => dtLocal ? Math.floor(new Date(dtLocal).getTime() / 1000) : 0;
 const blankMintRow = (): MintBatchRow => ({ to: '', faceValue: '' });
+
+// Two placeholder rows so a re-upload without edits still parses cleanly — real
+// addresses/values are meant to replace these before actually minting.
+const MINT_BATCH_CSV_TEMPLATE =
+  'to,faceValue\n' +
+  '0x1234567890123456789012345678901234567890,50\n' +
+  '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd,-25\n';
+
+function downloadMintBatchTemplate() {
+  const blob = new Blob([MINT_BATCH_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'mint-batch-template.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// First column must be an address; if row 1 isn't one, it's a header row — skip it.
+function parseMintBatchCsv(text: string): { rows: MintBatchRow[]; error?: string } {
+  const lines = text.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { rows: [], error: 'File is empty.' };
+  const startIdx = ethers.utils.isAddress((lines[0].split(',')[0] || '').trim()) ? 0 : 1;
+  const rows: MintBatchRow[] = [];
+  const errors: string[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    const to = (cols[0] || '').trim();
+    const faceValue = (cols[1] || '').trim();
+    if (!ethers.utils.isAddress(to)) { errors.push(`row ${i + 1}: invalid address "${to}"`); continue; }
+    if (!faceValue || isNaN(Number(faceValue))) { errors.push(`row ${i + 1}: invalid face value "${faceValue}"`); continue; }
+    rows.push({ to, faceValue });
+  }
+  if (errors.length > 0) {
+    const shown = errors.slice(0, 5).join('; ');
+    return { rows: [], error: `${shown}${errors.length > 5 ? ` (+${errors.length - 5} more)` : ''}` };
+  }
+  if (rows.length === 0) return { rows: [], error: 'No data rows found.' };
+  return { rows };
+}
 
 export default function ATMVoucherSection() {
   const { provider, signer, isConnected, address, chainId, hubAddress, atmVoucherAddress, setAtmVoucherAddress } = useWeb3();
@@ -312,6 +353,22 @@ export default function ATMVoucherSection() {
   const updateBatchRow = (i: number, field: keyof MintBatchRow, v: string) => setBatchRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: v } : r));
   const addBatchRow = () => setBatchRows(prev => [...prev, blankMintRow()]);
   const removeBatchRow = (i: number) => setBatchRows(prev => prev.filter((_, idx) => idx !== i));
+
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-uploading the same file name
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, error } = parseMintBatchCsv(String(reader.result || ''));
+      if (error) { setTxStatus({ status: 'error', error: `CSV: ${error}` }); return; }
+      setBatchRows(rows);
+      setTxStatus({ status: 'success', message: `Loaded ${rows.length} recipient(s) from CSV — review below before minting.` });
+    };
+    reader.onerror = () => setTxStatus({ status: 'error', error: 'Failed to read CSV file.' });
+    reader.readAsText(file);
+  };
 
   const handleMintBatch = async () => {
     const atm = getWrite();
@@ -896,6 +953,15 @@ export default function ATMVoucherSection() {
           {/* ── Mint Batch ── */}
           <Card title="Mint Batch" icon={<Landmark className="w-5 h-5 text-accent" />}>
             <p className="text-xs text-txt-secondary mb-3">One voucher per recipient/face-value pair, sharing the type &amp; terms below.</p>
+            <div className="flex items-center gap-4 mb-3">
+              <button type="button" onClick={downloadMintBatchTemplate} className="flex items-center gap-1 text-xs text-accent hover:underline">
+                <Download className="w-3.5 h-3.5" /> Download template CSV
+              </button>
+              <button type="button" onClick={() => csvInputRef.current?.click()} className="flex items-center gap-1 text-xs text-accent hover:underline">
+                <Upload className="w-3.5 h-3.5" /> Upload CSV
+              </button>
+              <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvUpload} className="hidden" />
+            </div>
             <div className="space-y-2 mb-3">
               <div className="grid grid-cols-[1fr_140px_40px] gap-2 text-xs text-txt-secondary font-semibold px-1">
                 <span>Recipient</span><span>Face Value</span><span></span>
