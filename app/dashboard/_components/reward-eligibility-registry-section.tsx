@@ -402,7 +402,7 @@ export default function RewardEligibilityRegistrySection() {
       for (const ev of events) {
         const args: any = (ev as any).args;
         const id = args.typeId?.toNumber?.() ?? Number(args.typeId);
-        seen.set(id, args.maxClaimablePoints.toString());
+        seen.set(id, ethers.utils.formatEther(args.maxClaimablePoints));
       }
       const rows: TypeRow[] = Array.from(seen.entries()).map(([id, maxClaimablePoints]) => ({ id, maxClaimablePoints, exists: true }));
       rows.sort((a, b) => a.id - b.id);
@@ -425,8 +425,8 @@ export default function RewardEligibilityRegistrySection() {
       return;
     }
     let maxPointsBN: ethers.BigNumber;
-    try { maxPointsBN = ethers.BigNumber.from(maxPoints || '0'); } catch {
-      setTxStatus({ status: 'error', error: 'Max claimable points must be a whole number' });
+    try { maxPointsBN = ethers.utils.parseEther(maxPoints || '0'); } catch {
+      setTxStatus({ status: 'error', error: 'Max claimable points must be a valid number (up to 18 decimal places)' });
       return;
     }
     setTxStatus({ status: 'pending', message: 'Proposing type config...' });
@@ -451,7 +451,7 @@ export default function RewardEligibilityRegistrySection() {
       const [maxPoints, exists] = await reg.typeConfig(id);
       setKnownTypes(prev => {
         const filtered = prev.filter(r => r.id !== id);
-        return [...filtered, { id, maxClaimablePoints: maxPoints.toString(), exists }].sort((a, b) => a.id - b.id);
+        return [...filtered, { id, maxClaimablePoints: ethers.utils.formatEther(maxPoints), exists }].sort((a, b) => a.id - b.id);
       });
       setLookupTypeId('');
     } catch (e: any) {
@@ -507,7 +507,7 @@ export default function RewardEligibilityRegistrySection() {
     const reg = getWrite();
     if (!reg) return false;
     try {
-      const tx = await reg.proposeTypeConfig(typeId, ethers.BigNumber.from(maxPoints || '0'));
+      const tx = await reg.proposeTypeConfig(typeId, ethers.utils.parseEther(maxPoints || '0'));
       setTxStatus({ status: 'pending', hash: tx.hash, message: `Waiting for confirmation (type #${typeId})...` });
       await tx.wait();
       return true;
@@ -547,9 +547,9 @@ export default function RewardEligibilityRegistrySection() {
     const typeIds = missing.map(p => parseInt(p.typeId));
     let maxPointsList: ethers.BigNumber[];
     try {
-      maxPointsList = missing.map(p => ethers.BigNumber.from(p.maxPoints || '0'));
+      maxPointsList = missing.map(p => ethers.utils.parseEther(p.maxPoints || '0'));
     } catch {
-      setTxStatus({ status: 'error', error: 'Max claimable points must be whole numbers' });
+      setTxStatus({ status: 'error', error: 'Max claimable points must be valid numbers (up to 18 decimal places)' });
       return;
     }
     setPresetBusyIndex(-1);
@@ -559,6 +559,39 @@ export default function RewardEligibilityRegistrySection() {
       setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
       await tx.wait();
       setTxStatus({ status: 'success', hash: tx.hash, message: `1 proposal created covering ${missing.length} type(s), auto-approved by you. Needs ${Math.max(0, thresholdVal - 1) || 'more'} additional operator approval(s) to take effect (see Proposals below).` });
+      await Promise.all([fetchPresetStatus(), fetchTypes(), fetchProposals()]);
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+    setPresetBusyIndex(null);
+  };
+
+  // Same as handleProposeAllPresets, but covers EVERY row regardless of presetStatus —
+  // for correcting already-configured types (e.g. a cap that was set with the wrong
+  // decimal scaling), not just filling in ones that don't exist yet. Still one proposal.
+  const handleRepairAllPresets = async () => {
+    const reg = getWrite();
+    if (!reg) return;
+    const rows = typePresets.filter(p => !isNaN(parseInt(p.typeId)) && p.maxPoints.trim() !== '');
+    if (rows.length === 0) {
+      setTxStatus({ status: 'error', error: 'No valid type rows to propose — fill in Type ID and Max Claimable Points above.' });
+      return;
+    }
+    const typeIds = rows.map(p => parseInt(p.typeId));
+    let maxPointsList: ethers.BigNumber[];
+    try {
+      maxPointsList = rows.map(p => ethers.utils.parseEther(p.maxPoints || '0'));
+    } catch {
+      setTxStatus({ status: 'error', error: 'Max claimable points must be valid numbers (up to 18 decimal places)' });
+      return;
+    }
+    setPresetBusyIndex(-2);
+    setTxStatus({ status: 'pending', message: `Proposing ${rows.length} type(s) (including already-configured ones) in a single proposal...` });
+    try {
+      const tx = await reg.proposeTypeConfigBatch(typeIds, maxPointsList);
+      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
+      await tx.wait();
+      setTxStatus({ status: 'success', hash: tx.hash, message: `1 proposal created covering ${rows.length} type(s) (overwrites existing configs on execution), auto-approved by you. Needs ${Math.max(0, thresholdVal - 1) || 'more'} additional operator approval(s) to take effect (see Proposals below).` });
       await Promise.all([fetchPresetStatus(), fetchTypes(), fetchProposals()]);
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
@@ -623,7 +656,7 @@ export default function RewardEligibilityRegistrySection() {
         reg.walletType(lookupWalletAddr.trim()),
         reg.maxClaimablePoints(lookupWalletAddr.trim()),
       ]);
-      setWalletLookupResult({ registered: true, typeId: typeId?.toNumber?.() ?? Number(typeId), maxPoints: maxPoints.toString() });
+      setWalletLookupResult({ registered: true, typeId: typeId?.toNumber?.() ?? Number(typeId), maxPoints: ethers.utils.formatEther(maxPoints) });
     } catch (e: any) {
       setWalletLookupError(decodeError(e));
     }
@@ -845,7 +878,7 @@ export default function RewardEligibilityRegistrySection() {
         } else {
           const [typeIds, maxPointsList] = await reg.getProposalTypeConfig(id);
           base.typeIds = typeIds.map((t: any) => t?.toNumber?.() ?? Number(t));
-          base.maxPointsList = maxPointsList.map((m: any) => m.toString());
+          base.maxPointsList = maxPointsList.map((m: any) => ethers.utils.formatEther(m));
         }
         if (address) {
           base.approvedByMe = await reg.hasApproved(id, address);
@@ -1149,7 +1182,7 @@ export default function RewardEligibilityRegistrySection() {
           {/* ── Reward Types / Type Config ── */}
           <Card title="Reward Types (Type Config)" icon={<IdCard className="w-5 h-5 text-green-400" />}>
             <p className="text-txt-secondary text-sm mb-3">
-              Create or update a type&apos;s <strong>max claimable points</strong>. This goes through the proposal flow — it only takes effect once approved by at least {thresholdVal || 'the configured'} operator(s) (see Proposals below).
+              Create or update a type&apos;s <strong>max claimable points</strong> — entered below in whole points (e.g. <code className="text-accent">500</code> for 500&nbsp;pts), same units as carry-forward/points balances elsewhere in this app; it's scaled to the on-chain 18-decimal value automatically. This goes through the proposal flow — it only takes effect once approved by at least {thresholdVal || 'the configured'} operator(s) (see Proposals below).
             </p>
             {!isConnectedOperator && <p className="text-xs text-yellow-400 mb-4">&#9888; Connected wallet is not a registered operator — proposing will revert until it's added on the Operators card above.</p>}
             <div className="bg-surface-tertiary rounded-lg p-4 mb-4">
@@ -1157,6 +1190,14 @@ export default function RewardEligibilityRegistrySection() {
                 <h4 className="font-medium">Default Type Presets</h4>
                 <div className="flex items-center gap-3">
                   <button onClick={resetPresetsToDefault} className="text-xs text-txt-secondary hover:text-accent underline">Reset to Defaults</button>
+                  <button
+                    onClick={handleRepairAllPresets}
+                    disabled={!isConnectedOperator || presetBusyIndex !== null}
+                    className="px-4 py-2 text-sm bg-orange-600 hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
+                    title="Covers every row below, including types that already exist — use this to fix a wrong value, e.g. a cap set without 18-decimal scaling."
+                  >
+                    {presetBusyIndex === -2 ? 'Repairing all...' : 'Repair/Overwrite All (1 proposal)'}
+                  </button>
                   <button
                     onClick={handleProposeAllPresets}
                     disabled={!isConnectedOperator || presetBusyIndex !== null}
@@ -1167,7 +1208,7 @@ export default function RewardEligibilityRegistrySection() {
                 </div>
               </div>
               <p className="text-xs text-txt-secondary mb-3">
-                Edit, add, or remove rows to customize your one-click shortcuts — saved in this browser only. &quot;Propose All Missing&quot; batches every missing type into a <strong>single</strong> proposal (one approval covers all of them) — the per-row Propose button still creates its own individual proposal. Proposing auto-approves it as your own vote; it still needs {Math.max(0, thresholdVal - 1) || 'more'} additional operator approval(s) to take effect.
+                Edit, add, or remove rows to customize your one-click shortcuts — saved in this browser only. &quot;Propose All Missing&quot; batches every <strong>not-yet-configured</strong> type into a single proposal; &quot;Repair/Overwrite All&quot; batches <strong>every</strong> row below (including already-configured types) into a single proposal, overwriting their current cap on execution — use it to correct a bad value. Either way the per-row Propose button still creates its own individual proposal for just that row. Proposing auto-approves it as your own vote; it still needs {Math.max(0, thresholdVal - 1) || 'more'} additional operator approval(s) to take effect.
               </p>
               <div className="grid grid-cols-[80px_1fr_100px_36px] gap-2 text-[11px] text-txt-secondary font-semibold px-1 mb-1">
                 <span>Type ID</span><span>Max Claimable Points</span><span></span><span></span>
@@ -1230,7 +1271,7 @@ export default function RewardEligibilityRegistrySection() {
                   <thead>
                     <tr className="text-txt-secondary text-xs border-b border-white/10">
                       <th className="py-2 px-2 text-left">Type ID</th>
-                      <th className="py-2 px-2 text-left">Max Claimable Points</th>
+                      <th className="py-2 px-2 text-left">Max Claimable Points (pts)</th>
                       <th className="py-2 px-2 text-center">Configured</th>
                     </tr>
                   </thead>
@@ -1289,7 +1330,7 @@ export default function RewardEligibilityRegistrySection() {
                     <div className="flex items-center gap-4 flex-wrap">
                       <span className="text-green-400 font-medium">Registered</span>
                       <span>Type: <span className="text-accent font-mono">#{walletLookupResult.typeId}</span></span>
-                      <span>Max Claimable: <span className="text-accent font-mono">{walletLookupResult.maxPoints}</span></span>
+                      <span>Max Claimable: <span className="text-accent font-mono">{walletLookupResult.maxPoints} pts</span></span>
                     </div>
                   ) : (
                     <span className="text-txt-secondary">Not registered</span>
@@ -1513,7 +1554,7 @@ export default function RewardEligibilityRegistrySection() {
                             <thead>
                               <tr className="text-txt-secondary border-b border-white/10">
                                 <th className="py-1 px-2 text-left">Type ID</th>
-                                <th className="py-1 px-2 text-left">Max Claimable Points</th>
+                                <th className="py-1 px-2 text-left">Max Claimable Points (pts)</th>
                               </tr>
                             </thead>
                             <tbody>
