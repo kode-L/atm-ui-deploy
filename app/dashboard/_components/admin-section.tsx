@@ -135,6 +135,11 @@ export default function AdminSection() {
   const [opCurrentDuration, setOpCurrentDuration] = useState<number | null>(null);
   const [opDurationLoading, setOpDurationLoading] = useState(false);
 
+  // ── Access Control (hub-wide ATMAccessControl.redirectTarget) ──
+  const [accessControlOnChain, setAccessControlOnChain] = useState<string>('');
+  const [accessControlInput, setAccessControlInput] = useState('');
+  const [accessControlLoading, setAccessControlLoading] = useState(false);
+
   // \u2500\u2500 Withdraw \u2500\u2500
   const [withdrawTo, setWithdrawTo] = useState('');
   const [withdrawAmt, setWithdrawAmt] = useState('');
@@ -688,6 +693,40 @@ export default function AdminSection() {
       () => loadOperatorSessionDuration(opDurationOperator)
     );
   };
+
+  const loadAccessControl = useCallback(async () => {
+    const c = getHubReadContract();
+    if (!c) return;
+    setAccessControlLoading(true);
+    try {
+      const addr = await c.file();
+      setAccessControlOnChain(addr);
+    } catch {
+      setAccessControlOnChain('');
+    } finally {
+      setAccessControlLoading(false);
+    }
+  }, [getHubReadContract]);
+
+  useEffect(() => { loadAccessControl(); }, [loadAccessControl]);
+
+  const setAccessControlOnHub = () => {
+    if (!ethers.utils.isAddress(accessControlInput.trim())) {
+      setTxStatus({ status: 'error', error: 'Enter a valid contract address.' });
+      return;
+    }
+    return exec(
+      'Set Access Control (via Hub)',
+      () => getHubContract().setFile(accessControlInput.trim()),
+      loadAccessControl
+    );
+  };
+
+  const clearAccessControlOnHub = () => exec(
+    'Clear Access Control (via Hub)',
+    () => getHubContract().setFile(ethers.constants.AddressZero),
+    loadAccessControl
+  );
 
   const setGracePeriod = () => {
     const hrs = parseFloat(graceHours);
@@ -1904,6 +1943,18 @@ export default function AdminSection() {
               <div className="flex gap-2">
                 <button onClick={setRewardEligibilityRegistryOnHub} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Set Registry</button>
                 <button onClick={clearRewardEligibilityRegistryOnHub} disabled={!isConnected || !rewardEligibilityRegistryOnChain || rewardEligibilityRegistryOnChain === ethers.constants.AddressZero} className={`flex-1 ${btnOutlineCls}`}>Clear (Unlimited)</button>
+              </div>
+            </div>
+            {/* Access Control */}
+            <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
+              <h5 className="text-xs font-semibold text-accent">Access Control</h5>
+              <p className="text-[11px] text-txt-secondary">Wires the hub directly to an ATMAccessControl contract. Once set, redeeming a negative-value Reward voucher on any operator instance resolves its payout redirect target through it — same contract no matter which instance a wallet redeems through.</p>
+              <p className="text-[10px] text-yellow-400/70">⚠ Until this is set, redeeming a negative-value Reward voucher reverts (AccessControlNotSet).</p>
+              <p className="text-[11px] text-txt-secondary break-all">Current: <span className="text-accent font-semibold font-mono">{accessControlLoading ? 'Loading…' : (accessControlOnChain && accessControlOnChain !== ethers.constants.AddressZero ? accessControlOnChain : 'Not set')}</span></p>
+              <input value={accessControlInput} onChange={e => setAccessControlInput(e.target.value)} placeholder="0x..." className={inputCls} />
+              <div className="flex gap-2">
+                <button onClick={setAccessControlOnHub} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Set Access Control</button>
+                <button onClick={clearAccessControlOnHub} disabled={!isConnected || !accessControlOnChain || accessControlOnChain === ethers.constants.AddressZero} className={`flex-1 ${btnOutlineCls}`}>Clear</button>
               </div>
             </div>
             {/* Withdraw */}
