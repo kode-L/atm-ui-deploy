@@ -65,6 +65,8 @@ export default function AdminSection() {
   const [operatorName, setOperatorName] = useState('');
   const [operatorMeta, setOperatorMeta] = useState('');
   const [operatorSplitter, setOperatorSplitter] = useState(''); // PaymentSplitter address
+  const [operatorAutoRelease, setOperatorAutoRelease] = useState(false);
+  const [operatorAutoReleaseLoaded, setOperatorAutoReleaseLoaded] = useState(false);
 
   // Platform Updater management
   const [updaterAddr, setUpdaterAddr] = useState('');
@@ -135,19 +137,9 @@ export default function AdminSection() {
   const [opCurrentDuration, setOpCurrentDuration] = useState<number | null>(null);
   const [opDurationLoading, setOpDurationLoading] = useState(false);
 
-  // ── Access Control (hub-wide ATMAccessControl.redirectTarget) ──
-  const [accessControlOnChain, setAccessControlOnChain] = useState<string>('');
-  const [accessControlInput, setAccessControlInput] = useState('');
-  const [accessControlLoading, setAccessControlLoading] = useState(false);
-
   // \u2500\u2500 Withdraw \u2500\u2500
   const [withdrawTo, setWithdrawTo] = useState('');
   const [withdrawAmt, setWithdrawAmt] = useState('');
-
-  // \u2500\u2500 Reward Eligibility Registry (hub-wide) \u2500\u2500
-  const [rewardEligibilityRegistryOnChain, setRewardEligibilityRegistryOnChain] = useState<string>('');
-  const [rewardEligibilityRegistryInput, setRewardEligibilityRegistryInput] = useState('');
-  const [rewardEligibilityRegistryLoading, setRewardEligibilityRegistryLoading] = useState(false);
 
   const getContract = () => {
     if (!signer || !sessionManagerAddress) return null;
@@ -265,6 +257,15 @@ export default function AdminSection() {
   const registerOperator = () => exec('Register Operator (via Hub)', () => getHubContract().registerOperator(operatorAddr, operatorName, operatorMeta, operatorSplitter), refreshAfterChange);
   const updateOperator = () => exec('Update Session Operator', () => getContract()!.updateSessionOperator(operatorAddr, operatorName, operatorMeta, operatorSplitter), refreshAfterChange);
   const removeOperator = () => exec('Remove Operator (via Hub)', () => getHubContract().removeOperator(operatorAddr), refreshAfterChange);
+  // Auto-release policy lives on the Hub (not per-instance) — one place to manage every
+  // operator's setting regardless of which instance is currently loaded — and is checked
+  // live at finalize time (not stamped onto a session at creation), so flipping it here
+  // takes effect on the operator's next not-yet-finalized day immediately.
+  const setAutoRelease = () => exec(
+    `Set Auto-Release ${operatorAutoRelease ? 'ON' : 'OFF'} (via Hub)`,
+    () => getHubContract().setOperatorAutoReleaseDefault(operatorAddr, operatorAutoRelease),
+    refreshAfterChange
+  );
 
   // Platform Updater actions (operator-scoped)
   const registerUpdater = () => exec('Register Platform Updater', () => getContract()!.registerPlatformUpdater(updaterAddr, updaterLinkedOp));
@@ -584,6 +585,13 @@ export default function AdminSection() {
       setOperatorMeta(op.metadataURI);
       setOperatorSplitter(op.splitterAddress);
     }
+    setOperatorAutoReleaseLoaded(false);
+    const hubRead = getHubReadContract();
+    if (hubRead) {
+      hubRead.operatorAutoReleaseDefault(addr)
+        .then((v: boolean) => { setOperatorAutoRelease(v); setOperatorAutoReleaseLoaded(true); })
+        .catch(() => setOperatorAutoReleaseLoaded(false));
+    }
   };
 
   // Helper: select a reward type to pre-fill update form
@@ -694,40 +702,6 @@ export default function AdminSection() {
     );
   };
 
-  const loadAccessControl = useCallback(async () => {
-    const c = getHubReadContract();
-    if (!c) return;
-    setAccessControlLoading(true);
-    try {
-      const addr = await c.file();
-      setAccessControlOnChain(addr);
-    } catch {
-      setAccessControlOnChain('');
-    } finally {
-      setAccessControlLoading(false);
-    }
-  }, [getHubReadContract]);
-
-  useEffect(() => { loadAccessControl(); }, [loadAccessControl]);
-
-  const setAccessControlOnHub = () => {
-    if (!ethers.utils.isAddress(accessControlInput.trim())) {
-      setTxStatus({ status: 'error', error: 'Enter a valid contract address.' });
-      return;
-    }
-    return exec(
-      'Set Access Control (via Hub)',
-      () => getHubContract().setFile(accessControlInput.trim()),
-      loadAccessControl
-    );
-  };
-
-  const clearAccessControlOnHub = () => exec(
-    'Clear Access Control (via Hub)',
-    () => getHubContract().setFile(ethers.constants.AddressZero),
-    loadAccessControl
-  );
-
   const setGracePeriod = () => {
     const hrs = parseFloat(graceHours);
     if (isNaN(hrs) || hrs < 0 || hrs > 48) {
@@ -737,43 +711,6 @@ export default function AdminSection() {
     const seconds = Math.round(hrs * 3600);
     return exec('Set Grace Period (via Hub)', () => getHubContract().setFinalizationGracePeriod(seconds), loadScheduleConfig);
   };
-
-  // Reward Eligibility Registry — a single registry shared by every operator instance
-  // (read live from the hub, same as schedule config), so claimDailyPrBoost's cap check
-  // resolves the same registry no matter which instance a wallet claims through.
-  const loadRewardEligibilityRegistry = useCallback(async () => {
-    const c = getHubReadContract();
-    if (!c) return;
-    setRewardEligibilityRegistryLoading(true);
-    try {
-      const addr = await c.rewardEligibilityRegistry();
-      setRewardEligibilityRegistryOnChain(addr);
-    } catch {
-      setRewardEligibilityRegistryOnChain('');
-    } finally {
-      setRewardEligibilityRegistryLoading(false);
-    }
-  }, [getHubReadContract]);
-
-  useEffect(() => { loadRewardEligibilityRegistry(); }, [loadRewardEligibilityRegistry]);
-
-  const setRewardEligibilityRegistryOnHub = () => {
-    if (!ethers.utils.isAddress(rewardEligibilityRegistryInput)) {
-      setTxStatus({ status: 'error', error: 'Enter a valid registry contract address.' });
-      return;
-    }
-    return exec(
-      'Set Reward Eligibility Registry (via Hub)',
-      () => getHubContract().setRewardEligibilityRegistry(rewardEligibilityRegistryInput),
-      loadRewardEligibilityRegistry
-    );
-  };
-
-  const clearRewardEligibilityRegistryOnHub = () => exec(
-    'Clear Reward Eligibility Registry (via Hub)',
-    () => getHubContract().setRewardEligibilityRegistry(ethers.constants.AddressZero),
-    loadRewardEligibilityRegistry
-  );
 
   // Withdraw
   const withdraw = () => {
@@ -1019,13 +956,36 @@ export default function AdminSection() {
               <div className="sm:col-span-2">
                 <label className="text-xs text-txt-secondary">Payment Splitter Address <span className="text-accent">*</span></label>
                 <input value={operatorSplitter} onChange={e => setOperatorSplitter(e.target.value)} placeholder="0x... (PaymentSplitter contract)" className={inputCls} />
-                <p className="text-[10px] text-txt-secondary mt-0.5">Funds are auto-transferred here when the day is finalized.</p>
+                <p className="text-[10px] text-txt-secondary mt-0.5">Funds are transferred here when the day is finalized — whether they&apos;re released to payees automatically or sit until a manual release depends on the Auto-Release setting below.</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button onClick={registerOperator} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Register</button>
               <button onClick={updateOperator} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Update</button>
               <button onClick={removeOperator} disabled={!isConnected} className={`flex-1 ${btnOutlineCls}`}>Remove</button>
+            </div>
+
+            {/* Auto-release policy — separate from register/update since it's checked
+                live at finalize time, not part of the operator profile struct. */}
+            <div className="bg-surface-tertiary/50 rounded-lg p-3">
+              <label className="text-xs text-txt-secondary font-medium">Auto-Release on Finalize</label>
+              <p className="text-[10px] text-txt-secondary mt-0.5 mb-2">
+                When <span className="text-green-400">Automatic</span>, finalizing this operator&apos;s day also releases its splitter (calls <code className="text-accent">releaseERC20</code>) in the same transaction, so payees get paid immediately. When <span className="text-yellow-400">Manual</span>, funds sit in the splitter after finalize until someone releases them from the Splitter tab. Some operators can run automatic while others stay manual — this applies live to the next day this operator hasn&apos;t finalized yet, no re-registration needed.
+              </p>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={operatorAutoRelease ? '1' : '0'}
+                  onChange={e => setOperatorAutoRelease(e.target.value === '1')}
+                  className={inputCls + ' flex-1 !mt-0'}
+                >
+                  <option value="1">Automatic</option>
+                  <option value="0">Manual</option>
+                </select>
+                <button onClick={setAutoRelease} disabled={!isConnected || !operatorAddr} className={`shrink-0 px-4 ${btnCls}`}>Set</button>
+              </div>
+              {operatorAddr && !operatorAutoReleaseLoaded && (
+                <p className="text-[10px] text-txt-secondary/60 mt-1">Showing default (Manual) — pick &quot;Load Existing Operator&quot; above to load this operator&apos;s actual current setting first.</p>
+              )}
             </div>
           </div>
         )}
@@ -1933,29 +1893,6 @@ export default function AdminSection() {
                 <span className="text-xs text-txt-secondary self-center">hours</span>
               </div>
               <button onClick={setGracePeriod} disabled={!isConnected} className={`w-full ${btnCls}`}>Update Grace Period</button>
-            </div>
-            {/* Reward Eligibility Registry */}
-            <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
-              <h5 className="text-xs font-semibold text-accent">Reward Eligibility Registry</h5>
-              <p className="text-[11px] text-txt-secondary">Wires the hub to a RewardEligibilityRegistry contract. Once set, claimDailyPrBoost on every operator instance checks it for eligibility and caps the daily boost — same registry no matter which instance a wallet claims through.</p>
-              <p className="text-[11px] text-txt-secondary">Current: <span className="text-accent font-semibold font-mono">{rewardEligibilityRegistryLoading ? 'Loading…' : (rewardEligibilityRegistryOnChain && rewardEligibilityRegistryOnChain !== ethers.constants.AddressZero ? rewardEligibilityRegistryOnChain : 'Not set (unlimited)')}</span></p>
-              <input value={rewardEligibilityRegistryInput} onChange={e => setRewardEligibilityRegistryInput(e.target.value)} placeholder="0x..." className={inputCls} />
-              <div className="flex gap-2">
-                <button onClick={setRewardEligibilityRegistryOnHub} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Set Registry</button>
-                <button onClick={clearRewardEligibilityRegistryOnHub} disabled={!isConnected || !rewardEligibilityRegistryOnChain || rewardEligibilityRegistryOnChain === ethers.constants.AddressZero} className={`flex-1 ${btnOutlineCls}`}>Clear (Unlimited)</button>
-              </div>
-            </div>
-            {/* Access Control */}
-            <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
-              <h5 className="text-xs font-semibold text-accent">Access Control</h5>
-              <p className="text-[11px] text-txt-secondary">Wires the hub directly to an ATMAccessControl contract. Once set, redeeming a negative-value Reward voucher on any operator instance resolves its payout redirect target through it — same contract no matter which instance a wallet redeems through.</p>
-              <p className="text-[10px] text-yellow-400/70">⚠ Until this is set, redeeming a negative-value Reward voucher reverts (AccessControlNotSet).</p>
-              <p className="text-[11px] text-txt-secondary break-all">Current: <span className="text-accent font-semibold font-mono">{accessControlLoading ? 'Loading…' : (accessControlOnChain && accessControlOnChain !== ethers.constants.AddressZero ? accessControlOnChain : 'Not set')}</span></p>
-              <input value={accessControlInput} onChange={e => setAccessControlInput(e.target.value)} placeholder="0x..." className={inputCls} />
-              <div className="flex gap-2">
-                <button onClick={setAccessControlOnHub} disabled={!isConnected} className={`flex-1 ${btnCls}`}>Set Access Control</button>
-                <button onClick={clearAccessControlOnHub} disabled={!isConnected || !accessControlOnChain || accessControlOnChain === ethers.constants.AddressZero} className={`flex-1 ${btnOutlineCls}`}>Clear</button>
-              </div>
             </div>
             {/* Withdraw */}
             <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">

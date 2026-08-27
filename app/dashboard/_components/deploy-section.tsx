@@ -27,7 +27,7 @@ const utcTimeToSeconds = (time: string) => {
 };
 
 export default function DeploySection() {
-  const { provider, signer, isConnected, address, tokenAddress, hubAddress, sessionManagerAddress, setTokenAddress, resetTokenAddress, setHubAddress, setSessionManagerAddress, chainId } = useWeb3();
+  const { provider, signer, isConnected, address, tokenAddress, hubAddress, sessionManagerAddress, setTokenAddress, resetTokenAddress, setHubAddress, resetHubAddress, setSessionManagerAddress, chainId, netChainId } = useWeb3();
   const [txStatus, setTxStatus] = useState<{ status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string }>({ status: 'idle' });
   const [copied, setCopied] = useState('');
 
@@ -362,8 +362,10 @@ export default function DeploySection() {
 
   // Surfaced next to the hub address on the upgrade cards so it's never ambiguous which
   // network a transaction is about to target — see the testnet/mainnet address mix-up
-  // this was added for.
-  const currentChainName = NETWORKS[chainId]?.chainName || 'no network connected';
+  // this was added for. Uses netChainId (updates same-render as a network switch), not the
+  // mirrored `chainId`, which lags one tick and could show the old network's name next to
+  // the new network's already-updated hubAddress/tokenAddress.
+  const currentChainName = isConnected ? (NETWORKS[netChainId]?.chainName || 'unsupported network') : 'no network connected';
 
   const copyAddr = (addr: string, label: string) => {
     navigator.clipboard?.writeText?.(addr);
@@ -489,6 +491,12 @@ export default function DeploySection() {
             </button>
             {!beaconAddress && <p className="text-xs text-yellow-400 mt-2">&#9888; Deploy beacon first</p>}
             {hubAddress && <AddrBadge addr={hubAddress} label="hub" />}
+            <button
+              onClick={resetHubAddress}
+              className="mt-2 text-[11px] text-txt-secondary hover:text-accent underline"
+            >
+              Reset to chain.json default
+            </button>
           </div>
         </div>
         <TxStatus {...txStatus} chainId={chainId} />

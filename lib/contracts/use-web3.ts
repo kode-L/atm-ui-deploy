@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext } from 'react';
 import { ethers } from 'ethers';
+import { BNB_TESTNET } from './config';
 
 // Detected by checking the connected wallet against the hub's adminWallet and
 // operator registry. 'admin' and 'operator' are not mutually exclusive on-chain
@@ -16,6 +17,12 @@ export interface Web3State {
   signer: ethers.Signer | null;
   address: string;
   chainId: number;
+  // Same testnet/mainnet resolution used to pick tokenAddress/hubAddress/sessionManagerAddress
+  // (providers.tsx's netNs) — updates in the same render as a wallet network switch, unlike
+  // `chainId` above which mirrors AppKit one effect tick later. Use this (with NETWORKS from
+  // config.ts) for anything displayed alongside those addresses, so the label can't lag behind
+  // the address and show the wrong network's name next to the right network's contract.
+  netChainId: number;
   bnbBalance: string;
   isConnected: boolean;
   connecting: boolean;
@@ -40,6 +47,9 @@ export interface Web3State {
   // .env/chain.json default — otherwise a saved value wins over .env forever (see providers.tsx).
   resetTokenAddress: () => void;
   setHubAddress: (a: string) => void;
+  // Clears a bad manual override and re-pulls the chain.json default for the current network —
+  // see resetTokenAddress above for the same pattern.
+  resetHubAddress: () => void;
   setSessionManagerAddress: (a: string) => void;
   setRewardEligibilityRegistryAddress: (a: string) => void;
   setAtmVoucherAddress: (a: string) => void;
@@ -57,6 +67,7 @@ export const Web3Context = createContext<Web3State>({
   signer: null,
   address: '',
   chainId: 0,
+  netChainId: BNB_TESTNET.chainId,
   bnbBalance: '0',
   isConnected: false,
   connecting: false,
@@ -74,6 +85,7 @@ export const Web3Context = createContext<Web3State>({
   setTokenAddress: () => {},
   resetTokenAddress: () => {},
   setHubAddress: () => {},
+  resetHubAddress: () => {},
   setSessionManagerAddress: () => {},
   setRewardEligibilityRegistryAddress: () => {},
   setAtmVoucherAddress: () => {},

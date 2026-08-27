@@ -9,6 +9,7 @@ import { decodeError } from '@/lib/contracts/error-decoder';
 import { sendWithGasBuffer } from '@/lib/contracts/gas';
 import { Search, RefreshCw, Clock, Trophy, XCircle, ChevronDown, ChevronUp, AlertTriangle, GripVertical, Check, Hash, Medal, Lock } from 'lucide-react';
 import SessionManagerArtifact from '@/lib/contracts/DailySessionManager.json';
+import GameHubArtifact from '@/lib/contracts/GameHub.json';
 
 /* ── Derived session display status ── */
 type DerivedStatus = 'CREATED' | 'RUNNING' | 'GRACE' | 'EXPIRED' | 'FINALIZED' | 'CANCELLED';
@@ -78,7 +79,7 @@ interface DayTiming {
 }
 
 export default function SessionExplorer() {
-  const { signer, provider, isConnected, address, sessionManagerAddress, chainId } = useWeb3();
+  const { signer, provider, isConnected, address, sessionManagerAddress, hubAddress, chainId } = useWeb3();
   const [txStatus, setTxStatus] = useState<any>({ status: 'idle' });
 
   // Session selection
@@ -88,6 +89,8 @@ export default function SessionExplorer() {
   const [loading, setLoading] = useState(false);
   const [dayTiming, setDayTiming] = useState<DayTiming | null>(null);
   const [countdown, setCountdown] = useState('');
+  // On-chain per-operator auto-release toggle for the session's operator (checked live at finalize time)
+  const [autoRelease, setAutoRelease] = useState(false);
 
   // Settle UI per-match
   const [settlingMatchId, setSettlingMatchId] = useState<number | null>(null);
@@ -110,6 +113,11 @@ export default function SessionExplorer() {
     if (!provider || !sessionManagerAddress) return null;
     return new ethers.Contract(sessionManagerAddress, SessionManagerArtifact.abi, provider);
   }, [provider, sessionManagerAddress]);
+
+  const getHubReadContract = useCallback(() => {
+    if (!provider || !hubAddress) return null;
+    return new ethers.Contract(hubAddress, GameHubArtifact.abi, provider);
+  }, [provider, hubAddress]);
 
   const getWriteContract = useCallback(() => {
     if (!signer || !sessionManagerAddress) return null;
@@ -196,6 +204,7 @@ export default function SessionExplorer() {
     setDayTiming(null);
     setSettlingMatchId(null);
     setExpandedMatch(null);
+    setAutoRelease(false);
     try {
       // Load session
       const s = await c.sessions(id);
@@ -216,6 +225,15 @@ export default function SessionExplorer() {
       };
       setSession(sessionData);
       if (sid !== undefined) setSessionIdInput(String(id));
+
+      // Load operator's auto-release setting — lives on the Hub, checked live at finalize time
+      try {
+        const hub = getHubReadContract();
+        const auto = hub ? await hub.operatorAutoReleaseDefault(sessionData.operator) : false;
+        setAutoRelease(!!auto);
+      } catch {
+        setAutoRelease(false);
+      }
 
       // Load timing info
       try {
@@ -292,7 +310,7 @@ export default function SessionExplorer() {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getReadContract, sessionIdInput, address, signer, sessionManagerAddress]);
+  }, [getReadContract, getHubReadContract, sessionIdInput, address, signer, sessionManagerAddress]);
 
   // Countdown timer
   useEffect(() => {
@@ -484,7 +502,7 @@ export default function SessionExplorer() {
       {/* Session Info */}
       {session && (
         <Card
-          title={<span className="flex items-center gap-2">Session #{session.id} <span className="ml-1">{sessionDerived && derivedSessionBadge(sessionDerived)}</span></span>}
+          title={<span className="flex items-center gap-2">Session #{session.id} <span className="ml-1">{sessionDerived && derivedSessionBadge(sessionDerived)}</span> <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${autoRelease ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}`}>{autoRelease ? 'AUTO-RELEASE' : 'MANUAL RELEASE'}</span></span>}
           icon={<Hash className="w-5 h-5 text-accent" />}
         >
           {/* Timing countdown */}
@@ -571,6 +589,12 @@ export default function SessionExplorer() {
                 <div className="text-xs text-txt-secondary">
                   <p><strong className="text-txt-primary">Finalize Daily Points</strong> for dateKey <span className="text-accent font-bold">{session.dateKey}</span>.</p>
                   <p className="text-[10px] mt-0.5">This locks all points, transfers collected funds to operators&apos; splitters, and enables PR boost claims. Requires <code className="text-accent">PLATFORM_UPDATER_ROLE</code>.</p>
+                  <p className="text-[10px] mt-0.5">
+                    {autoRelease
+                      ? <span className="text-green-400">Auto-release is ON for this operator — finalizing will also immediately release the splitter&apos;s funds to payees in the same transaction.</span>
+                      : <span className="text-yellow-400">Auto-release is OFF for this operator — finalizing will transfer funds to the splitter; release them manually from the Splitter tab afterward.</span>
+                    }
+                  </p>
                 </div>
               </div>
               {unsettledCount > 0 && (

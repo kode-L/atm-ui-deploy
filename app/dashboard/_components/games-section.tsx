@@ -9,6 +9,7 @@ import { decodeError } from '@/lib/contracts/error-decoder';
 import { sendWithGasBuffer } from '@/lib/contracts/gas';
 import { Gamepad2, Plus, RefreshCw, Clock, Hash, XCircle, Zap, Users, ChevronDown, ChevronUp, ListChecks, CheckCircle, Check, X, Split } from 'lucide-react';
 import SessionManagerArtifact from '@/lib/contracts/DailySessionManager.json';
+import GameHubArtifact from '@/lib/contracts/GameHub.json';
 
 interface SessionData {
   sessionId: number;
@@ -38,7 +39,7 @@ interface PlayerInfo {
 const SESSIONS_PAGE_SIZE = 25;
 
 export default function SessionsSection() {
-  const { signer, provider, isConnected, address, sessionManagerAddress, chainId } = useWeb3();
+  const { signer, provider, isConnected, address, sessionManagerAddress, hubAddress, chainId } = useWeb3();
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -51,6 +52,8 @@ export default function SessionsSection() {
 
   // On-chain operator splitter address (fetched from OperatorProfile)
   const [operatorSplitter, setOperatorSplitter] = useState<string>('');
+  // On-chain per-operator auto-release toggle (checked live at finalize time)
+  const [autoRelease, setAutoRelease] = useState(false);
 
   // Players for a session
   const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null);
@@ -76,6 +79,11 @@ export default function SessionsSection() {
     if (!provider || !sessionManagerAddress) return null;
     return new ethers.Contract(sessionManagerAddress, SessionManagerArtifact.abi, provider ?? undefined);
   }, [provider, sessionManagerAddress]);
+
+  const getHubReadContract = useCallback(() => {
+    if (!provider || !hubAddress) return null;
+    return new ethers.Contract(hubAddress, GameHubArtifact.abi, provider ?? undefined);
+  }, [provider, hubAddress]);
 
   const getWriteContract = useCallback(() => {
     if (!signer || !sessionManagerAddress) return null;
@@ -181,7 +189,7 @@ export default function SessionsSection() {
   useEffect(() => {
     const load = async () => {
       const c = getReadContract();
-      if (!c || !address) { setOperatorSplitter(''); return; }
+      if (!c || !address) { setOperatorSplitter(''); setAutoRelease(false); return; }
       try {
         const profile = await c.getOperatorProfile(address);
         const sp = profile.splitterAddress || '';
@@ -189,9 +197,17 @@ export default function SessionsSection() {
       } catch {
         setOperatorSplitter('');
       }
+      // Auto-release policy lives on the Hub, not this instance
+      try {
+        const hub = getHubReadContract();
+        const auto = hub ? await hub.operatorAutoReleaseDefault(address) : false;
+        setAutoRelease(!!auto);
+      } catch {
+        setAutoRelease(false);
+      }
     };
     load();
-  }, [getReadContract, address]);
+  }, [getReadContract, getHubReadContract, address]);
 
   const exec = async (label: string, fn: () => Promise<any>) => {
     setTxStatus({ status: 'pending', message: `${label}...` });
@@ -464,6 +480,13 @@ export default function SessionsSection() {
             </>
           )}
           {mySessionId && <span className="text-txt-secondary">My Session: <span className="text-accent font-semibold">#{mySessionId}</span></span>}
+          {address && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+              autoRelease ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+            }`}>
+              {autoRelease ? 'AUTO-RELEASE' : 'MANUAL RELEASE'}
+            </span>
+          )}
         </div>
       </div>
 

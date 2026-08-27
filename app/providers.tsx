@@ -131,6 +131,15 @@ function Web3Provider({ children }: { children: ReactNode }) {
     setHubAddress(a);
     localStorage.setItem(networkStorageKey('dg_hubAddress', netNs), a);
   };
+  // Clears a bad manual/deploy override (e.g. pasting the wrong network's hub address via
+  // Load Existing Contracts) so the chain.json default for the current network takes effect
+  // again — mirrors resetTokenAddress. Without this, recovering from a bad paste required
+  // knowing to reload the whole page.
+  const resetHubAddress = () => {
+    localStorage.removeItem(networkStorageKey('dg_hubAddress', netNs));
+    const isMainnet = netNs === BSC_MAINNET.chainId;
+    setHubAddress(isMainnet ? DEFAULT_HUB_ADDRESS_MAINNET : DEFAULT_HUB_ADDRESS);
+  };
   const saveRewardEligibilityRegistryAddress = (a: string) => {
     setRewardEligibilityRegistryAddressState(a);
     localStorage.setItem(networkStorageKey('dg_rewardEligibilityRegistryAddress', netNs), a);
@@ -277,7 +286,7 @@ function Web3Provider({ children }: { children: ReactNode }) {
   }, [address, hubAddress, readProvider]);
 
   const val: Web3State = {
-    provider: readProvider, signer, address, chainId, bnbBalance,
+    provider: readProvider, signer, address, chainId, netChainId: netNs, bnbBalance,
     isConnected: aaIsConnected,
     connecting: modalOpen && !aaIsConnected,
     initialized,
@@ -288,6 +297,7 @@ function Web3Provider({ children }: { children: ReactNode }) {
     setTokenAddress: saveTokenAddress,
     resetTokenAddress,
     setHubAddress: saveHubAddress,
+    resetHubAddress,
     setSessionManagerAddress: saveSessionManagerAddress,
     setRewardEligibilityRegistryAddress: saveRewardEligibilityRegistryAddress,
     setAtmVoucherAddress: saveAtmVoucherAddress,

@@ -17,6 +17,7 @@ interface OperatorInfo {
   registeredAt: number;
   splitterAddress: string;
   instance: string;
+  autoRelease: boolean;
 }
 
 interface RewardTypeInfo {
@@ -77,12 +78,15 @@ export default function OperatorsSection() {
     return new ethers.Contract(instanceAddr, SessionManagerArtifact.abi, provider);
   }, [provider]);
 
-  // Fetch a single operator's profile from its own dedicated instance contract
-  const fetchOperatorProfile = useCallback(async (contract: ethers.Contract, addr: string, instance?: string): Promise<OperatorInfo | null> => {
+  // Fetch a single operator's profile from its own dedicated instance contract.
+  // autoRelease lives on the Hub (not the instance), so it's read separately —
+  // hubContract is undefined only in the pre-Hub fallback path, where it defaults false.
+  const fetchOperatorProfile = useCallback(async (contract: ethers.Contract, addr: string, instance?: string, hubContract?: ethers.Contract | null): Promise<OperatorInfo | null> => {
     try {
       const profile = await contract.getOperatorProfile(addr);
       const regAt = profile.registeredAt?.toNumber?.() ?? Number(profile.registeredAt);
       if (regAt === 0 && !profile.active && !profile.name) return null;
+      const autoRelease = hubContract ? await hubContract.operatorAutoReleaseDefault(addr).catch(() => false) : false;
       return {
         address: addr.toLowerCase(),
         active: profile.active,
@@ -91,6 +95,7 @@ export default function OperatorsSection() {
         registeredAt: regAt,
         splitterAddress: profile.splitterAddress || '',
         instance: instance || contract.address,
+        autoRelease: !!autoRelease,
       };
     } catch {
       return null;
@@ -134,7 +139,7 @@ export default function OperatorsSection() {
             const rec = await hub.getOperatorRecord(addr);
             const instanceContract = getInstanceContract(rec.instance);
             if (!instanceContract) continue;
-            const info = await fetchOperatorProfile(instanceContract, addr, rec.instance);
+            const info = await fetchOperatorProfile(instanceContract, addr, rec.instance, hub);
             if (info) opInfos.push(info);
           } catch { /* skip */ }
         }
@@ -300,7 +305,7 @@ export default function OperatorsSection() {
         return;
       }
 
-      const info = await fetchOperatorProfile(instanceContract, addr, instanceAddr);
+      const info = await fetchOperatorProfile(instanceContract, addr, instanceAddr, hub);
       if (!info) {
         setLookupError('No operator profile found at this address');
         return;
@@ -631,6 +636,11 @@ export default function OperatorsSection() {
                     op.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                   }`}>
                     {op.active ? 'ACTIVE' : 'INACTIVE'}
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    op.autoRelease ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                  }`}>
+                    {op.autoRelease ? 'AUTO-RELEASE' : 'MANUAL RELEASE'}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-txt-secondary flex-wrap">
