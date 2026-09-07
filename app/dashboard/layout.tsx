@@ -12,7 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // it flash on every page load.
   if (!initialized) return null;
 
-  if (!isConnected) {
+  if (!isConnected && false) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-primary px-4">
         <div className="w-full max-w-md">

@@ -1,16 +1,21 @@
 'use client';
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import { sendWithGasBuffer } from '@/lib/contracts/gas';
-import { CheckCircle, ListChecks, DollarSign, History, RefreshCw, ChevronDown, ChevronUp, Check, X, Wallet, MinusCircle, Download, Upload, Plus, Trash2 } from 'lucide-react';
+import { networkStorageKey, getExplorerAddressUrl } from '@/lib/contracts/config';
+import { CheckCircle, ListChecks, DollarSign, History, RefreshCw, ChevronDown, ChevronUp, Check, X, Wallet, MinusCircle, Download, Upload, Plus, Trash2, Network, ExternalLink } from 'lucide-react';
 import SessionManagerArtifact from '@/lib/contracts/DailySessionManager.json';
 
 interface ReducePointsRow { address: string; amount: string; balance: string | null; }
 const blankReduceRow = (): ReducePointsRow => ({ address: '', amount: '', balance: null });
+
+// Mirrors the shape hub-section.tsx / operators-section.tsx cache to localStorage under
+// `dg_cached_operators:<chainId>` — read-only here, just to label/switch the active instance.
+interface CachedOperator { address: string; name: string; active: boolean; instance: string; }
 
 // Second column is an optional suggested amount — blank is fine, the admin can fill it
 // in after fetching each row's current balance.
@@ -53,7 +58,7 @@ function parseReducePointsCsv(text: string): { rows: ReducePointsRow[]; error?: 
 }
 
 export default function DailyPointsSection() {
-  const { signer, provider, isConnected, address, sessionManagerAddress, chainId } = useWeb3();
+  const { signer, provider, isConnected, address, sessionManagerAddress, setSessionManagerAddress, chainId, netChainId } = useWeb3();
   const [txStatus, setTxStatus] = useState<any>({ status: 'idle' });
 
 
@@ -87,6 +92,22 @@ export default function DailyPointsSection() {
   const [reduceRows, setReduceRows] = useState<ReducePointsRow[]>([blankReduceRow()]);
   const [reduceBalancesLoading, setReduceBalancesLoading] = useState(false);
   const reduceCsvInputRef = useRef<HTMLInputElement>(null);
+
+  // Which operator instance "Reduce Points" (and every other action on this page) is
+  // pointed at \u2014 read-only cache populated by the Operators/Hub tabs, just so it's visible
+  // here without having to jump tabs before an irreversible deduction.
+  const [cachedOperators, setCachedOperators] = useState<CachedOperator[]>([]);
+  useEffect(() => {
+    // netChainId resolves immediately on load/network-switch (chainId lags one effect tick
+    // behind AppKit, per use-web3.ts) — try it first, then fall back to chainId in case the
+    // cache was written under whichever value operators-section.tsx saw at the time.
+    try {
+      const raw = localStorage.getItem(networkStorageKey('dg_cached_operators', netChainId))
+        ?? (chainId ? localStorage.getItem(networkStorageKey('dg_cached_operators', chainId)) : null);
+      setCachedOperators(raw ? JSON.parse(raw) : []);
+    } catch { setCachedOperators([]); }
+  }, [chainId, netChainId, sessionManagerAddress]);
+  const activeOperator = cachedOperators.find(op => op.instance.toLowerCase() === (sessionManagerAddress || '').toLowerCase());
 
   const todayDateKey = Math.floor(Date.now() / 1000 / 86400);
 
@@ -139,66 +160,66 @@ export default function DailyPointsSection() {
   const handleFinalize = async () => {
     const contract = getContract(true);
     if (!contract || !finalizeDateKey) return;
-    setTxStatus({ status: 'pending', message: 'Finalizing operator points...' });
+    setTxStatus({ status: 'pending', message: 'Finalizing operator points...', source: 'finalize' });
     try {
       const tx = await sendWithGasBuffer(contract, 'finalizeDailyPoints', [parseInt(finalizeDateKey)]);
-      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
+      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...', source: 'finalize' });
       await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: `Operator finalized for dateKey ${finalizeDateKey} ✔` });
+      setTxStatus({ status: 'success', hash: tx.hash, message: `Operator finalized for dateKey ${finalizeDateKey} ✔`, source: 'finalize' });
     } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
+      setTxStatus({ status: 'error', error: decodeError(e), source: 'finalize' });
     }
   };
 
   /* \u2500\u2500 Batch Update \u2500\u2500 */
   const handleBatchUpdate = async () => {
     if (!sessionManagerAddress) {
-      setTxStatus({ status: 'error', error: 'No SessionManager instance loaded \u2014 select one from the Hub tab first.' });
+      setTxStatus({ status: 'error', error: 'No SessionManager instance loaded \u2014 select one from the Hub tab first.', source: 'batchUpdate' });
       return;
     }
     if (!signer) {
-      setTxStatus({ status: 'error', error: 'Wallet not connected \u2014 click Connect Wallet and try again.' });
+      setTxStatus({ status: 'error', error: 'Wallet not connected \u2014 click Connect Wallet and try again.', source: 'batchUpdate' });
       return;
     }
     if (!batchDateKey || !batchUsers || !batchPoints) {
-      setTxStatus({ status: 'error', error: 'Fill in Date Key, User Addresses, and New Points first.' });
+      setTxStatus({ status: 'error', error: 'Fill in Date Key, User Addresses, and New Points first.', source: 'batchUpdate' });
       return;
     }
     const contract = getContract(true);
     if (!contract) {
-      setTxStatus({ status: 'error', error: 'Could not create a contract instance \u2014 check your wallet connection and try again.' });
+      setTxStatus({ status: 'error', error: 'Could not create a contract instance \u2014 check your wallet connection and try again.', source: 'batchUpdate' });
       return;
     }
-    setTxStatus({ status: 'pending', message: 'Batch updating points...' });
+    setTxStatus({ status: 'pending', message: 'Batch updating points...', source: 'batchUpdate' });
     try {
       const users = batchUsers.split(',').map(s => s.trim()).filter(Boolean);
       let points: any[];
       try {
         points = batchPoints.split(',').map(s => ethers.utils.parseEther(s.trim()));
       } catch {
-        setTxStatus({ status: 'error', error: 'New Points must be comma-separated numbers (e.g. "50, -10, 100").' });
+        setTxStatus({ status: 'error', error: 'New Points must be comma-separated numbers (e.g. "50, -10, 100").', source: 'batchUpdate' });
         return;
       }
       if (users.length === 0) {
-        setTxStatus({ status: 'error', error: 'Enter at least one user address.' });
+        setTxStatus({ status: 'error', error: 'Enter at least one user address.', source: 'batchUpdate' });
         return;
       }
       if (users.length !== points.length) {
-        setTxStatus({ status: 'error', error: `Users and points count must match (${users.length} users vs ${points.length} points).` });
+        setTxStatus({ status: 'error', error: `Users and points count must match (${users.length} users vs ${points.length} points).`, source: 'batchUpdate' });
         return;
       }
       for (const u of users) {
         if (!ethers.utils.isAddress(u)) {
-          setTxStatus({ status: 'error', error: `"${u}" is not a valid Ethereum address.` });
+          setTxStatus({ status: 'error', error: `"${u}" is not a valid Ethereum address.`, source: 'batchUpdate' });
           return;
         }
       }
       const tx = await contract.batchUpdateDailyUserPoints(parseInt(batchDateKey), users, points);
-      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
+      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...', source: 'batchUpdate' });
       await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: `Updated ${users.length} user points` });
+      setTxStatus({ status: 'success', hash: tx.hash, message: `Updated ${users.length} user points`, source: 'batchUpdate' });
     } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
+      setTxStatus({ status: 'error', error: decodeError(e), source: 'batchUpdate' });
     }
   };
 
@@ -215,67 +236,84 @@ export default function DailyPointsSection() {
     const reader = new FileReader();
     reader.onload = () => {
       const { rows, error } = parseReducePointsCsv(String(reader.result || ''));
-      if (error) { setTxStatus({ status: 'error', error: `CSV: ${error}` }); return; }
+      if (error) { setTxStatus({ status: 'error', error: `CSV: ${error}`, source: 'reducePoints' }); return; }
       setReduceRows(rows);
-      setTxStatus({ status: 'success', message: `Loaded ${rows.length} address(es) from CSV \u2014 fetch balances, then review amounts before submitting.` });
+      setTxStatus({ status: 'success', message: `Loaded ${rows.length} address(es) from CSV \u2014 fetch balances, then review amounts before submitting.`, source: 'reducePoints' });
     };
-    reader.onerror = () => setTxStatus({ status: 'error', error: 'Failed to read CSV file.' });
+    reader.onerror = () => setTxStatus({ status: 'error', error: 'Failed to read CSV file.', source: 'reducePoints' });
     reader.readAsText(file);
   };
 
-  /* \u2500\u2500 Fetch each row's current carry-forward balance \u2500\u2500 */
-  const handleFetchReduceBalances = async () => {
+  /* \u2500\u2500 Fetch carry-forward balances for a given set of rows, merged back by address \u2500\u2500 */
+  const fetchBalancesForRows = useCallback(async (rows: ReducePointsRow[]) => {
     const contract = getContract();
-    if (!contract) return;
-    const validRows = reduceRows.filter(r => ethers.utils.isAddress(r.address.trim()));
-    if (validRows.length === 0) {
-      setTxStatus({ status: 'error', error: 'Enter or upload at least one valid address first.' });
-      return;
-    }
+    if (!contract || rows.length === 0) return;
     setReduceBalancesLoading(true);
     try {
       const balances = await Promise.all(
-        validRows.map(r => contract.carryForwardPoints(r.address.trim()).catch(() => null))
+        rows.map(r => contract.carryForwardPoints(r.address.trim()).catch(() => null))
       );
       setReduceRows(prev => prev.map(r => {
-        const idx = validRows.findIndex(v => v.address === r.address);
+        const idx = rows.findIndex(v => v.address === r.address);
         if (idx === -1) return r;
         const bal = balances[idx];
         return { ...r, balance: bal === null ? 'Error' : ethers.utils.formatEther(bal) };
       }));
     } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
+      setTxStatus({ status: 'error', error: decodeError(e), source: 'reducePoints' });
     } finally {
       setReduceBalancesLoading(false);
     }
+  }, [getContract]);
+
+  /* \u2500\u2500 Manual "Fetch Balances" button \u2500\u2500 refetches every row with a valid address */
+  const handleFetchReduceBalances = async () => {
+    const validRows = reduceRows.filter(r => ethers.utils.isAddress(r.address.trim()));
+    if (validRows.length === 0) {
+      setTxStatus({ status: 'error', error: 'Enter or upload at least one valid address first.', source: 'reducePoints' });
+      return;
+    }
+    await fetchBalancesForRows(validRows);
   };
+
+  /* \u2500\u2500 Auto-fetch \u2500\u2500 debounced: as soon as a row has a valid address and no balance yet
+   * (new row, pasted address, or freshly loaded from CSV), fetch it without waiting for the
+   * admin to click "Fetch Balances". Rows that already have a balance (or an 'Error') are left
+   * alone until their address changes \u2014 updateReduceRow resets balance to null on edit. */
+  useEffect(() => {
+    const pending = reduceRows.filter(r => r.balance === null && ethers.utils.isAddress(r.address.trim()));
+    if (pending.length === 0 || reduceBalancesLoading) return;
+    const timer = setTimeout(() => { fetchBalancesForRows(pending); }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduceRows, reduceBalancesLoading]);
 
   const handleBatchReducePoints = async () => {
     if (!sessionManagerAddress) {
-      setTxStatus({ status: 'error', error: 'No SessionManager instance loaded \u2014 select one from the Hub tab first.' });
+      setTxStatus({ status: 'error', error: 'No SessionManager instance loaded \u2014 select one from the Hub tab first.', source: 'reducePoints' });
       return;
     }
     if (!signer) {
-      setTxStatus({ status: 'error', error: 'Wallet not connected \u2014 click Connect Wallet and try again.' });
+      setTxStatus({ status: 'error', error: 'Wallet not connected \u2014 click Connect Wallet and try again.', source: 'reducePoints' });
       return;
     }
     const contract = getContract(true);
     if (!contract) {
-      setTxStatus({ status: 'error', error: 'Could not create a contract instance \u2014 check your wallet connection and try again.' });
+      setTxStatus({ status: 'error', error: 'Could not create a contract instance \u2014 check your wallet connection and try again.', source: 'reducePoints' });
       return;
     }
     const rows = reduceRows.filter(r => r.address.trim() || r.amount.trim());
     if (rows.length === 0) {
-      setTxStatus({ status: 'error', error: 'Add at least one address and amount to reduce.' });
+      setTxStatus({ status: 'error', error: 'Add at least one address and amount to reduce.', source: 'reducePoints' });
       return;
     }
     for (const r of rows) {
       if (!ethers.utils.isAddress(r.address.trim())) {
-        setTxStatus({ status: 'error', error: `"${r.address}" is not a valid Ethereum address.` });
+        setTxStatus({ status: 'error', error: `"${r.address}" is not a valid Ethereum address.`, source: 'reducePoints' });
         return;
       }
       if (!r.amount.trim() || isNaN(Number(r.amount)) || Number(r.amount) <= 0) {
-        setTxStatus({ status: 'error', error: `Enter a positive reduce amount for ${r.address}.` });
+        setTxStatus({ status: 'error', error: `Enter a positive reduce amount for ${r.address}.`, source: 'reducePoints' });
         return;
       }
     }
@@ -284,18 +322,18 @@ export default function DailyPointsSection() {
     try {
       amounts = rows.map(r => ethers.utils.parseEther(r.amount.trim()));
     } catch {
-      setTxStatus({ status: 'error', error: 'Every amount must be a number.' });
+      setTxStatus({ status: 'error', error: 'Every amount must be a number.', source: 'reducePoints' });
       return;
     }
-    setTxStatus({ status: 'pending', message: `Reducing points for ${users.length} address(es)...` });
+    setTxStatus({ status: 'pending', message: `Reducing points for ${users.length} address(es)...`, source: 'reducePoints' });
     try {
       const tx = await contract.batchReducePoints(users, amounts);
-      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
+      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...', source: 'reducePoints' });
       await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: `Reduced points for ${users.length} address(es).` });
+      setTxStatus({ status: 'success', hash: tx.hash, message: `Reduced points for ${users.length} address(es).`, source: 'reducePoints' });
       setReduceRows([blankReduceRow()]);
     } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
+      setTxStatus({ status: 'error', error: decodeError(e), source: 'reducePoints' });
     }
   };
 
@@ -418,6 +456,7 @@ export default function DailyPointsSection() {
           <button onClick={handleFinalize} disabled={!isConnected || !finalizeDateKey} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors">
             Finalize Points
           </button>
+          {txStatus.source === 'finalize' && <TxStatus {...txStatus} chainId={chainId} />}
         </div>
       </Card>
 
@@ -440,12 +479,45 @@ export default function DailyPointsSection() {
           <button onClick={handleBatchUpdate} disabled={!isConnected || !batchDateKey || !batchUsers || !batchPoints} className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 text-black font-semibold py-2.5 rounded-lg text-sm transition-colors">
             Batch Update Points
           </button>
+          {txStatus.source === 'batchUpdate' && <TxStatus {...txStatus} chainId={chainId} />}
         </div>
       </Card>
 
       {/* Reduce Points (Admin) */}
       <Card title="Reduce Points" icon={<MinusCircle className="w-5 h-5 text-red-400" />}>
-        <p className="text-xs text-txt-secondary mb-3">Admin only — irreversibly deducts from each wallet&apos;s carry-forward point balance. Upload a CSV or add rows manually, fetch current balances, then review amounts before submitting.</p>
+        <p className="text-xs text-txt-secondary mb-3">Admin only — irreversibly deducts from each wallet&apos;s carry-forward point balance. Upload a CSV or add rows manually — balances load automatically once an address is valid. Review amounts before submitting.</p>
+
+        <div className="flex items-center justify-between gap-3 flex-wrap bg-surface-tertiary rounded-lg p-3 mb-3">
+          <div className="flex items-center gap-2 text-xs min-w-0">
+            <Network className="w-4 h-4 text-accent shrink-0" />
+            <span className="text-txt-secondary shrink-0">Deducting on operator:</span>
+            <span className="font-semibold truncate">
+              {sessionManagerAddress ? (activeOperator?.name || 'Unknown — not in cached registry') : 'None loaded'}
+            </span>
+            {sessionManagerAddress && (
+              <a href={getExplorerAddressUrl(chainId, sessionManagerAddress)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-accent shrink-0 hover:underline">
+                <code className="font-mono">{sessionManagerAddress.slice(0, 6)}...{sessionManagerAddress.slice(-4)}</code>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+          {cachedOperators.length > 1 ? (
+            <select
+              value={sessionManagerAddress || ''}
+              onChange={(e) => setSessionManagerAddress(e.target.value)}
+              className="bg-surface-secondary border border-white/10 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {cachedOperators.map(op => (
+                <option key={op.instance} value={op.instance}>
+                  {op.name || 'Unnamed'} ({op.instance.slice(0, 6)}...{op.instance.slice(-4)}){op.active ? '' : ' — deactivated'}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-[11px] text-txt-secondary">Switch instances from the Hub tab&apos;s Operator Registry.</span>
+          )}
+        </div>
+
         <div className="flex items-center gap-4 mb-3">
           <button type="button" onClick={downloadReducePointsTemplate} className="flex items-center gap-1 text-xs text-accent hover:underline">
             <Download className="w-3.5 h-3.5" /> Download template CSV
@@ -475,12 +547,13 @@ export default function DailyPointsSection() {
         </div>
         <div className="flex gap-3">
           <button onClick={handleFetchReduceBalances} disabled={!isConnected || reduceBalancesLoading} className="flex-1 flex items-center justify-center gap-1.5 bg-surface-tertiary hover:bg-surface-tertiary/70 disabled:opacity-40 text-txt-primary font-semibold py-2.5 rounded-lg text-sm transition-colors">
-            <RefreshCw className={`w-3.5 h-3.5 ${reduceBalancesLoading ? 'animate-spin' : ''}`} /> Fetch Balances
+            <RefreshCw className={`w-3.5 h-3.5 ${reduceBalancesLoading ? 'animate-spin' : ''}`} /> Refresh Balances
           </button>
           <button onClick={handleBatchReducePoints} disabled={!isConnected} className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors">
             Reduce Points
           </button>
         </div>
+        {txStatus.source === 'reducePoints' && <TxStatus {...txStatus} chainId={chainId} />}
       </Card>
 
       {/* User History */}
@@ -533,8 +606,6 @@ export default function DailyPointsSection() {
           </div>
         )}
       </Card>
-
-      <TxStatus {...(txStatus ?? {})} chainId={chainId} />
     </div>
   );
 }
