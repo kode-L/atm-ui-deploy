@@ -1,13 +1,56 @@
 'use client';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import { sendWithGasBuffer } from '@/lib/contracts/gas';
-import { CheckCircle, ListChecks, DollarSign, History, RefreshCw, ChevronDown, ChevronUp, Check, X, Wallet } from 'lucide-react';
+import { CheckCircle, ListChecks, DollarSign, History, RefreshCw, ChevronDown, ChevronUp, Check, X, Wallet, MinusCircle, Download, Upload, Plus, Trash2 } from 'lucide-react';
 import SessionManagerArtifact from '@/lib/contracts/DailySessionManager.json';
+
+interface ReducePointsRow { address: string; amount: string; balance: string | null; }
+const blankReduceRow = (): ReducePointsRow => ({ address: '', amount: '', balance: null });
+
+// Second column is an optional suggested amount — blank is fine, the admin can fill it
+// in after fetching each row's current balance.
+const REDUCE_POINTS_CSV_TEMPLATE =
+  'address,amount\n' +
+  '0x1234567890123456789012345678901234567890,50\n' +
+  '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd,\n';
+
+function downloadReducePointsTemplate() {
+  const blob = new Blob([REDUCE_POINTS_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'reduce-points-template.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// First column must be an address; if row 1 isn't one, it's a header row — skip it.
+function parseReducePointsCsv(text: string): { rows: ReducePointsRow[]; error?: string } {
+  const lines = text.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { rows: [], error: 'File is empty.' };
+  const startIdx = ethers.utils.isAddress((lines[0].split(',')[0] || '').trim()) ? 0 : 1;
+  const rows: ReducePointsRow[] = [];
+  const errors: string[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    const addr = (cols[0] || '').trim();
+    const amount = (cols[1] || '').trim();
+    if (!ethers.utils.isAddress(addr)) { errors.push(`row ${i + 1}: invalid address "${addr}"`); continue; }
+    if (amount && isNaN(Number(amount))) { errors.push(`row ${i + 1}: invalid amount "${amount}"`); continue; }
+    rows.push({ address: addr, amount, balance: null });
+  }
+  if (errors.length > 0) {
+    const shown = errors.slice(0, 5).join('; ');
+    return { rows: [], error: `${shown}${errors.length > 5 ? ` (+${errors.length - 5} more)` : ''}` };
+  }
+  if (rows.length === 0) return { rows: [], error: 'No data rows found.' };
+  return { rows };
+}
 
 export default function DailyPointsSection() {
   const { signer, provider, isConnected, address, sessionManagerAddress, chainId } = useWeb3();
@@ -39,6 +82,11 @@ export default function DailyPointsSection() {
   const [historyDays, setHistoryDays] = useState('7');
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  /* \u2500\u2500 Reduce Points (CSV batch) \u2500\u2500 */
+  const [reduceRows, setReduceRows] = useState<ReducePointsRow[]>([blankReduceRow()]);
+  const [reduceBalancesLoading, setReduceBalancesLoading] = useState(false);
+  const reduceCsvInputRef = useRef<HTMLInputElement>(null);
 
   const todayDateKey = Math.floor(Date.now() / 1000 / 86400);
 
@@ -149,6 +197,103 @@ export default function DailyPointsSection() {
       setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
       await tx.wait();
       setTxStatus({ status: 'success', hash: tx.hash, message: `Updated ${users.length} user points` });
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+  };
+
+  /* \u2500\u2500 Reduce Points (CSV batch) \u2500\u2500 */
+  const updateReduceRow = (i: number, field: 'address' | 'amount', v: string) =>
+    setReduceRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: v, ...(field === 'address' ? { balance: null } : {}) } : r));
+  const addReduceRow = () => setReduceRows(prev => [...prev, blankReduceRow()]);
+  const removeReduceRow = (i: number) => setReduceRows(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleReduceCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-uploading the same file name
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, error } = parseReducePointsCsv(String(reader.result || ''));
+      if (error) { setTxStatus({ status: 'error', error: `CSV: ${error}` }); return; }
+      setReduceRows(rows);
+      setTxStatus({ status: 'success', message: `Loaded ${rows.length} address(es) from CSV \u2014 fetch balances, then review amounts before submitting.` });
+    };
+    reader.onerror = () => setTxStatus({ status: 'error', error: 'Failed to read CSV file.' });
+    reader.readAsText(file);
+  };
+
+  /* \u2500\u2500 Fetch each row's current carry-forward balance \u2500\u2500 */
+  const handleFetchReduceBalances = async () => {
+    const contract = getContract();
+    if (!contract) return;
+    const validRows = reduceRows.filter(r => ethers.utils.isAddress(r.address.trim()));
+    if (validRows.length === 0) {
+      setTxStatus({ status: 'error', error: 'Enter or upload at least one valid address first.' });
+      return;
+    }
+    setReduceBalancesLoading(true);
+    try {
+      const balances = await Promise.all(
+        validRows.map(r => contract.carryForwardPoints(r.address.trim()).catch(() => null))
+      );
+      setReduceRows(prev => prev.map(r => {
+        const idx = validRows.findIndex(v => v.address === r.address);
+        if (idx === -1) return r;
+        const bal = balances[idx];
+        return { ...r, balance: bal === null ? 'Error' : ethers.utils.formatEther(bal) };
+      }));
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    } finally {
+      setReduceBalancesLoading(false);
+    }
+  };
+
+  const handleBatchReducePoints = async () => {
+    if (!sessionManagerAddress) {
+      setTxStatus({ status: 'error', error: 'No SessionManager instance loaded \u2014 select one from the Hub tab first.' });
+      return;
+    }
+    if (!signer) {
+      setTxStatus({ status: 'error', error: 'Wallet not connected \u2014 click Connect Wallet and try again.' });
+      return;
+    }
+    const contract = getContract(true);
+    if (!contract) {
+      setTxStatus({ status: 'error', error: 'Could not create a contract instance \u2014 check your wallet connection and try again.' });
+      return;
+    }
+    const rows = reduceRows.filter(r => r.address.trim() || r.amount.trim());
+    if (rows.length === 0) {
+      setTxStatus({ status: 'error', error: 'Add at least one address and amount to reduce.' });
+      return;
+    }
+    for (const r of rows) {
+      if (!ethers.utils.isAddress(r.address.trim())) {
+        setTxStatus({ status: 'error', error: `"${r.address}" is not a valid Ethereum address.` });
+        return;
+      }
+      if (!r.amount.trim() || isNaN(Number(r.amount)) || Number(r.amount) <= 0) {
+        setTxStatus({ status: 'error', error: `Enter a positive reduce amount for ${r.address}.` });
+        return;
+      }
+    }
+    const users = rows.map(r => r.address.trim());
+    let amounts: ethers.BigNumber[];
+    try {
+      amounts = rows.map(r => ethers.utils.parseEther(r.amount.trim()));
+    } catch {
+      setTxStatus({ status: 'error', error: 'Every amount must be a number.' });
+      return;
+    }
+    setTxStatus({ status: 'pending', message: `Reducing points for ${users.length} address(es)...` });
+    try {
+      const tx = await contract.batchReducePoints(users, amounts);
+      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
+      await tx.wait();
+      setTxStatus({ status: 'success', hash: tx.hash, message: `Reduced points for ${users.length} address(es).` });
+      setReduceRows([blankReduceRow()]);
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
     }
@@ -294,6 +439,46 @@ export default function DailyPointsSection() {
           </div>
           <button onClick={handleBatchUpdate} disabled={!isConnected || !batchDateKey || !batchUsers || !batchPoints} className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 text-black font-semibold py-2.5 rounded-lg text-sm transition-colors">
             Batch Update Points
+          </button>
+        </div>
+      </Card>
+
+      {/* Reduce Points (Admin) */}
+      <Card title="Reduce Points" icon={<MinusCircle className="w-5 h-5 text-red-400" />}>
+        <p className="text-xs text-txt-secondary mb-3">Admin only — irreversibly deducts from each wallet&apos;s carry-forward point balance. Upload a CSV or add rows manually, fetch current balances, then review amounts before submitting.</p>
+        <div className="flex items-center gap-4 mb-3">
+          <button type="button" onClick={downloadReducePointsTemplate} className="flex items-center gap-1 text-xs text-accent hover:underline">
+            <Download className="w-3.5 h-3.5" /> Download template CSV
+          </button>
+          <button type="button" onClick={() => reduceCsvInputRef.current?.click()} className="flex items-center gap-1 text-xs text-accent hover:underline">
+            <Upload className="w-3.5 h-3.5" /> Upload CSV
+          </button>
+          <input ref={reduceCsvInputRef} type="file" accept=".csv,text/csv" onChange={handleReduceCsvUpload} className="hidden" />
+        </div>
+        <div className="space-y-2 mb-3">
+          <div className="grid grid-cols-[1fr_120px_140px_40px] gap-2 text-xs text-txt-secondary font-semibold px-1">
+            <span>Address</span><span>Balance</span><span>Reduce By</span><span></span>
+          </div>
+          {reduceRows.map((r, i) => (
+            <div key={i} className="grid grid-cols-[1fr_120px_140px_40px] gap-2 items-center">
+              <input value={r.address} onChange={(e) => updateReduceRow(i, 'address', e.target.value)} placeholder="0x..." className="bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent" />
+              <span className="text-sm text-center text-txt-secondary">{r.balance === null ? '—' : r.balance}</span>
+              <input value={r.amount} onChange={(e) => updateReduceRow(i, 'amount', e.target.value)} placeholder="50" className="bg-surface-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+              {reduceRows.length > 1 ? (
+                <button onClick={() => removeReduceRow(i)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400"><Trash2 className="w-4 h-4" /></button>
+              ) : <div />}
+            </div>
+          ))}
+          <button onClick={addReduceRow} className="flex items-center gap-1 text-xs text-accent hover:underline mt-1">
+            <Plus className="w-3.5 h-3.5" /> Add address
+          </button>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={handleFetchReduceBalances} disabled={!isConnected || reduceBalancesLoading} className="flex-1 flex items-center justify-center gap-1.5 bg-surface-tertiary hover:bg-surface-tertiary/70 disabled:opacity-40 text-txt-primary font-semibold py-2.5 rounded-lg text-sm transition-colors">
+            <RefreshCw className={`w-3.5 h-3.5 ${reduceBalancesLoading ? 'animate-spin' : ''}`} /> Fetch Balances
+          </button>
+          <button onClick={handleBatchReducePoints} disabled={!isConnected} className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors">
+            Reduce Points
           </button>
         </div>
       </Card>
