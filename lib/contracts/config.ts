@@ -10,6 +10,7 @@ type ChainDefaults = {
   voidOwnerAddress?: string;
   rewardEligibilityRegistryAddress?: string;
   atmVoucherAddress?: string;
+  contributionPoolAddress?: string;
 };
 
 // Per-chainId default contract addresses (keyed by chainId as a string, e.g. "97", "56").
@@ -82,6 +83,10 @@ export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS = process.env.NEXT_PUBL
 // from the ATM Vouchers tab.
 export const DEFAULT_ATM_VOUCHER_ADDRESS = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'atmVoucherAddress');
 
+// ContributionPool proxy — standalone pooled-contribution contract with its own admin/operator
+// role model, unrelated to the GameHub fleet. Set after deploying from the Contribution Pool tab.
+export const DEFAULT_CONTRIBUTION_POOL_ADDRESS = process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'contributionPoolAddress');
+
 // Same set of defaults, but for BSC Mainnet — deployments are independent per network,
 // so mainnet gets its own fallbacks (chain.json's "56" entry, env var still wins) alongside
 // the testnet ones above.
@@ -94,6 +99,7 @@ export const DEFAULT_ADMIN_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ADMIN_ADDRE
 export const DEFAULT_VOID_OWNER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_VOID_OWNER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'voidOwnerAddress');
 export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'rewardEligibilityRegistryAddress');
 export const DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'atmVoucherAddress');
+export const DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'contributionPoolAddress');
 
 export type NetworkKey = 'testnet' | 'mainnet';
 
