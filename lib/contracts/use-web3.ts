@@ -41,6 +41,7 @@ export interface Web3State {
   rewardEligibilityRegistryAddress: string;
   atmVoucherAddress: string;
   contributionPoolAddress: string;
+  rgstAddress: string;
   splitters: { address: string; label: string }[];
   activeSplitter: string;
   setTokenAddress: (a: string) => void;
@@ -55,6 +56,7 @@ export interface Web3State {
   setRewardEligibilityRegistryAddress: (a: string) => void;
   setAtmVoucherAddress: (a: string) => void;
   setContributionPoolAddress: (a: string) => void;
+  setRgstAddress: (a: string) => void;
   addSplitter: (address: string, label: string) => void;
   removeSplitter: (address: string) => void;
   setActiveSplitter: (address: string) => void;
@@ -83,6 +85,7 @@ export const Web3Context = createContext<Web3State>({
   rewardEligibilityRegistryAddress: '',
   atmVoucherAddress: '',
   contributionPoolAddress: '',
+  rgstAddress: '',
   splitters: [],
   activeSplitter: '',
   setTokenAddress: () => {},
@@ -93,6 +96,7 @@ export const Web3Context = createContext<Web3State>({
   setRewardEligibilityRegistryAddress: () => {},
   setAtmVoucherAddress: () => {},
   setContributionPoolAddress: () => {},
+  setRgstAddress: () => {},
   addSplitter: () => {},
   removeSplitter: () => {},
   setActiveSplitter: () => {},

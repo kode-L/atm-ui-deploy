@@ -17,6 +17,8 @@ import {
   DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET,
   DEFAULT_CONTRIBUTION_POOL_ADDRESS,
   DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET,
+  DEFAULT_RGST_ADDRESS,
+  DEFAULT_RGST_ADDRESS_MAINNET,
   networkStorageKey,
 } from '@/lib/contracts/config';
 import { getFallbackProvider } from '@/lib/contracts/rpc-provider';
@@ -56,6 +58,7 @@ function Web3Provider({ children }: { children: ReactNode }) {
   const [rewardEligibilityRegistryAddress, setRewardEligibilityRegistryAddressState] = useState('');
   const [atmVoucherAddress, setAtmVoucherAddressState] = useState('');
   const [contributionPoolAddress, setContributionPoolAddressState] = useState('');
+  const [rgstAddress, setRgstAddressState] = useState('');
   const [splitters, setSplitters] = useState<{ address: string; label: string }[]>([]);
   const [activeSplitter, setActiveSplitterState] = useState('');
   const [walletRole, setWalletRole] = useState<WalletRole | null>(null);
@@ -102,6 +105,10 @@ function Web3Provider({ children }: { children: ReactNode }) {
     // contributionPoolAddress — standalone too, same saved-override behavior as atmVoucherAddress.
     const savedContributionPool = localStorage.getItem(networkStorageKey('dg_contributionPoolAddress', netNs));
     setContributionPoolAddressState(savedContributionPool || (isMainnet ? DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET : DEFAULT_CONTRIBUTION_POOL_ADDRESS));
+
+    // rgstAddress — standalone too, same saved-override behavior as atmVoucherAddress.
+    const savedRgst = localStorage.getItem(networkStorageKey('dg_rgstAddress', netNs));
+    setRgstAddressState(savedRgst || (isMainnet ? DEFAULT_RGST_ADDRESS_MAINNET : DEFAULT_RGST_ADDRESS));
 
     // Load splitters array
     try {
@@ -158,6 +165,10 @@ function Web3Provider({ children }: { children: ReactNode }) {
   const saveContributionPoolAddress = (a: string) => {
     setContributionPoolAddressState(a);
     localStorage.setItem(networkStorageKey('dg_contributionPoolAddress', netNs), a);
+  };
+  const saveRgstAddress = (a: string) => {
+    setRgstAddressState(a);
+    localStorage.setItem(networkStorageKey('dg_rgstAddress', netNs), a);
   };
   const addSplitter = (addr: string, label: string) => {
     setSplitters(prev => {
@@ -303,7 +314,7 @@ function Web3Provider({ children }: { children: ReactNode }) {
     initialized,
     connect, disconnect, openNetworkPicker,
     tokenAddress, hubAddress, sessionManagerAddress, rewardEligibilityRegistryAddress,
-    atmVoucherAddress, contributionPoolAddress,
+    atmVoucherAddress, contributionPoolAddress, rgstAddress,
     splitters, activeSplitter,
     setTokenAddress: saveTokenAddress,
     resetTokenAddress,
@@ -313,6 +324,7 @@ function Web3Provider({ children }: { children: ReactNode }) {
     setRewardEligibilityRegistryAddress: saveRewardEligibilityRegistryAddress,
     setAtmVoucherAddress: saveAtmVoucherAddress,
     setContributionPoolAddress: saveContributionPoolAddress,
+    setRgstAddress: saveRgstAddress,
     addSplitter, removeSplitter, setActiveSplitter,
     walletRole, roleLoading, operatorName, operatorInstance,
   };

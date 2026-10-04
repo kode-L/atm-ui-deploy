@@ -9,7 +9,8 @@
     "voidOwnerAddress": "",
     "rewardEligibilityRegistryAddress": "",
     "atmVoucherAddress": "0x219776510D3d448D82a8C2e7a7CCF190F75592cc",
-    "contributionPoolAddress": "0x19548AB2d4D824e7B586d1B35F96F60Da73D54f9"
+    "contributionPoolAddress": "0x19548AB2d4D824e7B586d1B35F96F60Da73D54f9",
+    "rgstAddress": ""
   },
   "56": {
     "chainName": "BNB Smart Chain",
@@ -21,6 +22,7 @@
     "voidOwnerAddress": "",
     "rewardEligibilityRegistryAddress": "",
     "atmVoucherAddress": "",
-    "contributionPoolAddress": ""
+    "contributionPoolAddress": "",
+    "rgstAddress": ""
   }
 }

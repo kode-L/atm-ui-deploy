@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useWeb3 } from '@/lib/contracts/use-web3';
-import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank } from 'lucide-react';
+import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp } from 'lucide-react';
 import DeploySection from './_components/deploy-section';
 import HubSection from './_components/hub-section';
 import TokenSection from './_components/token-section';
@@ -17,6 +17,7 @@ import TokenVoidSection from './_components/token-void-section';
 import RewardEligibilityRegistrySection from './_components/reward-eligibility-registry-section';
 import ATMVoucherSection from './_components/atm-voucher-section';
 import ContributionPoolSection from './_components/contribution-pool-section';
+import RgstSection from './_components/rgst-section';
 
 // adminOnly tabs manage platform-wide infra (deploy/upgrade contracts, register
 // operators, create reward types) — every write call they make is
@@ -44,6 +45,9 @@ const TABS = [
   // Standalone contract with its own admin/operator role model (operators propose/approve,
   // anyone contributes) — not gated by GameHub walletRole.
   { id: 'contribution-pool', label: 'Contribution Pool', icon: <PiggyBank className="w-4 h-4" />, adminOnly: false },
+  // Standalone rebasing token with its own owner/minter/rebaser/receiver roles and a timelocked
+  // proxy admin, enforced on-chain and reflected in the tab's own UI — not gated by GameHub walletRole.
+  { id: 'rgst', label: 'RGST Token', icon: <TrendingUp className="w-4 h-4" />, adminOnly: false },
 ] as const;
 
 const OPERATOR_DEFAULT_TAB = 'sessions';
@@ -157,6 +161,7 @@ export default function DashboardPage() {
         {activeTab === 'reward-eligibility-registry' && <RewardEligibilityRegistrySection />}
         {activeTab === 'atm-vouchers' && <ATMVoucherSection />}
         {activeTab === 'contribution-pool' && <ContributionPoolSection />}
+        {activeTab === 'rgst' && <RgstSection />}
       </div>
     </div>
   );
