@@ -107,7 +107,8 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
 
   const withdraw = () => run(async () => {
     if (!isAddr(w.to)) throw new Error('Recipient is not a valid address');
-    const key = sameAddr(pool, c.VoucherIncentive) ? 'VoucherIncentive' : 'RewardSink';
+    const extra = (ctx.book.extraSinks || []).find((x) => sameAddr(x.address, pool));
+    const key = sameAddr(pool, c.VoucherIncentive) || (extra && extra.kind === 'VoucherIncentive') ? 'VoucherIncentive' : 'RewardSink';
     const sink = ctx.write(key, pool);
     if (sameAddr(w.token, ZERO)) return ctx.send(`Withdraw ${w.amount} ${symbol}`, sink, 'withdrawNative', [w.to, toUnits(w.amount, 18)]);
     // Both sinks take ERC20 withdraw amounts in the same 18-decimal fixed point as faceValue
@@ -117,7 +118,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <ExtraSinksCard admin={account} />
+      <ExtraSinksCard admin={account} onGo={onGo} />
       <Card title="Fund a reward pool">
         <p className="text-xs text-txt-secondary mb-3">
           Reward types pay from their pool, and minting checks the pool holds enough. Top it up from the connected wallet.

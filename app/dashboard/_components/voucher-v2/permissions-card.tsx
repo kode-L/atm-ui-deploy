@@ -10,7 +10,7 @@ type Cell = { mint?: string; approve?: boolean };
 
 /**
  * "Who can do what": every address that may mint (VoucherNFT per-type minter role) or vote
- * (VoucherDAO per-type approver group, who both propose and approve), against every voucher type.
+ * (VoucherDAO per-type operator group, who both propose and approve), against every voucher type.
  */
 export default function PermissionsCard() {
   const ctx = useVoucherV2();
@@ -45,7 +45,7 @@ export default function PermissionsCard() {
         const daoGoverns = t.mintApprovalsRequired > 1 || minters.some((m) => sameAddr(m, c.VoucherDAO));
         if (daoGoverned.current) daoGoverned.current[t.id] = daoGoverns;
         if (dao && daoGoverns) {
-          for (const a of await dao.getApproversOf(t.id)) cell(a, t.id).approve = true;
+          for (const a of await dao.getOperatorsOf(t.id)) cell(a, t.id).approve = true;
         }
       }
       setTypes(ts);
@@ -70,7 +70,7 @@ export default function PermissionsCard() {
     <Card title="Who can do what">
       <div className="flex flex-wrap items-center gap-3 -mt-2 mb-3">
         <p className="text-xs text-txt-secondary flex-1">
-          <b className="text-txt-primary">Mint</b> = may mint that type directly (with its cap). <b className="text-txt-primary">Propose &amp; approve</b> = VoucherDAO approver of that type (approvers do both), on types the DAO mints (&quot;DAO n&quot; = approvals needed).
+          <b className="text-txt-primary">Mint</b> = may mint that type directly (with its cap). <b className="text-txt-primary">Propose &amp; approve</b> = VoucherDAO operator of that type (operators do both), on types the DAO mints (&quot;DAO n&quot; = approvals needed).
           Click a type to manage it below.
         </p>
         <button className={btnSecondaryCls} disabled={loading} onClick={load}>{loading ? 'Loading…' : 'Reload'}</button>

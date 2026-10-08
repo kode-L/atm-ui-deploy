@@ -23,7 +23,7 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
   // shared with the Types / DAO tabs, so the same type stays selected when switching tabs
   const { typeId, setTypeId } = ctx;
   const [minters, setMinters] = useState<MinterRow[]>([]);
-  // VoucherDAO approver group (v0.53: approvers both propose and approve), each with a proposal budget
+  // VoucherDAO operator group (v0.53: operators both propose and approve), each with a proposal budget
   const [approverCaps, setApproverCaps] = useState<MinterRow[]>([]);
   const [apprCap, setApprCap] = useState({ cap: '', hours: '' });
   const [revokers, setRevokers] = useState<string[]>([]);
@@ -66,9 +66,9 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
     })));
     if (ctx.getBook().contracts.VoucherDAO) {
       const dao = ctx.read('VoucherDAO');
-      const apprs: string[] = await dao.getApproversOf(id);
+      const apprs: string[] = await dao.getOperatorsOf(id);
       setApproverCaps(await Promise.all(apprs.map(async (address) => {
-        const cap = await dao.getApproverDailyCap(id, address);
+        const cap = await dao.getOperatorDailyCap(id, address);
         return { address, limit: cap.limit.toString(), window: cap.windowDuration.toNumber(), used: cap.proposedInWindow.toString() };
       })));
     }
@@ -129,10 +129,10 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
 
   // grant (or re-grant to update the cap): blank cap/window = the default budget (100 per day)
   const grantApprover = () =>
-    tx(`Type ${typeId}: approver ${ctx.nameOf(daoAddr)}`, 'VoucherDAO', 'grantTypeApproverWithCap',
+    tx(`Type ${typeId}: operator ${ctx.nameOf(daoAddr)}`, 'VoucherDAO', 'grantTypeOperatorWithCap',
       [typeId, daoAddr, String(parseInt(apprCap.cap || '0', 10) || 0), Math.round(Number(apprCap.hours || 0) * 3600)]);
   const revokeApprover = async (address: string) =>
-    tx(`Type ${typeId}: remove approver ${ctx.nameOf(address)}`, 'VoucherDAO', 'revokeRole', [await ctx.read('VoucherDAO').typeApproverRole(typeId), address]);
+    tx(`Type ${typeId}: remove operator ${ctx.nameOf(address)}`, 'VoucherDAO', 'revokeRole', [await ctx.read('VoucherDAO').typeOperatorRole(typeId), address]);
 
   const gateList = () => {
     const list = gateText.split(/[\s,]+/).filter(Boolean);
@@ -198,7 +198,7 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
         )}
         {selected && selected.mintApprovalsRequired <= 1 && c.VoucherDAO && !daoIsMinter && (
           <p className="text-xs text-txt-secondary mt-3">
-            Optional: let VoucherDAO mint this type too, so its approvers can mint through it (with 1 approval a proposal executes at once).{' '}
+            Optional: let VoucherDAO mint this type too, so its operators can mint through it (with 1 approval a proposal executes at once).{' '}
             <button className={linkBtnCls} disabled={busy} onClick={() => grantMinter(c.VoucherDAO as string, true)}>Grant VoucherDAO the minter role (unlimited)</button>
           </p>
         )}
@@ -265,15 +265,15 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
       )}
 
       {selected && c.VoucherDAO && (selected.mintApprovalsRequired > 1 || daoIsMinter) && (
-        <Card title={`VoucherDAO approvers for type #${selected.id}`}>
+        <Card title={`VoucherDAO operators for type #${selected.id}`}>
           <p className="text-xs text-txt-secondary mb-3">
-            Approvers both <b>propose</b> and <b>approve</b> — a proposal counts as its proposer&apos;s approval. With {selected.mintApprovalsRequired} approval{selected.mintApprovalsRequired === 1 ? '' : 's'} needed
-            {selected.mintApprovalsRequired === 1 ? ', a proposal executes as soon as it is proposed' : `, you need at least ${selected.mintApprovalsRequired} approvers`}.
-            Each approver has a budget of vouchers they can propose per time window.
+            Operators both <b>propose</b> and <b>approve</b> — a proposal counts as its proposer&apos;s approval. With {selected.mintApprovalsRequired} approval{selected.mintApprovalsRequired === 1 ? '' : 's'} needed
+            {selected.mintApprovalsRequired === 1 ? ', a proposal executes as soon as it is proposed' : `, you need at least ${selected.mintApprovalsRequired} operators`}.
+            Each operator has a budget of vouchers they can propose per time window.
           </p>
           <div className="overflow-x-auto mb-4">
             <table className="w-full text-xs">
-              <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-2 pr-3">Approver</th><th className="py-2 pr-3">Proposal cap</th><th className="py-2 pr-3">Window</th><th className="py-2 pr-3">Used</th><th /></tr></thead>
+              <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-2 pr-3">Operator</th><th className="py-2 pr-3">Proposal cap</th><th className="py-2 pr-3">Window</th><th className="py-2 pr-3">Used</th><th /></tr></thead>
               <tbody>
                 {approverCaps.map((a) => (
                   <tr key={a.address} className="border-b border-white/5">
@@ -284,16 +284,16 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
                     <td className="py-2 text-right"><button className={linkBtnCls} disabled={busy} onClick={() => revokeApprover(a.address)}>Remove</button></td>
                   </tr>
                 ))}
-                {approverCaps.length === 0 && <tr><td colSpan={5} className="py-3 text-txt-secondary">No approvers yet — nobody can propose or approve for this type.</td></tr>}
+                {approverCaps.length === 0 && <tr><td colSpan={5} className="py-3 text-txt-secondary">No operators yet — nobody can propose or approve for this type.</td></tr>}
               </tbody>
             </table>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Field label="Approver address"><AddressInput value={daoAddr} onChange={setDaoAddr} options={quick} /></Field>
+            <Field label="Operator address"><AddressInput value={daoAddr} onChange={setDaoAddr} options={quick} /></Field>
             <Field label="Proposal cap per window"><input className={inputCls} value={apprCap.cap} onChange={(e) => setApprCap({ ...apprCap, cap: e.target.value })} placeholder="blank = default (100)" /></Field>
             <Field label="Window (hours)"><input className={inputCls} value={apprCap.hours} onChange={(e) => setApprCap({ ...apprCap, hours: e.target.value })} placeholder="blank = default (24)" /></Field>
           </div>
-          <button className={`${btnCls} mt-3`} disabled={busy || !isAddr(daoAddr)} onClick={grantApprover}>Add / update approver</button>
+          <button className={`${btnCls} mt-3`} disabled={busy || !isAddr(daoAddr)} onClick={grantApprover}>Add / update operator</button>
         </Card>
       )}
 

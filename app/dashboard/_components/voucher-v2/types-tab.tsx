@@ -75,12 +75,12 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     const vi = c.VoucherIncentive || ZERO;
     const rs = c.RewardSink || ZERO;
     return [
-      { id: 'pointsCredit', label: 'Points · Credit (VoucherIncentive)', note: "Claiming adds faceValue to the holder's globalPoints on VoucherIncentive.", apply: { name: 'Points Credit', fundingSource: vi, revokeDestination: c.RevocationVault || ZERO } },
-      { id: 'pointsDebit', label: 'Points · Debit (claim spends points)', note: "Claiming subtracts faceValue from the holder's globalPoints (reverts if they don't have enough).", apply: { name: 'Points Debit', pointsDirection: PointsDirection.Debit, fundingSource: vi } },
-      { id: 'rewardNative', label: 'Reward · Native coin (RewardSink)', note: "Pays the chain's native coin from RewardSink. faceValue uses 18 decimals.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, approvedTokens: [ZERO] } },
-      { id: 'rewardErc20', label: 'Reward · ERC20 (RewardSink)', note: "Pays any approved ERC20 from RewardSink. faceValue is always 18-decimal; the sink rescales to each token's decimals.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingSource: rs } },
-      { id: 'rewardDeferred', label: 'Reward · ERC20 deferred (VoucherIncentive)', note: 'Non-custodial: claiming records an entitlement on VoucherIncentive instead of paying out. Needs wire step 6.', apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, rewardTiming: RewardTiming.Deferred, redemptionDays: 14, fundingSource: vi } },
-      { id: 'daoGoverned', label: 'Reward · Native, DAO-governed 2-of-2', note: 'Mints need a VoucherDAO proposal + approvals (quorum 2). Add at least 2 approvers on Minters & roles (approvers propose and approve).', apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
+      { id: 'pointsCredit', label: 'Points — claiming adds points', note: "Claiming adds the voucher's value to the holder's points balance.", apply: { name: 'Points Credit', fundingSource: vi, revokeDestination: c.RevocationVault || ZERO } },
+      { id: 'pointsDebit', label: 'Points — claiming spends points', note: "Claiming takes the voucher's value from the holder's points (fails if they don't have enough).", apply: { name: 'Points Debit', pointsDirection: PointsDirection.Debit, fundingSource: vi } },
+      { id: 'rewardNative', label: 'Reward — native coin (BNB)', note: "Claiming pays native coin from the chosen pool.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, approvedTokens: [ZERO] } },
+      { id: 'rewardErc20', label: 'Reward — ERC20 token', note: "Claiming pays an ERC20 token (e.g. USDT) from the chosen pool.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingSource: rs } },
+      { id: 'rewardDeferred', label: 'Reward — ERC20, recorded for later payout', note: "Claiming records what the holder is owed on VoucherIncentive; it can pay them directly, route the tokens to another pool, or leave delivery to another system.", apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, rewardTiming: RewardTiming.Deferred, redemptionDays: 14, fundingSource: vi } },
+      { id: 'daoGoverned', label: 'Reward — native coin, minted by a 2-vote DAO', note: "Every mint is a VoucherDAO proposal that needs 2 operator votes. Add at least 2 operators on Minters & roles.", apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
       { id: 'custom', label: 'Custom (blank)', note: '', apply: {} },
     ] as { id: string; label: string; note: string; apply: Partial<Form> }[];
   }, [c.VoucherIncentive, c.RewardSink, c.RevocationVault]);
@@ -121,6 +121,10 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     : sameAddr(f.fundingSource, ZERO) ? ZERO : (sourceOptions.find((o) => sameAddr(o.value, f.fundingSource))?.value ?? ZERO);
 
   const isReward = isRewardMode(f.mode);
+  // payout modes are read by VoucherIncentive only — a RewardSink always pays the claimer
+  // (or the fixed payout recipient), so anything but Direct would be silently ignored there
+  const usesIncentive = !!c.VoucherIncentive && sameAddr(f.fundingSource, c.VoucherIncentive);
+  const payoutMode = isReward && usesIncentive ? f.payoutMode : PayoutMode.Direct;
   const warnings = useMemo(() => {
     const w: string[] = [];
     if (!f.name.trim()) w.push('Name is required');
@@ -128,7 +132,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     if (f.mintApprovalsRequired > 1 && !f.grantDaoMinter) w.push(`Needs ${f.mintApprovalsRequired} approvals but VoucherDAO won't be a minter — nobody can mint it until you grant VoucherDAO the minter role`);
     if (!isReward && f.pointsDirection === PointsDirection.Credit && sameAddr(f.fundingSource, ZERO)) w.push('A Points Credit type with no funding source credits nothing on claim');
     if (isReward && sameAddr(f.fundingSource, ZERO)) w.push('Reward types need a funding source to pay out');
-    if (isReward && f.payoutMode === PayoutMode.Routed && !isAddr(f.routeTarget)) w.push('Routed payout needs a valid route target');
+    if (payoutMode === PayoutMode.Routed && !isAddr(f.routeTarget)) w.push('Routed payout needs a valid route target');
     for (const a of [f.fundingSource, f.transferGate, f.revokeDestination, ...(isReward ? [f.payoutRecipient, ...f.approvedTokens] : [])]) {
       if (!isAddr(a)) w.push(`Not a valid address: ${a || '(empty)'}`);
     }
@@ -150,7 +154,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         const reg = ctx.read('SourceRegistry', linked);
         const checks: [string, string, string][] = [
           [DESTINATION_LISTS[0].key, f.payoutRecipient, 'Payout recipient'],
-          [DESTINATION_LISTS[1].key, f.payoutMode === PayoutMode.Routed ? f.routeTarget : ZERO, 'Route target'],
+          [DESTINATION_LISTS[1].key, payoutMode === PayoutMode.Routed ? f.routeTarget : ZERO, 'Route target'],
         ];
         for (const [key, a, label] of checks) {
           if (!isAddr(a) || sameAddr(a, ZERO)) continue;
@@ -164,7 +168,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReward, f.payoutRecipient, f.routeTarget, f.payoutMode, c.VoucherNFT, ctx.reader, ctx.revision]);
+  }, [isReward, f.payoutRecipient, f.routeTarget, payoutMode, c.VoucherNFT, ctx.reader, ctx.revision]);
 
   const [daoMints, setDaoMints] = useState<number[]>([]);
   const load = useCallback(async () => {
@@ -211,8 +215,8 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         isReward ? PointsDirection.Credit : f.pointsDirection,
         f.transferGate,
         f.revokeDestination,
-        isReward ? f.payoutMode : PayoutMode.Direct,
-        isReward && f.payoutMode === PayoutMode.Routed ? f.routeTarget : ZERO,
+        payoutMode,
+        payoutMode === PayoutMode.Routed ? f.routeTarget : ZERO,
       ]);
       const typeId = Number(eventArg(receipt, nft, 'VoucherTypeRegistered', 'typeId'));
       if (isReward) {
@@ -300,7 +304,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-txt-secondary border-b border-white/10">
-                {['#', 'Name', 'Kind', 'Funding source', 'Votes to mint', 'Transferable', 'Approved tokens', 'Minting', 'Redemption', ''].map((h) => <th key={h} className="py-2 pr-3 whitespace-nowrap">{h}</th>)}
+                {['#', 'Name', 'Gives', 'Pays from', 'Votes to mint', 'Minting', 'Claiming', ''].map((h) => <th key={h} className="py-2 pr-3 whitespace-nowrap">{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -318,12 +322,6 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                           ? <>1 vote<div className="text-txt-secondary text-[10px]">VoucherDAO · runs on propose</div></>
                           : <>1 <span className="text-txt-secondary">(direct)</span></>}
                     </td>
-                    <td className="py-2 pr-3">{t.transferable ? 'yes' : 'no'}</td>
-                    <td className="py-2 pr-3">
-                      {t.mode === VoucherMode.Points ? <span className="text-txt-secondary">n/a</span>
-                        : t.approvedTokens.length === 0 ? <span className="text-yellow-300">none — can&apos;t mint</span>
-                        : t.approvedTokens.map((a) => <div key={a}>{sameAddr(a, ZERO) ? 'Native coin' : nameOf(a)}</div>)}
-                    </td>
                     <td className="py-2 pr-3">
                       <button className={linkBtnCls} onClick={() => act(`Type ${t.id}: ${t.mintingPaused ? 'resume' : 'pause'} minting`, 'setVoucherTypeMintingPaused', [t.id, !t.mintingPaused])}>
                         {t.mintingPaused ? <Badge tone="bad">paused</Badge> : <Badge tone="good">on</Badge>}
@@ -338,8 +336,10 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                   </tr>
                   {expanded === t.id && (
                     <tr className="border-b border-white/5">
-                      <td colSpan={10} className="py-3 bg-surface-tertiary/40 px-3 space-y-3">
+                      <td colSpan={8} className="py-3 bg-surface-tertiary/40 px-3 space-y-3">
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                          <div><div className="text-txt-secondary">Payout tokens</div>{t.mode === VoucherMode.Points ? 'n/a (points)' : t.approvedTokens.length === 0 ? <span className="text-yellow-300">none — can&apos;t mint</span> : t.approvedTokens.map((a) => <div key={a}>{sameAddr(a, ZERO) ? 'Native coin' : nameOf(a)}</div>)}</div>
+                          <div><div className="text-txt-secondary">Transferable</div>{t.transferable ? 'yes' : 'no'}</div>
                           <div><div className="text-txt-secondary">Gate</div>{nameOf(t.transferGate)}</div>
                           <div><div className="text-txt-secondary">Revoke destination</div>{nameOf(t.revokeDestination)}</div>
                           <div><div className="text-txt-secondary">Payout recipient</div>{nameOf(t.payoutRecipient)}</div>
@@ -371,120 +371,136 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         </div>
       </Card>
 
-      <Collapsible key={types.length ? 'has-types' : 'no-types'} title="Register a new voucher type" summary={types.length ? 'start from a preset, then adjust' : 'no types yet — start here'} defaultOpen={types.length === 0}>
+      <Collapsible key={types.length ? 'has-types' : 'no-types'} title="Create a new voucher type" summary={types.length ? 'pick what it gives, name it, choose who can mint' : 'no types yet — start here'} defaultOpen={types.length === 0}>
       <Card>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3 mb-3">
-          <Field label="Start from preset">
-            <Select value={presetId} onChange={applyPreset} options={presets.map((p) => ({ label: p.label, value: p.id }))} />
-          </Field>
-          {preset?.note && <p className="text-xs text-txt-secondary self-end pb-2">{preset.note}</p>}
+        {/* 1 — what the voucher is: a preset fills every technical setting */}
+        <h4 className="text-sm font-semibold mb-2">1. What does claiming the voucher give?</h4>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3 mb-5">
+          <Select value={presetId} onChange={applyPreset} options={presets.map((p) => ({ label: p.label, value: p.id }))} />
+          {preset?.note && <p className="text-xs text-txt-secondary self-center">{preset.note}</p>}
         </div>
-        <p className="text-xs text-txt-secondary mb-4">Needs TYPE_ADMIN_ROLE on VoucherNFT (wire step 2).</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="Name"><input className={inputCls} value={f.name} onChange={(e) => set('name', e.target.value)} /></Field>
-          <Field label="Mode">
-            <Select value={f.mode} onChange={(v) => set('mode', v)} options={[
-              { label: 'Points (credit/debit a ledger)', value: VoucherMode.Points },
-              { label: 'Reward (pay out a real asset)', value: VoucherMode.Reward },
-            ]} />
+        {/* 2 — the few things everyone sets */}
+        <h4 className="text-sm font-semibold mb-2">2. Basics</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Name" hint="Shown everywhere this type appears.">
+            <input className={inputCls} value={f.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
-          {!isReward ? (
-            <Field label="Points direction">
-              <Select value={f.pointsDirection} onChange={(v) => set('pointsDirection', v)} options={[
-                { label: 'Credit (claim adds points)', value: PointsDirection.Credit },
-                { label: 'Debit (claim removes points)', value: PointsDirection.Debit },
-              ]} />
-            </Field>
-          ) : (
-            <>
-              <Field label="Payout token standard">
-                <Select value={f.tokenStandard} onChange={(v) => set('tokenStandard', v)} options={[TokenStandard.Native, TokenStandard.ERC20].map((v) => ({ label: enumName(TokenStandard, v), value: v as number }))} />
-              </Field>
-              <Field label="Reward timing">
-                <Select value={f.rewardTiming} onChange={(v) => set('rewardTiming', v)} options={[
-                  { label: 'Immediate (paid on claim)', value: RewardTiming.Immediate },
-                  { label: 'Deferred (entitlement recorded)', value: RewardTiming.Deferred },
-                ]} />
-              </Field>
-              <Field label="Payout mode">
-                <Select value={f.payoutMode} onChange={(v) => set('payoutMode', v)} options={[
-                  { label: 'Direct (to the claimer)', value: PayoutMode.Direct },
-                  { label: 'Routed (to a route target pool)', value: PayoutMode.Routed },
-                  { label: 'External (sink moves nothing)', value: PayoutMode.External },
-                ]} />
-              </Field>
-              {f.payoutMode === PayoutMode.Routed && (
-                <Field label="Route target" hint="The pool Routed payouts go to. Must be approved under Route targets on the Wire tab first."><AddressInput value={f.routeTarget} onChange={(v) => set('routeTarget', v)} /></Field>
-              )}
-              <Field label="Payout recipient" hint="0x0 = whoever claims. Set an address to force every payout to one recipient — it must be approved under Payout recipients on the Wire tab first.">
-                <AddressInput value={f.payoutRecipient} onChange={(v) => set('payoutRecipient', v)} options={[{ label: 'Whoever claims', value: ZERO }]} />
-              </Field>
-            </>
-          )}
           <Field
-            label="Funding source (sink)"
-            hint={<>Pools listed by name. Only ones marked ✓ are approved in SourceRegistry for {isReward ? `${enumName(TokenStandard, f.tokenStandard)} rewards` : 'points'} (Wire tab). Pick &quot;Other address…&quot; to paste one.</>}
+            label={isReward ? 'Pays from (pool)' : 'Points ledger'}
+            hint={<>✓ = approved for {isReward ? `${enumName(TokenStandard, f.tokenStandard)} rewards` : 'points'}. Pools are deployed on the Fund pools tab.</>}
           >
             <Select
               value={sourceChoice}
               onChange={(v) => { if (v !== OTHER) set('fundingSource', v); setOtherSource(v === OTHER); }}
               options={[
-                { label: 'None (0x0)', value: ZERO },
+                { label: 'None', value: ZERO },
                 ...sourceOptions.map((o) => ({ label: `${o.approved === true ? '✓ ' : o.approved === false ? '✗ ' : ''}${o.label}${o.approved === false ? ' — not approved for this' : ''}`, value: o.value })),
                 { label: 'Other address…', value: OTHER },
               ]}
             />
             {sourceChoice === OTHER && (
-              <div className="mt-2"><AddressInput value={f.fundingSource} onChange={(v) => set('fundingSource', v)} placeholder="0x… funding source address" /></div>
+              <div className="mt-2"><AddressInput value={f.fundingSource} onChange={(v) => set('fundingSource', v)} placeholder="0x… pool address" /></div>
             )}
           </Field>
-          <Field label="Mint approvals required" hint="Votes a VoucherDAO proposal needs. 1 = direct minters (VoucherDAO optional, proposals execute at once); 2+ = mints go through VoucherDAO.">
-            <input className={inputCls} type="number" min={1} value={f.mintApprovalsRequired} onChange={(e) => { const v = num(e.target.value); setF((prev) => ({ ...prev, mintApprovalsRequired: v, grantDaoMinter: v > 1 ? true : prev.grantDaoMinter })); }} />
-          </Field>
-          <Field label="Redemption days" hint="Informational payout schedule (0 = none). Not enforced on-chain.">
-            <input className={inputCls} type="number" min={0} value={f.redemptionDays} onChange={(e) => set('redemptionDays', num(e.target.value))} />
-          </Field>
-          <Field label="Transfer gate"><AddressInput value={f.transferGate} onChange={(v) => set('transferGate', v)} options={gateOptions} /></Field>
-          <Field label="Revoke destination"><AddressInput value={f.revokeDestination} onChange={(v) => set('revokeDestination', v)} options={revokeOptions} /></Field>
-          <label className="flex items-center gap-2 text-sm mt-5">
-            <input type="checkbox" checked={f.transferable} onChange={(e) => set('transferable', e.target.checked)} /> Transferable
-          </label>
-        </div>
-
-        {isReward && (
-          <div className="mt-4">
-            <Field label="Approved payout tokens (added right after registering)" hint="Every Reward mint must name one of these. Native rewards use 0x0.">
+          {isReward && (
+            <Field label="Payout token(s)" hint={f.tokenStandard === TokenStandard.Native ? 'Native coin is already added.' : 'The token(s) this voucher can pay out — every mint names one of them.'}>
               <div className="flex flex-wrap gap-2 mb-2">
                 {f.approvedTokens.map((t) => (
                   <span key={t} className="bg-surface-tertiary rounded px-2 py-1 text-xs font-mono">
-                    {nameOf(t)} <button className="text-red-300 ml-1" onClick={() => set('approvedTokens', f.approvedTokens.filter((x) => x !== t))}>×</button>
+                    {sameAddr(t, ZERO) ? 'Native coin' : nameOf(t)} <button className="text-red-300 ml-1" onClick={() => set('approvedTokens', f.approvedTokens.filter((x) => x !== t))}>×</button>
                   </span>
                 ))}
+                {!f.approvedTokens.length && <span className="text-xs text-yellow-300">none yet</span>}
               </div>
               <div className="flex gap-2">
                 <AddressInput value={newToken} onChange={setNewToken} options={tokenOptions} placeholder="Token address" />
                 <button className={btnSecondaryCls} disabled={!isAddr(newToken)} onClick={() => { if (!f.approvedTokens.some((t) => sameAddr(t, newToken))) set('approvedTokens', [...f.approvedTokens, newToken]); setNewToken(''); }}>Add</button>
               </div>
             </Field>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-4 mt-4 text-sm">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={f.pauseRedemption} onChange={(e) => set('pauseRedemption', e.target.checked)} /> Pause redemption after registering</label>
-          {f.mintApprovalsRequired <= 1 && (
-            <label className="flex items-center gap-2"><input type="checkbox" checked={f.grantSelfMinter} onChange={(e) => set('grantSelfMinter', e.target.checked)} /> Make the connected wallet a minter of this type</label>
           )}
-          <label className="flex items-center gap-2" title="VoucherDAO mints for its approvers (they propose and approve). With 1 approval required, a proposal executes as soon as it is proposed.">
-            <input type="checkbox" disabled={!c.VoucherDAO} checked={f.grantDaoMinter} onChange={(e) => set('grantDaoMinter', e.target.checked)} /> Let VoucherDAO mint this type (unlimited)
+          <Field label="Votes needed to mint" hint="1 = minters mint directly. 2 or more = every mint is a VoucherDAO proposal its operators vote on.">
+            <input className={inputCls} type="number" min={1} value={f.mintApprovalsRequired} onChange={(e) => { const v = num(e.target.value); setF((prev) => ({ ...prev, mintApprovalsRequired: v, grantDaoMinter: v > 1 ? true : prev.grantDaoMinter })); }} />
+          </Field>
+        </div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3 text-sm">
+          <span className="text-xs text-txt-secondary w-full">Who can mint it</span>
+          {f.mintApprovalsRequired <= 1 && (
+            <label className="flex items-center gap-2"><input type="checkbox" checked={f.grantSelfMinter} onChange={(e) => set('grantSelfMinter', e.target.checked)} /> My wallet</label>
+          )}
+          <label className="flex items-center gap-2" title="VoucherDAO mints for its operators (they propose and approve). With 1 vote needed, a proposal mints as soon as it is proposed.">
+            <input type="checkbox" disabled={!c.VoucherDAO} checked={f.grantDaoMinter} onChange={(e) => set('grantDaoMinter', e.target.checked)} /> VoucherDAO (through proposals)
           </label>
+          <span className="text-xs text-txt-secondary">More minters can be added later on Minters &amp; roles.</span>
         </div>
 
-        {[...warnings, ...destWarnings, ...(noTokenWarning ? ['No approved tokens yet — mints will revert until one is added'] : [])].map((w) => (
+        {/* 3 — everything else, already set by the preset */}
+        <div className="mt-5">
+          <Collapsible title="Advanced options" summary="already set by the preset — change only if you need to">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Field label="Mode">
+                <Select value={f.mode} onChange={(v) => set('mode', v)} options={[
+                  { label: 'Points (credit/debit a ledger)', value: VoucherMode.Points },
+                  { label: 'Reward (pay out a real asset)', value: VoucherMode.Reward },
+                ]} />
+              </Field>
+              {!isReward ? (
+                <Field label="Points direction">
+                  <Select value={f.pointsDirection} onChange={(v) => set('pointsDirection', v)} options={[
+                    { label: 'Credit (claim adds points)', value: PointsDirection.Credit },
+                    { label: 'Debit (claim removes points)', value: PointsDirection.Debit },
+                  ]} />
+                </Field>
+              ) : (
+                <>
+                  <Field label="Payout token standard">
+                    <Select value={f.tokenStandard} onChange={(v) => set('tokenStandard', v)} options={[TokenStandard.Native, TokenStandard.ERC20].map((v) => ({ label: enumName(TokenStandard, v), value: v as number }))} />
+                  </Field>
+                  <Field label="Reward timing">
+                    <Select value={f.rewardTiming} onChange={(v) => set('rewardTiming', v)} options={[
+                      { label: 'Immediate (paid on claim)', value: RewardTiming.Immediate },
+                      { label: 'Deferred (entitlement recorded)', value: RewardTiming.Deferred },
+                    ]} />
+                  </Field>
+                  {usesIncentive ? (
+                    <Field label="Payout mode" hint="How VoucherIncentive delivers the reward.">
+                      <Select value={f.payoutMode} onChange={(v) => set('payoutMode', v)} options={[
+                        { label: 'Direct (to the claimer)', value: PayoutMode.Direct },
+                        { label: 'Routed (to a route target pool)', value: PayoutMode.Routed },
+                        { label: 'External (nothing moves; delivered elsewhere)', value: PayoutMode.External },
+                      ]} />
+                    </Field>
+                  ) : (
+                    <Field label="Payout mode" hint="Routed / External need VoucherIncentive as the pool.">
+                      <div className="text-sm py-2">Direct — the pool pays the claimer</div>
+                    </Field>
+                  )}
+                  {payoutMode === PayoutMode.Routed && (
+                    <Field label="Route target" hint="Must be approved under Route targets (Wire → Advanced)."><AddressInput value={f.routeTarget} onChange={(v) => set('routeTarget', v)} /></Field>
+                  )}
+                  <Field label="Payout recipient" hint="Whoever claims, or one fixed address (must be approved under Payout recipients, Wire → Advanced).">
+                    <AddressInput value={f.payoutRecipient} onChange={(v) => set('payoutRecipient', v)} options={[{ label: 'Whoever claims', value: ZERO }]} />
+                  </Field>
+                </>
+              )}
+              <Field label="Redemption days" hint="Informational only (0 = none).">
+                <input className={inputCls} type="number" min={0} value={f.redemptionDays} onChange={(e) => set('redemptionDays', num(e.target.value))} />
+              </Field>
+              <Field label="Transfer gate"><AddressInput value={f.transferGate} onChange={(v) => set('transferGate', v)} options={gateOptions} /></Field>
+              <Field label="Revoked vouchers go to"><AddressInput value={f.revokeDestination} onChange={(v) => set('revokeDestination', v)} options={revokeOptions} /></Field>
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={f.transferable} onChange={(e) => set('transferable', e.target.checked)} /> Holders can transfer it</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={f.pauseRedemption} onChange={(e) => set('pauseRedemption', e.target.checked)} /> Start with claiming paused</label>
+            </div>
+          </Collapsible>
+        </div>
+
+        {[...warnings, ...destWarnings, ...(noTokenWarning ? ['No payout token yet — mints will fail until one is added'] : [])].map((w) => (
           <p key={w} className="text-xs text-yellow-300 mt-2">⚠ {w}</p>
         ))}
         <div className="flex items-center gap-3 mt-4">
-          <button className={btnCls} disabled={busy || warnings.length > 0} onClick={register}>{busy && progress ? 'Working…' : 'Register type'}</button>
+          <button className={btnCls} disabled={busy || warnings.length > 0} onClick={register}>{busy && progress ? 'Working…' : 'Create voucher type'}</button>
           {progress && <span className="text-xs text-txt-secondary">{progress}</span>}
         </div>
         {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}

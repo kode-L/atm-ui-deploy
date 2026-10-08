@@ -133,8 +133,8 @@ export const WIRE_GAS = 1_101_887;
 export const WIRE_STEPS: WireStep[] = [
   {
     id: 'registry',
-    title: 'Connect VoucherNFT to SourceRegistry',
-    why: "Turns on fundingSource validation: registerVoucherType() will reject any sink the registry hasn't approved.",
+    title: 'Link the voucher contract to the pool registry',
+    why: 'After this, a voucher type can only pay from pools the registry has approved.',
     action: 'Link registry',
     fields: [
       F.nft,
@@ -145,17 +145,17 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'typeAdmin',
-    title: 'Grant TYPE_ADMIN_ROLE',
-    why: 'Needed to register voucher types, manage approved tokens, and grant per-type minter roles.',
+    title: 'Let your wallet manage voucher types',
+    why: 'Gives your wallet the operator role on VoucherNFT: create and edit voucher types and choose who can mint them.',
     action: 'Grant role',
-    fields: [F.nft, F.wallet('TYPE_ADMIN_ROLE')],
-    check: async (c, v) => done(await c.read('VoucherNFT', v.nft).hasRole(role('TYPE_ADMIN_ROLE'), v.account)),
-    run: (c, v) => c.send('Grant TYPE_ADMIN_ROLE', c.write('VoucherNFT', v.nft), 'grantRole', [role('TYPE_ADMIN_ROLE'), v.account]),
+    fields: [F.nft, F.wallet('OPERATOR_ROLE (registers / configures voucher types and grants minters)')],
+    check: async (c, v) => done(await c.read('VoucherNFT', v.nft).hasRole(role('OPERATOR_ROLE'), v.account)),
+    run: (c, v) => c.send('Grant OPERATOR_ROLE', c.write('VoucherNFT', v.nft), 'grantRole', [role('OPERATOR_ROLE'), v.account]),
   },
   {
     id: 'revokeDao',
-    title: 'Grant REVOKE_ROLE on VoucherNFT to VoucherDAO',
-    why: "Lets revocations go through VoucherDAO's proposeRevoke / approveRevoke quorum.",
+    title: 'Let VoucherDAO revoke vouchers by vote',
+    why: 'Needed only if vouchers should be revocable through a VoucherDAO vote.',
     action: 'Grant role',
     fields: [
       F.nft,
@@ -166,8 +166,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'rewardSink',
-    title: 'Approve RewardSink in the registry for the token standards you pay out',
-    why: 'A Reward-mode type can only use RewardSink as its fundingSource for standards approved here. Pick only what you need now — you can come back and approve more later. One tx per selected standard.',
+    title: 'Approve the main pool for the tokens it pays out',
+    why: 'Tick what the main pool pays out (Native, ERC20). You can approve more later; one transaction per choice.',
     action: 'Approve selected',
     fields: [
       F.registryTarget,
@@ -201,8 +201,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'pointsSink',
-    title: 'Approve VoucherIncentive as a points sink',
-    why: 'Points-mode Credit types use VoucherIncentive as their fundingSource (the globalPoints ledger).',
+    title: 'Approve VoucherIncentive for points',
+    why: 'Lets Points voucher types keep their points balances on VoucherIncentive.',
     action: 'Approve',
     fields: [
       F.registryTarget,
@@ -213,8 +213,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'incentiveErc20',
-    title: 'Approve VoucherIncentive as an ERC20 reward sink',
-    why: 'Only needed for Deferred ERC20 reward types (non-custodial entitlements recorded by VoucherIncentive).',
+    title: 'Approve VoucherIncentive for ERC20 rewards',
+    why: 'Only needed for deferred / routed ERC20 rewards paid through VoucherIncentive.',
     action: 'Approve',
     optional: true,
     fields: [
@@ -226,8 +226,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'revokeAdmin',
-    title: 'Grant REVOKE_ROLE (direct revoke)',
-    why: 'Optional: lets this wallet revoke immediately, without a VoucherDAO vote. Both can coexist.',
+    title: 'Let your wallet revoke vouchers directly',
+    why: 'Lets this wallet revoke a voucher immediately, without a VoucherDAO vote.',
     action: 'Grant role',
     optional: true,
     fields: [F.nft, F.wallet('REVOKE_ROLE (can revoke vouchers directly)')],

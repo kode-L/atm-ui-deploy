@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import {
-  ARTIFACTS, Book, ContractKey, ZERO, emptyBook, loadBook, saveBook, decodeVoucherError, sameAddr, shortAddr,
+  ARTIFACTS, Book, ContractKey, PoolKind, ZERO, emptyBook, poolKind, loadBook, saveBook, decodeVoucherError, sameAddr, shortAddr,
 } from '@/lib/contracts/voucher-v2';
 
 export interface TxLogEntry {
@@ -63,9 +63,9 @@ interface VoucherV2Ctx {
   setPendingImpl: (key: ContractKey, address: string | null) => void;
   deployPlain: (key: ContractKey, ctorArgs: any[]) => Promise<string>;
   // another RewardSink pool (impl + proxy + setName), kept in book.extraSinks — never replaces the main one
-  deployExtraSink: (name: string, admin: string, impl?: string, accessControl?: string) => Promise<string>;
-  // a RewardSink implementation for an extra pool — doesn't touch the main RewardSink's pending impl
-  deployExtraSinkImpl: () => Promise<string>;
+  deployExtraSink: (name: string, admin: string, impl?: string, accessControl?: string, kind?: PoolKind) => Promise<string>;
+  // an implementation for an extra pool — doesn't touch the main contract's pending impl
+  deployExtraSinkImpl: (kind?: PoolKind) => Promise<string>;
   // friendly label for a known address: contract/token name from the book, else shortened
   nameOf: (address: string) => string;
   txLog: TxLogEntry[];
@@ -274,25 +274,26 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     return proxy;
   }, [deployRaw, deployImpl, setPendingImpl, updateBook, reader]);
 
-  const deployExtraSinkImpl = useCallback(() => deployRaw('RewardSink', [], 'Deploy RewardSink implementation (extra pool)'), [deployRaw]);
+  const deployExtraSinkImpl = useCallback((kind: PoolKind = 'RewardSink') => deployRaw(kind, [], `Deploy ${kind} implementation (extra pool)`), [deployRaw]);
 
   // impl: an existing RewardSink implementation (auto-filled / pasted) — many pools can share one
-  const deployExtraSink = useCallback(async (name: string, admin: string, implIn?: string, accessControl?: string) => {
+  // RewardSink and VoucherIncentive share initialize(admin, nft, name, accessControl)
+  const deployExtraSink = useCallback(async (name: string, admin: string, implIn?: string, accessControl?: string, kind: PoolKind = 'RewardSink') => {
     const nft = bookRef.current.contracts.VoucherNFT;
-    if (!nft) throw new Error('Deploy VoucherNFT first — every RewardSink is tied to one VoucherNFT');
+    if (!nft) throw new Error(`Deploy VoucherNFT first — every ${kind} is tied to one VoucherNFT`);
     let impl = implIn ? ethers.utils.getAddress(implIn.trim()) : '';
     if (impl) {
       const code = reader ? await reader.getCode(impl) : '0x';
       if (!code || code === '0x') throw new Error(`No contract code at implementation ${impl} on this network`);
     } else {
-      impl = await deployRaw('RewardSink', [], `Deploy RewardSink "${name}" implementation`);
+      impl = await deployRaw(kind, [], `Deploy ${kind} "${name}" implementation`);
     }
     // name + access control (blank = off) go straight into initialize(admin, nft, name, accessControl)
     const acl = accessControl && accessControl.trim() ? ethers.utils.getAddress(accessControl.trim()) : ZERO;
     if (acl !== ZERO && reader && (await reader.getCode(acl)) === '0x') throw new Error(`No contract code at access control ${acl} on this network`);
-    const initData = new ethers.utils.Interface(ARTIFACTS.RewardSink.abi).encodeFunctionData('initialize', [admin, nft, name, acl]);
-    const proxy = await deployRaw('ERC1967Proxy', [impl, initData], `Deploy RewardSink "${name}" proxy`);
-    updateBook((b) => ({ ...b, extraSinks: [...(b.extraSinks || []), { name, address: proxy, implementation: impl }] }));
+    const initData = new ethers.utils.Interface(ARTIFACTS[kind].abi).encodeFunctionData('initialize', [admin, nft, name, acl]);
+    const proxy = await deployRaw('ERC1967Proxy', [impl, initData], `Deploy ${kind} "${name}" proxy`);
+    updateBook((b) => ({ ...b, extraSinks: [...(b.extraSinks || []), { name, address: proxy, implementation: impl, kind }] }));
     return proxy;
   }, [deployRaw, updateBook, reader]);
 
@@ -305,7 +306,7 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
   const nameOf = useCallback((a: string) => {
     if (!a || sameAddr(a, ZERO)) return 'none';
     for (const [k, v] of Object.entries(book.contracts)) if (sameAddr(v, a)) return k;
-    for (const x of book.extraSinks || []) if (sameAddr(x.address, a)) return `RewardSink "${x.name}"`;
+    for (const x of book.extraSinks || []) if (sameAddr(x.address, a)) return `${poolKind(x)} "${x.name}"`;
     for (const [k, v] of Object.entries(book.tokens)) if (sameAddr(v, a)) return k;
     if (sameAddr(a, address)) return 'connected wallet';
     return shortAddr(a);

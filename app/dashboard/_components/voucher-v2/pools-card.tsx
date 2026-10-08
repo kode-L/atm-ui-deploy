@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
-import { ContractKey, ZERO, isAddr, sameAddr } from '@/lib/contracts/voucher-v2';
+import { ContractKey, ZERO, isAddr, poolKind, sameAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import { AddressInput, AddressOption, Field, btnDangerCls, btnSecondaryCls, inputCls } from './ui';
 
@@ -33,7 +33,7 @@ export default function PoolsCard() {
 
   const present: Target[] = [
     ...TARGETS.filter((t) => ctx.book.contracts[t.key]).map((t) => ({ ...t, id: t.key, address: ctx.book.contracts[t.key] as string, title: t.key })),
-    ...(ctx.book.extraSinks || []).map((x) => ({ id: x.address, key: 'RewardSink' as ContractKey, address: x.address, title: `RewardSink "${x.name}"`, accessControl: true, nameHint: 'e.g. "USDT payouts"' })),
+    ...(ctx.book.extraSinks || []).map((x) => ({ id: x.address, key: poolKind(x) as ContractKey, address: x.address, title: `${poolKind(x)} "${x.name}"`, accessControl: true, nameHint: 'e.g. "USDT payouts"' })),
   ];
 
   const load = useCallback(async () => {

@@ -72,12 +72,17 @@ export interface Book {
   pendingImpl: Partial<Record<ContractKey, string>>;
   tokens: Record<string, string>;
   // extra RewardSink pools beyond the main one (contracts.RewardSink) — any number, each a proxy
-  extraSinks: { name: string; address: string; implementation: string }[];
+  // kind: which pool contract it is (older books have none = RewardSink)
+  extraSinks: { name: string; address: string; implementation: string; kind?: PoolKind }[];
   deployedAt: string | null;
   // lastChangeAt > lastExportAt means addresses exist only in this browser — nag to export
   lastChangeAt?: string;
   lastExportAt?: string;
 }
+
+/** Pool contracts that can be deployed more than once. */
+export type PoolKind = 'RewardSink' | 'VoucherIncentive';
+export const poolKind = (x: { kind?: PoolKind }): PoolKind => x.kind || 'RewardSink';
 
 export const emptyBook = (): Book => ({ contracts: {}, implementations: {}, pendingImpl: {}, tokens: {}, extraSinks: [], deployedAt: null });
 const bookKey = (chainId: number) => `dg_voucherV2Book:${chainId}`;
@@ -127,7 +132,7 @@ export function parseBookImport(text: string, chainId: number): Book {
   Object.assign(book.tokens, parsed.tokens || {});
   if (Array.isArray(parsed.extraSinks)) {
     book.extraSinks = parsed.extraSinks.filter((x: any) => x && ethers.utils.isAddress(x.address))
-      .map((x: any) => ({ name: String(x.name || ''), address: ethers.utils.getAddress(x.address), implementation: x.implementation || '' }));
+      .map((x: any) => ({ name: String(x.name || ''), address: ethers.utils.getAddress(x.address), implementation: x.implementation || '', kind: x.kind === 'VoucherIncentive' ? 'VoucherIncentive' as const : 'RewardSink' as const }));
   }
   Object.assign(book.implementations, migrateKeys(parsed.implementations));
   book.deployedAt = parsed.deployedAt || null;
@@ -160,6 +165,14 @@ export function decodeVoucherError(e: any): string {
       if (parsed.name === 'AccessControlUnauthorizedAccount') {
         return `Access denied: ${shortAddr(parsed.args[0])} is missing role ${roleName(parsed.args[1])}`;
       }
+      const friendly: Record<string, string> = {
+        DailyCapExceeded: "this wallet's daily cap for this type is used up (minter cap on VoucherNFT, or the operator's proposal cap on VoucherDAO) — wait for the window to reset or raise the cap on Minters & roles",
+        InsufficientPoints: "the holder doesn't have enough points for this debit",
+        NativeTransferFailed: 'the native coin payout could not be sent to the recipient',
+        FeeOnTransferNotSupported: 'this token takes a fee on transfer — the pool does not support such tokens',
+        NFTNotInInventory: "the pool doesn't hold that NFT",
+      };
+      if (friendly[parsed.name]) return `Reverted: ${parsed.name} — ${friendly[parsed.name]}`;
       if (parsed.name === 'AutoExecuteOutOfGas') {
         return 'Reverted: AutoExecuteOutOfGas — not enough gas to run the proposal once quorum was reached. Send it again with a higher gas limit.';
       }
@@ -177,8 +190,8 @@ export function decodeVoucherError(e: any): string {
 }
 
 const KNOWN_ROLES = [
-  'TYPE_ADMIN_ROLE', 'REVOKE_ROLE', 'REGISTRY_ADMIN_ROLE', 'ALLOWLIST_ADMIN_ROLE',
-  'SETTLER_ROLE', 'SETTLER_PROPOSER_ROLE', 'SETTLER_APPROVER_ROLE',
+  // v0.54: one OPERATOR_ROLE (same hash) on VoucherNFT, SourceRegistry, AllowlistTransferGate, VoucherIncentive
+  'OPERATOR_ROLE', 'REVOKE_ROLE', 'SETTLER_ROLE',
 ];
 function roleName(hash: string) {
   if (hash === DEFAULT_ADMIN_ROLE) return 'DEFAULT_ADMIN_ROLE';

@@ -70,17 +70,17 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
         if (t.mintApprovalsRequired > 1) {
           if (!c.VoucherDAO || !minters.some((m) => sameAddr(m, c.VoucherDAO))) add('bad', `needs ${t.mintApprovalsRequired} approvals but VoucherDAO cannot mint it.`, 'roles');
           if (dao) {
-            // approvers both propose and approve; the proposer's own proposal counts as one approval
-            const apprs: string[] = await dao.getApproversOf(t.id);
-            if (apprs.length < t.mintApprovalsRequired) add('warn', `${apprs.length} DAO approver(s) — it needs ${t.mintApprovalsRequired} approvals, so at least ${t.mintApprovalsRequired} approvers.`, 'roles');
+            // operators both propose and approve; the proposer's own proposal counts as one approval
+            const apprs: string[] = await dao.getOperatorsOf(t.id);
+            if (apprs.length < t.mintApprovalsRequired) add('warn', `${apprs.length} DAO operator(s) — it needs ${t.mintApprovalsRequired} approvals, so at least ${t.mintApprovalsRequired} operators.`, 'roles');
           }
           const direct = minters.filter((m) => !sameAddr(m, c.VoucherDAO));
           if (direct.length) add('warn', `${direct.length} direct minter(s) besides VoucherDAO — they can mint without a vote.`, 'roles');
         } else if (!minters.length) {
           add('warn', 'no minters — nobody can mint it.', 'roles');
         } else if (dao && c.VoucherDAO && minters.some((m) => sameAddr(m, c.VoucherDAO))) {
-          // 1-approval type the DAO also mints: a proposal executes on propose, so one approver is enough
-          if (!(await dao.getApproversOf(t.id)).length) add('warn', 'VoucherDAO can mint it but it has no DAO approvers to propose.', 'roles');
+          // 1-approval type the DAO also mints: a proposal executes on propose, so one operator is enough
+          if (!(await dao.getOperatorsOf(t.id)).length) add('warn', 'VoucherDAO can mint it but it has no DAO operators to propose.', 'roles');
         }
 
         if (reg && reward && !sameAddr(t.payoutRecipient, ZERO)) {

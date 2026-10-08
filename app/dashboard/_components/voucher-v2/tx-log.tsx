@@ -5,7 +5,7 @@ import Card from '@/components/card';
 import { NETWORKS, getExplorerAddressUrl, getExplorerTxUrl } from '@/lib/contracts/config';
 import { shortAddr } from '@/lib/contracts/voucher-v2';
 import { TxLogEntry, useVoucherV2 } from './context';
-import { Badge, btnDangerCls, btnSecondaryCls } from './ui';
+import { Badge, Collapsible, btnDangerCls, btnSecondaryCls } from './ui';
 
 const fmtTime = (iso: string) => {
   const d = new Date(iso);
@@ -75,7 +75,8 @@ export default function TxLogCard() {
   );
 
   return (
-    <Card title="Transactions">
+    <Collapsible title="Transactions" summary={`${ctx.txLog.length} saved for ${networkName} · hashes, deployed addresses, copy / export`}>
+    <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <p className="text-xs text-txt-secondary">
           {ctx.txLog.length} saved in this browser for {networkName}. Export them for a safe copy — clearing site data deletes them.
@@ -121,5 +122,6 @@ export default function TxLogCard() {
         })}
       </div>
     </Card>
+    </Collapsible>
   );
 }

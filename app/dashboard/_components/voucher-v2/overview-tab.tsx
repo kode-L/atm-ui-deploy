@@ -9,13 +9,14 @@ import { useVoucherV2 } from './context';
 import { DEPLOY_STEPS, WIRE_STEPS, checkDeployStep, checkWireStep } from './steps';
 import { PreflightCard, RulesCard } from './guide';
 import HealthCard from './health-card';
+import ChecklistCard from './checklist-card';
 import { Badge, Collapsible, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 const FLOW = [
   ['Deploy', 'each contract (UUPS proxies, your wallet becomes admin), or paste an existing address below.'],
   ['Wire', 'them together: registry link, sink approvals, DAO revoke role.'],
   ['Voucher types', 'register each type (Points credit/debit, Reward native/ERC20/NFT…) and its approved payout tokens.'],
-  ['Minters & roles', 'who may mint each type (with daily caps), DAO approvers (they propose and approve).'],
+  ['Minters & roles', 'who may mint each type (with daily caps), DAO operators (they propose and approve).'],
   ['Fund pools', 'top up RewardSink with the assets Reward types pay out.'],
 ];
 
@@ -105,29 +106,14 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
     setTokAddr('');
   };
 
-  const requiredWire = WIRE_STEPS.filter((s) => !s.optional).length;
   const hasContracts = Object.keys(ctx.book.contracts).length > 0;
-  const tiles: [string, string, string][] = [
-    ['deploy', 'Contracts deployed', `${deployDone} / ${DEPLOY_STEPS.length}`],
-    ['wire', 'Required wiring done', `${wireDone} / ${requiredWire}`],
-    ['types', 'Voucher types', typeCount === null ? '—' : String(typeCount)],
-  ];
 
   return (
     <div className="space-y-4">
-      {/* nothing deployed yet: the preflight checklist is the useful first thing to see */}
+      <ChecklistCard onGo={onGo} />
+      {/* nothing deployed yet: the preflight checks are the useful next thing to see */}
       {!hasContracts && <PreflightCard onExport={doExport} onGo={onGo} />}
       {hasContracts && <HealthCard onGo={onGo} />}
-      <Card title="Setup progress">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {tiles.map(([tab, label, value]) => (
-            <button key={tab} onClick={() => onGo(tab)} className="text-left bg-surface-tertiary rounded-lg p-3 hover:ring-1 hover:ring-accent transition">
-              <div className="text-xs text-txt-secondary">{label}</div>
-              <div className="text-xl font-semibold mt-1">{value}</div>
-            </button>
-          ))}
-        </div>
-      </Card>
 
       {hasContracts && (
         <Collapsible title="Preflight checks" summary="network, admin wallet, gas balance">

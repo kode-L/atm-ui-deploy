@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { ContractKey, VoucherMode, ZERO, sameAddr, shortAddr } from '@/lib/contracts/voucher-v2';
+import { ContractKey, VoucherMode, ZERO, poolKind, sameAddr, shortAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 
 export interface SourceOption {
@@ -54,7 +54,8 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
       // approval only matters (and is only shown) once VoucherNFT enforces the registry
       const showApproval = isLinked && mode !== null;
       const all: string[] = [];
-      const extras = (ctx.book.extraSinks || []).map((x) => x.address);
+      const extraList = ctx.book.extraSinks || [];
+      const extras = extraList.map((x) => x.address);
       for (const a of [...approved, ...BOOK_SINKS.map((k) => c[k]).filter(Boolean) as string[], ...extras]) {
         if (!all.some((x) => sameAddr(x, a))) all.push(a);
       }
@@ -63,7 +64,7 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
           new ethers.Contract(a, NAME_ABI, ctx.reader!).name().catch(() => ''),
           reg ? reg.labelOf(a).catch(() => '') : Promise.resolve(''),
         ]);
-        const bookKey = BOOK_SINKS.find((k) => sameAddr(c[k], a)) || (extras.some((x) => sameAddr(x, a)) ? 'RewardSink (extra)' : undefined);
+        const bookKey = BOOK_SINKS.find((k) => sameAddr(c[k], a)) || (() => { const x = extraList.find((e) => sameAddr(e.address, a)); return x ? `${poolKind(x)} (extra)` : undefined; })();
         const name = label || onChain;
         // skip the contract name when the pool's own name already is it ("VoucherIncentive")
         const parts = [name, bookKey && bookKey !== name ? bookKey : '', shortAddr(a)].filter(Boolean);

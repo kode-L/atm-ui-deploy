@@ -50,8 +50,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const daoTypes = types.filter((t) => t.mintApprovalsRequired > 1 || daoMinterOf.includes(t.id));
   const typeId = daoTypes.some((t) => t.id === ctx.typeId) ? ctx.typeId : daoTypes[0]?.id ?? -1;
   const setTypeId = ctx.setTypeId;
-  // v0.53: one approver group per type — approvers both propose and approve
-  const [roles, setRoles] = useState({ approver: false, admin: false, daoMinter: false, approvers: 0 });
+  // v0.53: one operator group per type — operators both propose and approve
+  const [roles, setRoles] = useState({ operator: false, admin: false, daoMinter: false, operators: 0 });
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
   const [kind, setKind] = useState<Kind>('mint');
@@ -127,12 +127,12 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
     (async () => {
       const dao = ctx.read('VoucherDAO');
       const nft = ctx.read('VoucherNFT');
-      const ar = await dao.typeApproverRole(typeId);
-      const [approver, admin, daoMinter, approvers] = await Promise.all([
+      const ar = await dao.typeOperatorRole(typeId);
+      const [operator, admin, daoMinter, operators] = await Promise.all([
         dao.hasRole(ar, ctx.account), dao.hasRole(DEFAULT_ADMIN_ROLE, ctx.account),
-        nft.hasRole(await nft.typeMinterRole(typeId), c.VoucherDAO), dao.getApproversOf(typeId),
+        nft.hasRole(await nft.typeMinterRole(typeId), c.VoucherDAO), dao.getOperatorsOf(typeId),
       ]);
-      setRoles({ approver, admin, daoMinter, approvers: approvers.length });
+      setRoles({ operator, admin, daoMinter, operators: operators.length });
     })().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, c.VoucherDAO, c.VoucherNFT, ctx.reader, ctx.account, ctx.revision]);
@@ -233,11 +233,11 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
           {selected && (
             <div className="text-xs space-y-1 self-end pb-1">
               <div>
-                Needs <b>{quorum}</b> approval{quorum === 1 ? '' : 's'} · {roles.approvers} approver(s) ·{' '}
-                You: {[roles.approver && 'approver', roles.admin && 'DAO admin'].filter(Boolean).join(', ') || 'no role'}
+                Needs <b>{quorum}</b> approval{quorum === 1 ? '' : 's'} · {roles.operators} operator(s) ·{' '}
+                You: {[roles.operator && 'operator', roles.admin && 'DAO admin'].filter(Boolean).join(', ') || 'no role'}
               </div>
               {!roles.daoMinter && <p className="text-red-300">⚠ VoucherDAO can&apos;t mint this type — reaching quorum will fail. <button className={linkBtnCls} onClick={() => onGo('roles')}>Grant it on Roles</button></p>}
-              {roles.approvers < quorum && <p className="text-yellow-300">⚠ Fewer approvers than the approvals needed (the proposer counts as one) — add some on the <button className={linkBtnCls} onClick={() => onGo('roles')}>Roles tab</button>.</p>}
+              {roles.operators < quorum && <p className="text-yellow-300">⚠ Fewer operators than the approvals needed (the proposer counts as one) — add some on the <button className={linkBtnCls} onClick={() => onGo('roles')}>Roles tab</button>.</p>}
             </div>
           )}
         </div>
@@ -288,12 +288,12 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
                 <Field label="Voucher expiry (optional)"><input type="datetime-local" className={inputCls} value={form.expiry} onChange={(e) => set('expiry', e.target.value)} /></Field>
               </>
             )}
-            <Field label="Voting window (hours)" hint="How long approvers have to vote: 1 to 720 hours (30 days).">
+            <Field label="Voting window (hours)" hint="How long operators have to vote: 1 to 720 hours (30 days).">
               <input className={inputCls} value={form.hours} onChange={(e) => set('hours', e.target.value)} />
             </Field>
           </div>
-          <button className={`${btnCls} mt-4`} disabled={busy || !roles.approver} onClick={propose}>{busy ? 'Sending…' : 'Propose'}</button>
-          {!roles.approver && <span className="text-xs text-txt-secondary ml-3">Only this type&apos;s approvers can propose — add your wallet on Minters &amp; roles.</span>}
+          <button className={`${btnCls} mt-4`} disabled={busy || !roles.operator} onClick={propose}>{busy ? 'Sending…' : 'Propose'}</button>
+          {!roles.operator && <span className="text-xs text-txt-secondary ml-3">Only this type&apos;s operators can propose — add your wallet on Minters &amp; roles.</span>}
         </Card>
       )}
 

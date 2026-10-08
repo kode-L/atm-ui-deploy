@@ -75,7 +75,7 @@ Press **Run all required**. The steps, all sent by the admin wallet:
 | Step | Why |
 |---|---|
 | VoucherNFT → SourceRegistry | Turns on funding-source validation |
-| TYPE_ADMIN_ROLE → admin wallet | Needed to register types / grant minters |
+| OPERATOR_ROLE (VoucherNFT) → admin wallet | Needed to register / configure types and grant minters |
 | REVOKE_ROLE → VoucherDAO | Enables governed revokes |
 | Approve RewardSink ×4 standards | Reward types can use RewardSink |
 | Approve VoucherIncentive (points) | Points types can use VoucherIncentive |

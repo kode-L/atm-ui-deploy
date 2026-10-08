@@ -5,6 +5,7 @@ import { settledRead } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import DestinationsCard from './destinations-card';
 import PoolsCard from './pools-card';
+import { OPEN_ADVANCED_KEY } from './extra-sinks-card';
 import { WIRE_STEPS, WireStep, StepResult, checkWireStep, wirePrefill } from './steps';
 import { Collapsible, Field, NavButtons, StepCard, StepStatus, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 import { isAddr, sameAddr } from '@/lib/contracts/voucher-v2';
@@ -13,6 +14,16 @@ type Check = StepResult | 'checking';
 
 export default function WireTab({ onGo }: { onGo: (t: string) => void }) {
   const ctx = useVoucherV2();
+  // opened expanded when arriving from a pool's "Change access control" link (Fund pools tab)
+  const [openAdvanced] = useState(() => {
+    try {
+      const v = sessionStorage.getItem(OPEN_ADVANCED_KEY) === '1';
+      sessionStorage.removeItem(OPEN_ADVANCED_KEY);
+      return v;
+    } catch {
+      return false;
+    }
+  });
   const [checks, setChecks] = useState<Record<string, Check>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -195,7 +206,7 @@ export default function WireTab({ onGo }: { onGo: (t: string) => void }) {
         );
       })}
 
-      <Collapsible title="Advanced (optional)" summary="payout allowlists · pool names · access control">
+      <Collapsible title="Advanced (optional)" summary="payout allowlists · pool names · access control" defaultOpen={openAdvanced}>
         <DestinationsCard />
         <PoolsCard />
       </Collapsible>
