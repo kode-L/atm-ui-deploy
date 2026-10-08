@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useWeb3 } from '@/lib/contracts/use-web3';
-import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp } from 'lucide-react';
+import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp, Layers } from 'lucide-react';
 import DeploySection from './_components/deploy-section';
 import HubSection from './_components/hub-section';
 import TokenSection from './_components/token-section';
@@ -16,6 +16,7 @@ import SessionExplorer from './_components/session-explorer';
 import TokenVoidSection from './_components/token-void-section';
 import RewardEligibilityRegistrySection from './_components/reward-eligibility-registry-section';
 import ATMVoucherSection from './_components/atm-voucher-section';
+import VoucherV2Section from './_components/voucher-v2-section';
 import ContributionPoolSection from './_components/contribution-pool-section';
 import RgstSection from './_components/rgst-section';
 
@@ -42,6 +43,9 @@ const TABS = [
   // Standalone contract with its own admin/minter role model, enforced on-chain and
   // reflected in the tab's own UI — not gated by GameHub walletRole.
   { id: 'atm-vouchers', label: 'ATM Vouchers', icon: <Ticket className="w-4 h-4" />, adminOnly: false },
+  // Step-by-step deploy + configuration of the voucher-repo system (VoucherNFT, VoucherDAO, sinks,
+  // registry, VoucherTransfer) — its own admin roles, enforced on-chain, not gated by GameHub walletRole.
+  { id: 'voucher-v2', label: 'Voucher V2', icon: <Layers className="w-4 h-4" />, adminOnly: false },
   // Standalone contract with its own admin/operator role model (operators propose/approve,
   // anyone contributes) — not gated by GameHub walletRole.
   { id: 'contribution-pool', label: 'Contribution Pool', icon: <PiggyBank className="w-4 h-4" />, adminOnly: false },
@@ -160,6 +164,7 @@ export default function DashboardPage() {
         {activeTab === 'void' && <TokenVoidSection />}
         {activeTab === 'reward-eligibility-registry' && <RewardEligibilityRegistrySection />}
         {activeTab === 'atm-vouchers' && <ATMVoucherSection />}
+        {activeTab === 'voucher-v2' && <VoucherV2Section />}
         {activeTab === 'contribution-pool' && <ContributionPoolSection />}
         {activeTab === 'rgst' && <RgstSection />}
       </div>
