@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { isAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
-import { Field, btnDangerCls, btnSecondaryCls, linkBtnCls } from './ui';
+import { Collapsible, ContractTag, Field, btnDangerCls, btnSecondaryCls, linkBtnCls } from './ui';
 
 // SourceRegistry keeps one allowlist per key; VoucherNFT checks a type's fixed
 // payoutRecipient and a Routed type's routeTarget against their own list.
@@ -23,7 +23,8 @@ export const DESTINATION_LISTS = [
 
 const parseList = (text: string) => text.split(/[\s,]+/).map((a) => a.trim()).filter(Boolean);
 
-export default function DestinationsCard() {
+// only: show just one list (by key), without the card wrapper — used inside the Allowlists card
+export default function DestinationsCard({ only }: { only?: string } = {}) {
   const ctx = useVoucherV2();
   const registry = ctx.book.contracts.SourceRegistry;
   const [members, setMembers] = useState<Record<string, string[]>>({});
@@ -99,31 +100,17 @@ export default function DestinationsCard() {
     );
   }
 
-  return (
-    <Card title="Payout destination allowlists">
-      <p className="text-xs text-txt-secondary mb-3">
-        Once VoucherNFT is linked to the registry (step 1), a type can only use a fixed payout recipient or a route target that&apos;s approved here.
-        Approve before registering or editing such a type. Removing an address later doesn&apos;t change types already using it.
-      </p>
+  const lists = DESTINATION_LISTS.filter((l) => !only || l.key === only);
+  const body = (
+    <>
       {unsupported ? (
         <p className="text-xs text-yellow-300">⚠ This SourceRegistry has no destination lists — it was deployed before this feature. Redeploy (or upgrade) it to use them.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {DESTINATION_LISTS.map((l) => (
+        <div className={`grid grid-cols-1 ${only ? '' : 'md:grid-cols-2'} gap-4`}>
+          {lists.map((l) => (
             <div key={l.key} className="bg-surface-tertiary rounded-lg p-3 space-y-2">
               <h4 className="text-sm font-semibold">{l.title} <span className="text-txt-secondary font-normal">({members[l.key]?.length ?? '…'})</span></h4>
               <p className="text-[11px] text-txt-secondary">{l.note}</p>
-              <div className="space-y-1">
-                {(members[l.key] || []).map((a) => (
-                  <div key={a} className="flex items-center gap-2 text-xs">
-                    <span className="font-mono break-all flex-1">{a}</span>
-                    <span className="text-txt-primary">{labels[a] || (ctx.nameOf(a).startsWith('0x') ? '' : ctx.nameOf(a))}</span>
-                    <button className={linkBtnCls} disabled={busy} onClick={() => editLabel(a)}>{labels[a] ? 'Rename' : 'Label'}</button>
-                    <button className={linkBtnCls} disabled={busy} onClick={() => update(l, [a], false)}>Remove</button>
-                  </div>
-                ))}
-                {members[l.key]?.length === 0 && <p className="text-xs text-txt-secondary">None approved yet.</p>}
-              </div>
               <Field label="Add addresses" hint="One or many — separated by commas, spaces or new lines. Many addresses go in one transaction.">
                 <textarea
                   className="w-full bg-surface-secondary rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-accent"
@@ -137,11 +124,36 @@ export default function DestinationsCard() {
                 <button className={btnSecondaryCls} disabled={busy} onClick={() => update(l, parseList(input[l.key] || ''), true)}>Approve</button>
                 <button className={btnDangerCls} disabled={busy} onClick={() => update(l, parseList(input[l.key] || ''), false)}>Remove listed</button>
               </div>
+              <Collapsible title={`Approved (${members[l.key]?.length ?? '…'})`} summary="view, label or remove">
+              <div className="space-y-1">
+                {(members[l.key] || []).map((a) => (
+                  <div key={a} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono break-all flex-1">{a}</span>
+                    <span className="text-txt-primary">{labels[a] || (ctx.nameOf(a).startsWith('0x') ? '' : ctx.nameOf(a))}</span>
+                    <button className={linkBtnCls} disabled={busy} onClick={() => editLabel(a)}>{labels[a] ? 'Rename' : 'Label'}</button>
+                    <button className={linkBtnCls} disabled={busy} onClick={() => update(l, [a], false)}>Remove</button>
+                  </div>
+                ))}
+                {members[l.key]?.length === 0 && <p className="text-xs text-txt-secondary">None approved yet.</p>}
+              </div>
+              </Collapsible>
             </div>
           ))}
         </div>
       )}
       {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
+    </>
+  );
+  if (only) return body;
+
+  return (
+    <Card title="Payout destination allowlists">
+      <ContractTag contract="SourceRegistry" methods={['setDestinationApproved', 'setDestinationsApproved', 'setLabel']} />
+      <p className="text-xs text-txt-secondary mb-3">
+        Once VoucherNFT is linked to the registry (step 1), a type can only use a fixed payout recipient or a route target that&apos;s approved here.
+        Approve before registering or editing such a type. Removing an address later doesn&apos;t change types already using it.
+      </p>
+      {body}
     </Card>
   );
 }

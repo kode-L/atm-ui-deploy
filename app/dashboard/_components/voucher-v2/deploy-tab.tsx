@@ -228,7 +228,7 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
         <button className={linkBtnCls} onClick={() => onGo('funding')}>Fund pools</button> tab.
       </p>
 
-      <NavButtons next={['wire', 'Next: wire contracts']} onGo={onGo} />
+      <NavButtons next={['nft', 'Next: VoucherNFT setup']} onGo={onGo} />
     </div>
   );
 }

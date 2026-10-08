@@ -10,6 +10,7 @@ import { DEPLOY_STEPS, WIRE_STEPS, checkDeployStep, checkWireStep } from './step
 import { PreflightCard, RulesCard } from './guide';
 import HealthCard from './health-card';
 import ChecklistCard from './checklist-card';
+import PermissionsCard from './permissions-card';
 import { Badge, Collapsible, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 const FLOW = [
@@ -115,6 +116,11 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
       {!hasContracts && <PreflightCard onExport={doExport} onGo={onGo} />}
       {hasContracts && <HealthCard onGo={onGo} />}
 
+      {hasContracts && (
+        <Collapsible title="Who can do what" summary="every minter and DAO operator, per voucher type">
+          <PermissionsCard />
+        </Collapsible>
+      )}
       {hasContracts && (
         <Collapsible title="Preflight checks" summary="network, admin wallet, gas balance">
           <PreflightCard onExport={doExport} onGo={onGo} />

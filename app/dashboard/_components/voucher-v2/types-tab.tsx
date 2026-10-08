@@ -8,7 +8,7 @@ import {
 import { useVoucherV2 } from './context';
 import { DESTINATION_LISTS } from './destinations-card';
 import { useSourceOptions } from './source-options';
-import { AddressInput, AddressOption, Badge, Collapsible, Field, NavButtons, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
+import { ContractTag, AddressInput, AddressOption, Badge, Collapsible, Field, NavButtons, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 interface Form {
   name: string;
@@ -297,6 +297,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
   return (
     <div className="space-y-4">
       <Card title={`Registered types (${types.length})`}>
+        <ContractTag contract="VoucherNFT" methods={['setVoucherTypeMintingPaused', 'setVoucherTypeRedemptionPaused', 'addApprovedToken', 'removeApprovedToken']} />
         <div className="flex justify-end -mt-10 mb-4">
           <button className={btnSecondaryCls} disabled={loading} onClick={load}>{loading ? 'Loading…' : 'Reload'}</button>
         </div>
@@ -373,6 +374,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
 
       <Collapsible key={types.length ? 'has-types' : 'no-types'} title="Create a new voucher type" summary={types.length ? 'pick what it gives, name it, choose who can mint' : 'no types yet — start here'} defaultOpen={types.length === 0}>
       <Card>
+        <ContractTag contract="VoucherNFT" methods={['registerVoucherType', 'addApprovedToken', 'grantTypeMinterWithCap']} />
         {/* 1 — what the voucher is: a preset fills every technical setting */}
         <h4 className="text-sm font-semibold mb-2">1. What does claiming the voucher give?</h4>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3 mb-5">
@@ -508,6 +510,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
       </Collapsible>
 
       <Card title="Test mint">
+        <ContractTag contract="VoucherNFT" methods={['mint']} />
         <p className="text-xs text-txt-secondary mb-3">Mints one voucher straight from the connected wallet to prove a type works. The wallet needs that type&apos;s minter role (Roles tab).</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Type">
@@ -527,7 +530,6 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         <button className={`${btnCls} mt-4`} disabled={busy || !mintType} onClick={testMint}>Mint</button>
       </Card>
 
-      <NavButtons back={['wire', 'Wire']} next={['roles', 'Next: minters & roles']} onGo={onGo} />
     </div>
   );
 }

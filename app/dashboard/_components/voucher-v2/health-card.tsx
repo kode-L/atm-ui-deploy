@@ -38,9 +38,9 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
       const nft = ctx.read('VoucherNFT');
       const linked: string = await nft.sourceRegistry().catch(() => ZERO);
       const reg = !sameAddr(linked, ZERO) ? ctx.read('SourceRegistry', linked) : null;
-      if (!reg) out.push({ level: 'warn', text: 'VoucherNFT is not linked to SourceRegistry — funding sources and payout recipients are not checked (Wire step 1).', tab: 'wire' });
+      if (!reg) out.push({ level: 'warn', text: 'VoucherNFT is not linked to SourceRegistry — funding sources and payout recipients are not checked (VoucherNFT tab → setup).', tab: 'nft' });
       if (c.VoucherDAO && !(await nft.hasRole(role('REVOKE_ROLE'), c.VoucherDAO).catch(() => true))) {
-        out.push({ level: 'warn', text: 'VoucherDAO has no REVOKE_ROLE — DAO revoke proposals will fail (Wire step 3).', tab: 'wire' });
+        out.push({ level: 'warn', text: 'VoucherDAO has no REVOKE_ROLE — DAO revoke proposals will fail (VoucherNFT tab → setup).', tab: 'nft' });
       }
       const dao = c.VoucherDAO ? ctx.read('VoucherDAO') : null;
       const types: VoucherType[] = await loadVoucherTypes(nft);
@@ -55,7 +55,7 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
         if (reward && noSource) add('bad', 'no funding source — it cannot pay out.', 'types');
         if (reg && !noSource) {
           const ok = reward ? await reg.isRewardSinkApproved(t.tokenStandard, t.fundingSource) : await reg.isPointsSinkApproved(t.fundingSource);
-          if (!ok) add('bad', `its pool ${ctx.nameOf(t.fundingSource)} is no longer approved in SourceRegistry.`, 'wire');
+          if (!ok) add('bad', `its pool ${ctx.nameOf(t.fundingSource)} is no longer approved in SourceRegistry.`, 'registry');
         }
         if (reward && t.approvedTokens.length === 0) add('bad', 'no approved payout token — every mint reverts.', 'types');
 
@@ -72,7 +72,7 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
           if (dao) {
             // operators both propose and approve; the proposer's own proposal counts as one approval
             const apprs: string[] = await dao.getOperatorsOf(t.id);
-            if (apprs.length < t.mintApprovalsRequired) add('warn', `${apprs.length} DAO operator(s) — it needs ${t.mintApprovalsRequired} approvals, so at least ${t.mintApprovalsRequired} operators.`, 'roles');
+            if (apprs.length < t.mintApprovalsRequired) add('warn', `${apprs.length} DAO operator(s) — it needs ${t.mintApprovalsRequired} approvals, so at least ${t.mintApprovalsRequired} operators.`, 'dao');
           }
           const direct = minters.filter((m) => !sameAddr(m, c.VoucherDAO));
           if (direct.length) add('warn', `${direct.length} direct minter(s) besides VoucherDAO — they can mint without a vote.`, 'roles');
@@ -80,12 +80,12 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
           add('warn', 'no minters — nobody can mint it.', 'roles');
         } else if (dao && c.VoucherDAO && minters.some((m) => sameAddr(m, c.VoucherDAO))) {
           // 1-approval type the DAO also mints: a proposal executes on propose, so one operator is enough
-          if (!(await dao.getOperatorsOf(t.id)).length) add('warn', 'VoucherDAO can mint it but it has no DAO operators to propose.', 'roles');
+          if (!(await dao.getOperatorsOf(t.id)).length) add('warn', 'VoucherDAO can mint it but it has no DAO operators to propose.', 'dao');
         }
 
         if (reg && reward && !sameAddr(t.payoutRecipient, ZERO)) {
           const ok = await reg.isDestinationApproved(DESTINATION_LISTS[0].key, t.payoutRecipient).catch(() => true);
-          if (!ok) add('warn', `fixed payout recipient ${ctx.nameOf(t.payoutRecipient)} is no longer on the allowlist (existing setting still works).`, 'wire');
+          if (!ok) add('warn', `fixed payout recipient ${ctx.nameOf(t.payoutRecipient)} is no longer on the allowlist (existing setting still works).`, 'registry');
         }
         if (t.mintingPaused) add('warn', 'minting is paused.', 'types');
         if (t.redemptionPaused && !(t.mode === VoucherMode.Points && noSource)) add('warn', 'redemption (claim) is paused.', 'types');

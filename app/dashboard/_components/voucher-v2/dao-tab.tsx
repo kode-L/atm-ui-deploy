@@ -6,7 +6,7 @@ import {
   DEFAULT_ADMIN_ROLE, TokenStandard, VoucherMode, VoucherType, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
-import { AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
+import { ContractTag, AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 // VoucherDAO: proposing counts as the first approval; at the type's quorum
 // (VoucherNFT.requiredApprovals = mintApprovalsRequired) the mint/revoke executes automatically.
@@ -50,6 +50,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const daoTypes = types.filter((t) => t.mintApprovalsRequired > 1 || daoMinterOf.includes(t.id));
   const typeId = daoTypes.some((t) => t.id === ctx.typeId) ? ctx.typeId : daoTypes[0]?.id ?? -1;
   const setTypeId = ctx.setTypeId;
+  // no DAO type selected yet (e.g. a direct-mint type picked elsewhere): share the one shown here
+  useEffect(() => { if (typeId >= 0 && typeId !== ctx.typeId) ctx.setTypeId(typeId); }, [typeId, ctx]);
   // v0.53: one operator group per type — operators both propose and approve
   const [roles, setRoles] = useState({ operator: false, admin: false, daoMinter: false, operators: 0 });
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -246,6 +248,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
 
       {selected && (
         <Card title="New proposal">
+        <ContractTag contract="VoucherDAO" methods={['proposeMint', 'proposeBulkMint', 'proposeRevoke']} />
           <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1 w-fit mb-4">
             {(['mint', 'bulk', 'revoke'] as Kind[]).map((k) => (
               <button key={k} onClick={() => setKind(k)} className={`px-3 py-1.5 rounded text-xs font-medium ${kind === k ? 'bg-accent text-black' : 'text-txt-secondary hover:text-txt-primary'}`}>
@@ -298,6 +301,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       )}
 
       <Card title="Proposals">
+        <ContractTag contract="VoucherDAO" methods={['approve*', 'execute*', 'cancel*']} />
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <label className="flex items-center gap-2 text-xs text-txt-secondary"><input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} /> Open only</label>
           <span className="text-xs text-txt-secondary">Showing {selected ? `type #${selected.id} + revokes` : 'all types'} · newest {MAX_SHOWN} per kind</span>
@@ -342,7 +346,6 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         </div>
       </Card>
 
-      <NavButtons back={['roles', 'Minters & roles']} next={['funding', 'Next: fund pools']} onGo={onGo} />
     </div>
   );
 }

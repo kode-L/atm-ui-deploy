@@ -129,3 +129,39 @@ export function Collapsible({ title, summary, defaultOpen = false, children }: {
     </div>
   );
 }
+
+// one colour per contract, so the same contract always looks the same across tabs
+const CONTRACT_TONE: Record<string, string> = {
+  VoucherNFT: 'bg-sky-900/40 text-sky-300 border-sky-500/30',
+  VoucherDAO: 'bg-violet-900/40 text-violet-300 border-violet-500/30',
+  SourceRegistry: 'bg-amber-900/30 text-amber-300 border-amber-500/30',
+  RewardSink: 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30',
+  VoucherIncentive: 'bg-teal-900/40 text-teal-300 border-teal-500/30',
+  RevocationVault: 'bg-rose-900/30 text-rose-300 border-rose-500/30',
+  AllowlistTransferGate: 'bg-orange-900/30 text-orange-300 border-orange-500/30',
+  Token: 'bg-surface-tertiary text-txt-secondary border-white/10',
+};
+
+/** "Calls VoucherNFT · grantTypeMinterWithCap() · revokeRole()" — which contract a card sends to. */
+export function ContractTag({ contract, methods = [], label = 'Calls' }: { contract: string; methods?: string[]; label?: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11px] mb-3">
+      <span className="text-txt-secondary">{label}</span>
+      <span className={`px-2 py-0.5 rounded border font-semibold ${CONTRACT_TONE[contract] || CONTRACT_TONE.Token}`}>{contract}</span>
+      {methods.map((m) => <code key={m} className="text-txt-secondary">· {m}()</code>)}
+    </div>
+  );
+}
+
+/** Heading that groups the steps/cards belonging to one contract. */
+export function ContractGroup({ contract, note, hideHeading, children }: { contract: string; note?: string; hideHeading?: boolean; children: ReactNode }) {
+  return (
+    <section className="space-y-3">
+      {!hideHeading && <div className="flex items-center gap-2 pt-2">
+        <span className={`px-2.5 py-1 rounded border text-xs font-semibold ${CONTRACT_TONE[contract] || CONTRACT_TONE.Token}`}>{contract}</span>
+        {note && <span className="text-xs text-txt-secondary">{note}</span>}
+      </div>}
+      {children}
+    </section>
+  );
+}

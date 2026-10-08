@@ -4,7 +4,7 @@ import Card from '@/components/card';
 import { MAX_UINT, VoucherType, isAddr, loadVoucherTypes, role, sameAddr, typeLabel } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import PermissionsCard from './permissions-card';
-import { AddressInput, AddressOption, Collapsible, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
+import { ContractTag, AddressInput, AddressOption, Collapsible, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 interface MinterRow { address: string; limit: string; window: number; used: string }
 
@@ -16,7 +16,9 @@ function human(seconds: number) {
   return `${seconds}s`;
 }
 
-export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
+export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; part?: 'nft' | 'dao' }) {
+  const showNft = part !== 'dao';
+  const showDao = part !== 'nft';
   const ctx = useVoucherV2();
   const c = ctx.book.contracts;
   const [types, setTypes] = useState<VoucherType[]>([]);
@@ -182,7 +184,8 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <PermissionsCard />
+      {!part && <PermissionsCard />}
+      {part !== 'dao' && (
       <Card title="Manage a type">
         <div className="flex flex-wrap gap-2">
           <div className="flex-1 min-w-[260px]">
@@ -204,9 +207,11 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
         )}
         {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
       </Card>
+      )}
 
-      {selected && (
+      {showNft && selected && (
         <Card title={`Minters of type #${selected.id}`}>
+        <ContractTag contract="VoucherNFT" methods={['grantTypeMinterWithCap', 'revokeRole']} />
           <p className="text-xs text-txt-secondary mb-3">
             Wallets or contracts allowed to mint this type. Each has a budget per time window (default 100 per day) — make contracts that mint for many users unlimited.
           </p>
@@ -264,8 +269,9 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
         </Card>
       )}
 
-      {selected && c.VoucherDAO && (selected.mintApprovalsRequired > 1 || daoIsMinter) && (
+      {showDao && selected && c.VoucherDAO && (selected.mintApprovalsRequired > 1 || daoIsMinter) && (
         <Card title={`VoucherDAO operators for type #${selected.id}`}>
+        <ContractTag contract="VoucherDAO" methods={['grantTypeOperatorWithCap', 'revokeRole']} />
           <p className="text-xs text-txt-secondary mb-3">
             Operators both <b>propose</b> and <b>approve</b> — a proposal counts as its proposer&apos;s approval. With {selected.mintApprovalsRequired} approval{selected.mintApprovalsRequired === 1 ? '' : 's'} needed
             {selected.mintApprovalsRequired === 1 ? ', a proposal executes as soon as it is proposed' : `, you need at least ${selected.mintApprovalsRequired} operators`}.
@@ -297,8 +303,9 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
         </Card>
       )}
 
-      <Collapsible title="Advanced: direct revoke rights" summary="who may revoke vouchers without a DAO vote">
+      {showNft && <Collapsible title="Advanced: direct revoke rights" summary="who may revoke vouchers without a DAO vote">
       <Card title="REVOKE_ROLE on VoucherNFT">
+        <ContractTag contract="VoucherNFT" methods={['grantRole(REVOKE_ROLE)', 'revokeRole']} />
         <p className="text-xs text-txt-secondary mb-3">Holders can revoke any voucher directly. VoucherDAO holding it enables revokes by vote.</p>
         <AddrList list={revokers} onRevoke={(a) => tx(`Revoke REVOKE_ROLE from ${ctx.nameOf(a)}`, 'VoucherNFT', 'revokeRole', [REVOKE_ROLE, a])} />
         <div className="flex flex-wrap gap-2 mt-3">
@@ -306,10 +313,11 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
           <button className={btnSecondaryCls} disabled={busy || !isAddr(revokeAddr)} onClick={() => tx(`Grant REVOKE_ROLE to ${ctx.nameOf(revokeAddr)}`, 'VoucherNFT', 'grantRole', [REVOKE_ROLE, revokeAddr])}>Grant REVOKE_ROLE</button>
         </div>
       </Card>
-      </Collapsible>
+      </Collapsible>}
 
-      {c.AllowlistTransferGate && (
+      {showNft && c.AllowlistTransferGate && (
         <Card title="Transfer gate allowlist">
+        <ContractTag contract="AllowlistTransferGate" methods={['setAllowed', 'setAllowedBatch']} />
           <p className="text-xs text-txt-secondary mb-3">Only matters for types whose transfer gate is AllowlistTransferGate. Paste one or many addresses (comma / newline separated).</p>
           <textarea className={`${inputCls} min-h-[70px]`} value={gateText} onChange={(e) => setGateText(e.target.value)} placeholder="0x…, 0x…" />
           <div className="flex flex-wrap gap-2 mt-3">
@@ -324,7 +332,6 @@ export default function RolesTab({ onGo }: { onGo: (t: string) => void }) {
       )}
 
 
-      <NavButtons back={['types', 'Voucher types']} next={['dao', 'Next: DAO proposals']} onGo={onGo} />
     </div>
   );
 }

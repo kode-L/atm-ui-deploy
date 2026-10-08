@@ -102,6 +102,9 @@ export interface WirePick {
 
 export interface WireStep {
   id: string;
+  // the contract this step sends to, and the function it calls (shown on the step)
+  target: 'VoucherNFT' | 'SourceRegistry';
+  method: string;
   title: string;
   why: string;
   // button text — what the tx actually does
@@ -133,6 +136,8 @@ export const WIRE_GAS = 1_101_887;
 export const WIRE_STEPS: WireStep[] = [
   {
     id: 'registry',
+    target: 'VoucherNFT',
+    method: 'setSourceRegistry',
     title: 'Link the voucher contract to the pool registry',
     why: 'After this, a voucher type can only pay from pools the registry has approved.',
     action: 'Link registry',
@@ -145,6 +150,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'typeAdmin',
+    target: 'VoucherNFT',
+    method: 'grantRole(OPERATOR_ROLE)',
     title: 'Let your wallet manage voucher types',
     why: 'Gives your wallet the operator role on VoucherNFT: create and edit voucher types and choose who can mint them.',
     action: 'Grant role',
@@ -154,6 +161,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'revokeDao',
+    target: 'VoucherNFT',
+    method: 'grantRole(REVOKE_ROLE)',
     title: 'Let VoucherDAO revoke vouchers by vote',
     why: 'Needed only if vouchers should be revocable through a VoucherDAO vote.',
     action: 'Grant role',
@@ -166,6 +175,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'rewardSink',
+    target: 'SourceRegistry',
+    method: 'setRewardSinkApproved',
     title: 'Approve the main pool for the tokens it pays out',
     why: 'Tick what the main pool pays out (Native, ERC20). You can approve more later; one transaction per choice.',
     action: 'Approve selected',
@@ -201,6 +212,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'pointsSink',
+    target: 'SourceRegistry',
+    method: 'setPointsSinkApproved',
     title: 'Approve VoucherIncentive for points',
     why: 'Lets Points voucher types keep their points balances on VoucherIncentive.',
     action: 'Approve',
@@ -213,6 +226,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'incentiveErc20',
+    target: 'SourceRegistry',
+    method: 'setRewardSinkApproved',
     title: 'Approve VoucherIncentive for ERC20 rewards',
     why: 'Only needed for deferred / routed ERC20 rewards paid through VoucherIncentive.',
     action: 'Approve',
@@ -226,6 +241,8 @@ export const WIRE_STEPS: WireStep[] = [
   },
   {
     id: 'revokeAdmin',
+    target: 'VoucherNFT',
+    method: 'grantRole(REVOKE_ROLE)',
     title: 'Let your wallet revoke vouchers directly',
     why: 'Lets this wallet revoke a voucher immediately, without a VoucherDAO vote.',
     action: 'Grant role',

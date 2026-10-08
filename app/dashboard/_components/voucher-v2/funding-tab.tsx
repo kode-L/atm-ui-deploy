@@ -7,7 +7,7 @@ import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, 
 import { useVoucherV2 } from './context';
 import { useSourceOptions } from './source-options';
 import ExtraSinksCard from './extra-sinks-card';
-import { AddressInput, AddressOption, Field, NavButtons, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
+import { ContractTag, AddressInput, AddressOption, Field, NavButtons, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
 
 const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
@@ -118,7 +118,6 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <ExtraSinksCard admin={account} onGo={onGo} />
       <Card title="Fund a reward pool">
         <p className="text-xs text-txt-secondary mb-3">
           Reward types pay from their pool, and minting checks the pool holds enough. Top it up from the connected wallet.
@@ -155,6 +154,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
           </Card>
 
           <Card title="Deposit">
+        <ContractTag contract="Token" methods={['transfer (ERC20) / send (native) → pool']} label="Sends with" />
             <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1 w-fit mb-4">
               {(['native', 'erc20'] as Kind[]).map((k) => (
                 <button key={k} onClick={() => setKind(k)} className={`px-3 py-1.5 rounded text-xs font-medium ${kind === k ? 'bg-accent text-black' : 'text-txt-secondary hover:text-txt-primary'}`}>
@@ -174,6 +174,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
           </Card>
 
           <Card title="Withdraw (admin)">
+        <ContractTag contract={sameAddr(pool, c.VoucherIncentive) || (ctx.book.extraSinks || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherIncentive') ? 'VoucherIncentive' : 'RewardSink'} methods={['withdrawNative', 'withdrawERC20']} />
             <p className="text-xs text-txt-secondary mb-3">RewardSink / VoucherIncentive admin only. Sends from the pool to the given address. Enter the amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="Asset">
@@ -189,7 +190,6 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
         <Card><p className="text-sm text-txt-secondary text-center py-4">Pick a pool (deploy RewardSink first, or paste an address).</p></Card>
       )}
 
-      <NavButtons back={['dao', 'DAO proposals']} next={['overview', 'Back to overview']} onGo={onGo} />
     </div>
   );
 }

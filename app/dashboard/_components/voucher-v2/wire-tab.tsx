@@ -7,12 +7,18 @@ import DestinationsCard from './destinations-card';
 import PoolsCard from './pools-card';
 import { OPEN_ADVANCED_KEY } from './extra-sinks-card';
 import { WIRE_STEPS, WireStep, StepResult, checkWireStep, wirePrefill } from './steps';
-import { Collapsible, Field, NavButtons, StepCard, StepStatus, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
+import { Collapsible, ContractGroup, ContractTag, Field, NavButtons, StepCard, StepStatus, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 import { isAddr, sameAddr } from '@/lib/contracts/voucher-v2';
 
 type Check = StepResult | 'checking';
 
-export default function WireTab({ onGo }: { onGo: (t: string) => void }) {
+// Wire steps grouped by the contract they send to
+const WIRE_GROUPS: { contract: 'VoucherNFT' | 'SourceRegistry'; note: string }[] = [
+  { contract: 'VoucherNFT', note: 'the voucher contract: its registry link and who may manage / revoke' },
+  { contract: 'SourceRegistry', note: 'the pool registry: which pools may pay out what' },
+];
+
+export default function WireTab({ onGo, target }: { onGo: (t: string) => void; target?: 'VoucherNFT' | 'SourceRegistry' }) {
   const ctx = useVoucherV2();
   // opened expanded when arriving from a pool's "Change access control" link (Fund pools tab)
   const [openAdvanced] = useState(() => {
@@ -120,14 +126,14 @@ export default function WireTab({ onGo }: { onGo: (t: string) => void }) {
     setField(s, s.pick.name, next.join(','));
     setRecheckId(s.id);
   };
-  const pendingRequired = WIRE_STEPS.filter((s) => !s.optional && readyToSend(s));
+  const pendingRequired = WIRE_STEPS.filter((s) => (!target || s.target === target) && !s.optional && readyToSend(s));
   const runAll = async () => {
     for (const s of pendingRequired) if (!(await runOne(s))) break;
   };
 
   return (
     <div className="space-y-4">
-      <Card title="Wire the contracts together">
+      <Card title={target ? `${target} setup` : 'Wire the contracts together'}>
         <p className="text-sm text-txt-secondary">
           Each step checks the chain and only needs sending if it isn&apos;t in place yet. Addresses are prefilled from the address book — open a step to check or change them.
         </p>
@@ -138,11 +144,16 @@ export default function WireTab({ onGo }: { onGo: (t: string) => void }) {
         {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
       </Card>
 
-      {WIRE_STEPS.map((s, i) => {
+      {WIRE_GROUPS.filter((g) => !target || g.contract === target).map((group) => (
+        <ContractGroup key={group.contract} contract={group.contract} note={group.note} hideHeading={!!target}>
+          {WIRE_STEPS.filter((s) => s.target === group.contract).map((s) => {
+        // number within what this tab shows, not the global step list
+        const i = WIRE_STEPS.filter((x) => !target || x.target === target).indexOf(s);
         const c = checks[s.id];
         const r = c && c !== 'checking' ? c : undefined;
         return (
           <StepCard key={s.id} index={i + 1} title={s.title} why={collapsed(s) ? undefined : s.why} optional={s.optional} status={statusOf(s)} detail={r?.detail || r?.blocked}>
+            <ContractTag contract={s.target} methods={[s.method]} label="Sends to" />
             {collapsed(s) ? (
               <button className={linkBtnCls} onClick={() => setOpenSteps((p) => ({ ...p, [s.id]: true }))}>{s.pick ? 'Change / approve more…' : 'Show details…'}</button>
             ) : (<>
@@ -204,14 +215,17 @@ export default function WireTab({ onGo }: { onGo: (t: string) => void }) {
             </>)}
           </StepCard>
         );
-      })}
+          })}
+        </ContractGroup>
+      ))}
 
+      {!target && (
       <Collapsible title="Advanced (optional)" summary="payout allowlists · pool names · access control" defaultOpen={openAdvanced}>
         <DestinationsCard />
         <PoolsCard />
       </Collapsible>
+      )}
 
-      <NavButtons back={['deploy', 'Deploy']} next={['types', 'Next: voucher types']} onGo={onGo} />
     </div>
   );
 }

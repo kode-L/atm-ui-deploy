@@ -6,7 +6,7 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import { ContractKey, ZERO, isAddr, poolKind, sameAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
-import { AddressInput, AddressOption, Field, btnDangerCls, btnSecondaryCls, inputCls } from './ui';
+import { ContractTag, AddressInput, AddressOption, Field, btnDangerCls, btnSecondaryCls, inputCls } from './ui';
 
 // RewardSink / VoucherIncentive / SourceRegistry carry an informational on-chain `name`;
 // the two sinks also have an optional `accessControl` consulted before every real payout.
@@ -20,7 +20,7 @@ interface State { name: string; acl: string }
 // one row per contract: the book's main contracts plus every extra RewardSink pool
 type Target = { id: string; key: ContractKey; address: string; title: string; accessControl: boolean; nameHint: string };
 
-export default function PoolsCard() {
+export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}) {
   const ctx = useVoucherV2();
   const { hubAddress } = useWeb3();
   const [state, setState] = useState<Record<string, State>>({});
@@ -31,10 +31,11 @@ export default function PoolsCard() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const present: Target[] = [
+  const all: Target[] = [
     ...TARGETS.filter((t) => ctx.book.contracts[t.key]).map((t) => ({ ...t, id: t.key, address: ctx.book.contracts[t.key] as string, title: t.key })),
     ...(ctx.book.extraSinks || []).map((x) => ({ id: x.address, key: poolKind(x) as ContractKey, address: x.address, title: `${poolKind(x)} "${x.name}"`, accessControl: true, nameHint: 'e.g. "USDT payouts"' })),
   ];
+  const present = all.filter((t) => !only || (only === 'registry' ? t.key === 'SourceRegistry' : t.key !== 'SourceRegistry'));
 
   const load = useCallback(async () => {
     if (!ctx.reader) return;
@@ -92,11 +93,12 @@ export default function PoolsCard() {
   const aclOptions: AddressOption[] = hubAcl ? [{ label: 'ATM access control (from GameHub)', value: hubAcl }] : [];
 
   return (
-    <Card title="Pool names & access control">
-      <p className="text-xs text-txt-secondary mb-3">
+    <Card title={only === 'registry' ? 'Registry name' : 'Pool names & access control'}>
+        <ContractTag contract={only === 'registry' ? 'SourceRegistry' : 'RewardSink / VoucherIncentive'} methods={only === 'registry' ? ['setName'] : ['setName', 'setAccessControl']} />
+      {only !== 'registry' && <p className="text-xs text-txt-secondary mb-3">
         <b>Name</b>: a label to tell pools apart. <b>Access control</b> (off by default): before each payout the pool asks the access control contract —
         frozen users are paid to their safe wallet, blacklisted users can&apos;t claim yet (the voucher stays claimable). Points are never checked.
-      </p>
+      </p>}
       <div className="space-y-3">
         {present.map((t) => {
           const s = state[t.id];

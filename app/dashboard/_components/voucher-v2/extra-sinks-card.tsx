@@ -4,7 +4,8 @@ import Card from '@/components/card';
 import { getExplorerAddressUrl, BSC_MAINNET } from '@/lib/contracts/config';
 import { PoolKind, TokenStandard, ZERO, isAddr, poolKind, sameAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
-import { Badge, Field, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
+import { APPROVE_POOL_KEY } from './allowlists-card';
+import { Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
 
 // What each pool type can be approved for in the registry. "points" = setPointsSinkApproved;
 // a number = setRewardSinkApproved for that token standard.
@@ -30,7 +31,9 @@ const POOL_TYPES: { id: string; kind: PoolKind; acl: boolean; label: string; wha
 ];
 
 /** Deploy any number of extra pools (RewardSink or VoucherIncentive), each its own proxy. */
-export default function ExtraSinksCard({ admin, onGo }: { admin: string; onGo?: (tab: string) => void }) {
+// mode "deploy" (Pools tab): deploy pools + see their status; "approve" (SourceRegistry tab): the
+// registry's approve calls for every pool — so each tab only calls its own contract.
+export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin: string; onGo?: (tab: string) => void; mode?: 'deploy' | 'approve' }) {
   const ctx = useVoucherV2();
   const c = ctx.book.contracts;
   const extras = ctx.book.extraSinks || [];
@@ -128,7 +131,14 @@ export default function ExtraSinksCard({ admin, onGo }: { admin: string; onGo?: 
     );
 
   return (
-    <Card title="Reward pools">
+    <Card title={mode === 'approve' ? 'Approved pools' : 'Reward pools'}>
+      {mode === 'approve' ? (
+        <>
+          <ContractTag contract="SourceRegistry" methods={['setRewardSinkApproved', 'setPointsSinkApproved']} />
+          <p className="text-xs text-txt-secondary mb-3">A voucher type can only pay from a pool approved here for what it pays out. New pools are deployed on the Pools tab.</p>
+        </>
+      ) : (<>
+      <ContractTag contract="RewardSink / VoucherIncentive" methods={['deploy implementation', 'deploy proxy + initialize']} label="Deploys" />
       <p className="text-xs text-txt-secondary mb-3">
         Deploy as many pools as you need (e.g. one per token or campaign). Each voucher type picks one as its <b>Funding source</b>; approve a pool for what it pays out first.
       </p>
@@ -159,13 +169,14 @@ export default function ExtraSinksCard({ admin, onGo }: { admin: string; onGo?: 
           </Field>
           <Field
             label={type.acl ? 'Access control contract' : 'Access control (optional)'}
-            hint={type.acl ? 'Required for this pool type. Can be changed later (Wire → Advanced).' : 'Blank = off. Can be turned on later (Wire → Advanced).'}
+            hint={type.acl ? 'Required for this pool type. Can be changed later (Pool names & access control, below).' : 'Blank = off. Can be turned on later (Pool names & access control, below).'}
           >
             <input className={inputCls} value={acl} onChange={(e) => setAcl(e.target.value.trim())} placeholder={type.acl ? '0x… access control' : 'blank = off'} />
           </Field>
           <button className={btnCls} disabled={busy || !c.VoucherNFT || !isAddr(impl) || (type.acl && !isAddr(acl))} onClick={deploy}>{busy ? 'Working…' : `Deploy ${type.label}`}</button>
         </div>
       </div>
+      </>)}
       {!c.VoucherNFT && <p className="text-xs text-txt-secondary">Deploy VoucherNFT first.</p>}
       <div className="space-y-2">
         {pools.map((x) => (
@@ -176,15 +187,20 @@ export default function ExtraSinksCard({ admin, onGo }: { admin: string; onGo?: 
             {aclOf[x.address] !== undefined && aclOf[x.address] !== '' && (
               <span className="text-txt-secondary">
                 Access control: {sameAddr(aclOf[x.address], ZERO) ? 'off' : <span className="text-txt-primary">{ctx.nameOf(aclOf[x.address])}</span>}
-                {onGo && <> · <button className="text-accent hover:underline" onClick={() => { try { sessionStorage.setItem(OPEN_ADVANCED_KEY, '1'); } catch { /* storage blocked */ } onGo('wire'); }}>Change</button></>}
+                {mode === 'deploy' && <> · <button className="text-accent hover:underline" onClick={() => document.getElementById('pool-settings')?.scrollIntoView({ behavior: 'smooth' })}>Change</button></>}
               </span>
             )}
             <span className="flex-1" />
             {APPROVALS[x.kind].map((a) => (
               approved[x.address]?.[a.id]
                 ? <Badge key={a.id} tone="good">{a.label} approved</Badge>
-                : <button key={a.id} className={btnSecondaryCls} disabled={busy || !registry} onClick={() => approve(x, a)}>Approve for {a.label}</button>
+                : mode === 'approve'
+                  ? <button key={a.id} className={btnSecondaryCls} disabled={busy || !registry} onClick={() => approve(x, a)}>Approve for {a.label}</button>
+                  : <Badge key={a.id} tone="muted">{a.label} not approved</Badge>
             ))}
+            {mode === 'deploy' && onGo && APPROVALS[x.kind].some((a) => !approved[x.address]?.[a.id]) && (
+              <button className="text-accent hover:underline" onClick={() => { try { sessionStorage.setItem(APPROVE_POOL_KEY, x.address); } catch { /* storage blocked */ } onGo('registry'); }}>Approve in SourceRegistry →</button>
+            )}
           </div>
         ))}
         {!pools.length && <p className="text-xs text-txt-secondary">No pools yet — deploy the main RewardSink on the Deploy tab first.</p>}
