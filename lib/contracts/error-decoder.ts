@@ -79,7 +79,7 @@ export function decodeError(e: any): string {
 
   // Empty revert data (0x) usually means ABI mismatch — the function doesn't exist on the deployed contract
   if (rawData === '0x' || rawData === '0x0') {
-    return 'Transaction reverted with empty data (0x) — this usually means the contract at this address does not have the called function. Please redeploy the Daily PR Boost Manager contract from the Deploy tab.';
+    return 'Transaction reverted with empty data (0x) — this usually means the contract at this address does not have the called function. Please redeploy the contract from the Deploy tab.';
   }
 
   if (typeof rawData === 'string' && rawData.startsWith('0x') && rawData.length >= 10) {

@@ -53,8 +53,8 @@ createAppKit({
   defaultNetwork: bscTestnet,
   projectId,
   metadata: {
-    name: 'Daily PR Boost Manager',
-    description: 'Interact with Daily PR Boost Manager on BNB Smart Chain (Testnet or Mainnet)',
+    name: 'ATM Smart Contract Deployment',
+    description: 'Deploy and manage ATM smart contracts on BNB Smart Chain (Testnet or Mainnet)',
     url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
     icons: ['/favicon.svg'],
   },

@@ -79,7 +79,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="text-center mb-2">
-        <h1 className="text-2xl font-bold">Daily PR Boost <span className="text-accent">Manager</span></h1>
+        <h1 className="text-2xl font-bold">ATM Smart Contract <span className="text-accent">Deployment</span></h1>
         <p className="text-txt-secondary text-sm mt-1">Deploy and interact with smart contracts on BNB Testnet</p>
       </div>
 
