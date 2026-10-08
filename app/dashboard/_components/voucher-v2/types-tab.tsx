@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Card from '@/components/card';
 import {
-  PayoutMode, PointsDirection, RewardTiming, TokenStandard, VoucherMode, VoucherType, ZERO,
+  FundingMode, PayoutMode, PointsDirection, TokenStandard, VoucherMode, VoucherType, ZERO,
   MAX_UINT, enumName, eventArg, isAddr, kindOf, loadVoucherTypes, settledRead, sameAddr, toUnits, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
@@ -15,7 +15,7 @@ interface Form {
   mode: number;
   pointsDirection: number;
   tokenStandard: number;
-  rewardTiming: number;
+  fundingMode: number;
   payoutMode: number;
   routeTarget: string;
   payoutRecipient: string;
@@ -36,7 +36,7 @@ const blank = (): Form => ({
   mode: VoucherMode.Points,
   pointsDirection: PointsDirection.Credit,
   tokenStandard: TokenStandard.ERC20,
-  rewardTiming: RewardTiming.Immediate,
+  fundingMode: FundingMode.Reserved,
   payoutMode: PayoutMode.Direct,
   routeTarget: '',
   payoutRecipient: ZERO,
@@ -79,7 +79,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
       { id: 'pointsDebit', label: 'Points — claiming spends points', note: "Claiming takes the voucher's value from the holder's points (fails if they don't have enough).", apply: { name: 'Points Debit', pointsDirection: PointsDirection.Debit, fundingSource: vi } },
       { id: 'rewardNative', label: 'Reward — native coin (BNB)', note: "Claiming pays native coin from the chosen pool.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, approvedTokens: [ZERO] } },
       { id: 'rewardErc20', label: 'Reward — ERC20 token', note: "Claiming pays an ERC20 token (e.g. USDT) from the chosen pool.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingSource: rs } },
-      { id: 'rewardDeferred', label: 'Reward — ERC20, recorded for later payout', note: "Claiming records what the holder is owed on VoucherIncentive; it can pay them directly, route the tokens to another pool, or leave delivery to another system.", apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, rewardTiming: RewardTiming.Deferred, redemptionDays: 14, fundingSource: vi } },
+      { id: 'rewardDeferred', label: 'Reward — ERC20 via VoucherIncentive (paid on claim)', note: "Claiming records what the holder is owed on VoucherIncentive; it can pay them directly, route the tokens to another pool, or leave delivery to another system.", apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingMode: FundingMode.OnClaim, redemptionDays: 14, fundingSource: vi } },
       { id: 'daoGoverned', label: 'Reward — native coin, minted by a 2-vote DAO', note: "Every mint is a VoucherDAO proposal that needs 2 operator votes. Add at least 2 operators on Minters & roles.", apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
       { id: 'custom', label: 'Custom (blank)', note: '', apply: {} },
     ] as { id: string; label: string; note: string; apply: Partial<Form> }[];
@@ -211,7 +211,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         isReward ? f.tokenStandard : TokenStandard.Native,
         isReward ? f.payoutRecipient : ZERO,
         f.fundingSource,
-        isReward ? f.rewardTiming : RewardTiming.Immediate,
+        isReward ? f.fundingMode : FundingMode.Reserved,
         isReward ? PointsDirection.Credit : f.pointsDirection,
         f.transferGate,
         f.revokeDestination,
@@ -315,7 +315,10 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                     <td className="py-2 pr-3">{t.id}</td>
                     <td className="py-2 pr-3">{t.name}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">{kindOf(t)}</td>
-                    <td className="py-2 pr-3">{sourceCell(t.fundingSource)}</td>
+                    <td className="py-2 pr-3">
+                      {sourceCell(t.fundingSource)}
+                      {t.mode === VoucherMode.Reward && <div className="text-[10px] text-txt-secondary">{t.fundingMode === FundingMode.Reserved ? 'Reserved at mint' : 'Paid on claim'}</div>}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       {t.mintApprovalsRequired > 1
                         ? <><b>{t.mintApprovalsRequired}</b> votes<div className="text-txt-secondary text-[10px]">via VoucherDAO</div></>
@@ -421,6 +424,14 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
               </div>
             </Field>
           )}
+          {isReward && (
+            <Field label="Funding mode" hint={f.fundingMode === FundingMode.Reserved ? 'Minting needs the tokens in the pool and sets them aside for the voucher until claim, revoke or expiry.' : 'Nothing is set aside at mint — the claim pays if the pool has free tokens at that moment.'}>
+              <Select value={f.fundingMode} onChange={(v) => set('fundingMode', v)} options={[
+                { label: 'Reserved — tokens set aside at mint', value: FundingMode.Reserved },
+                { label: 'On claim — paid from the free balance', value: FundingMode.OnClaim },
+              ]} />
+            </Field>
+          )}
           <Field label="Votes needed to mint" hint="1 = minters mint directly. 2 or more = every mint is a VoucherDAO proposal its operators vote on.">
             <input className={inputCls} type="number" min={1} value={f.mintApprovalsRequired} onChange={(e) => { const v = num(e.target.value); setF((prev) => ({ ...prev, mintApprovalsRequired: v, grantDaoMinter: v > 1 ? true : prev.grantDaoMinter })); }} />
           </Field>
@@ -457,12 +468,6 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                 <>
                   <Field label="Payout token standard">
                     <Select value={f.tokenStandard} onChange={(v) => set('tokenStandard', v)} options={[TokenStandard.Native, TokenStandard.ERC20].map((v) => ({ label: enumName(TokenStandard, v), value: v as number }))} />
-                  </Field>
-                  <Field label="Reward timing">
-                    <Select value={f.rewardTiming} onChange={(v) => set('rewardTiming', v)} options={[
-                      { label: 'Immediate (paid on claim)', value: RewardTiming.Immediate },
-                      { label: 'Deferred (entitlement recorded)', value: RewardTiming.Deferred },
-                    ]} />
                   </Field>
                   {usesIncentive ? (
                     <Field label="Payout mode" hint="How VoucherIncentive delivers the reward.">

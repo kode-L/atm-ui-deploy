@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Card from '@/components/card';
 import { DEFAULT_ADMIN_ROLE, PoolKind, TokenStandard, isAddr, poolKind, role, sameAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import { useHasRole } from './use-role';
 import DestinationsCard, { DESTINATION_LISTS } from './destinations-card';
 import { AddressInput, Badge, Collapsible, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
@@ -31,6 +32,7 @@ export default function AllowlistsCard() {
   const ctx = useVoucherV2();
   const [list, setList] = useState(LISTS[0].id);
   const current = LISTS.find((l) => l.id === list) || LISTS[0];
+  const canEdit = useHasRole('SourceRegistry', 'OPERATOR_ROLE');
   if (!ctx.book.contracts.SourceRegistry) {
     return <Card title="Allowlists"><p className="text-xs text-txt-secondary">Deploy SourceRegistry first (Deploy tab).</p></Card>;
   }
@@ -52,6 +54,7 @@ export default function AllowlistsCard() {
         ))}
       </div>
       <p className="text-xs text-txt-secondary mb-3">{current.what}</p>
+      {canEdit === false && <p className="text-xs text-yellow-300 mb-3">View only — your wallet isn&apos;t a SourceRegistry operator, so it can&apos;t approve or remove. Ask the registry admin to add you (below).</p>}
       {list === 'sources' ? <FundingSources /> : <DestinationsCard only={list} />}
     </Card>
   );
@@ -59,6 +62,7 @@ export default function AllowlistsCard() {
 
 function FundingSources() {
   const ctx = useVoucherV2();
+  const canEdit = useHasRole('SourceRegistry', 'OPERATOR_ROLE') === true;
   const c = ctx.book.contracts;
   const [rows, setRows] = useState<{ address: string; name: string; kind?: PoolKind; on: Record<string, boolean> }[]>([]);
   const OTHER = '__other__';
@@ -147,7 +151,7 @@ function FundingSources() {
 
   return (
     <div className="space-y-3">
-      <div className="bg-surface-tertiary rounded-lg p-3 space-y-3">
+      {canEdit && <div className="bg-surface-tertiary rounded-lg p-3 space-y-3">
         <h5 className="text-sm font-semibold">Approve a pool</h5>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="1. Pool">
@@ -180,7 +184,7 @@ function FundingSources() {
           <button className={btnCls} disabled={busy || !isAddr(target) || alreadyOn} onClick={approveChosen}>{busy ? 'Sending…' : alreadyOn ? 'Already approved' : 'Approve'}</button>
           {targetRow?.kind === 'RewardSink' && useAs === 'points' && <span className="text-xs text-yellow-300">⚠ A RewardSink isn&apos;t a points ledger — use a VoucherIncentive for Points.</span>}
         </div>
-      </div>
+      </div>}
       <Collapsible title={`Pools (${rows.length})`} summary={`${rows.filter((r) => Object.values(r.on).some(Boolean)).length} approved for something · approve / remove per kind`}>
       <div className="space-y-2">
         {rows.map((r) => {
@@ -194,9 +198,9 @@ function FundingSources() {
               {uses.map((u) => (
                 <span key={u.id} className="inline-flex items-center gap-1.5">
                   {r.on[u.id] ? <Badge tone="good">{u.label}</Badge> : <Badge tone="muted">{u.label}: no</Badge>}
-                  {r.on[u.id]
+                  {canEdit && (r.on[u.id]
                     ? <button className={linkBtnCls} disabled={busy} onClick={() => run(() => send(r.address, u, false), `Removed ${u.label}`)}>Remove</button>
-                    : <button className={linkBtnCls} disabled={busy} onClick={() => run(() => send(r.address, u, true, r.name), `Approved for ${u.label}`)}>Approve</button>}
+                    : <button className={linkBtnCls} disabled={busy} onClick={() => run(() => send(r.address, u, true, r.name), `Approved for ${u.label}`)}>Approve</button>)}
                 </span>
               ))}
             </div>

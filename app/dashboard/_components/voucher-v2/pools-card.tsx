@@ -6,6 +6,7 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import { ContractKey, ZERO, isAddr, poolKind, sameAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import { useAdminOf } from './use-role';
 import { ContractTag, AddressInput, AddressOption, Field, btnDangerCls, btnSecondaryCls, inputCls } from './ui';
 
 // RewardSink / VoucherIncentive / SourceRegistry carry an informational on-chain `name`;
@@ -36,6 +37,8 @@ export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}
     ...(ctx.book.extraSinks || []).map((x) => ({ id: x.address, key: poolKind(x) as ContractKey, address: x.address, title: `${poolKind(x)} "${x.name}"`, accessControl: true, nameHint: 'e.g. "USDT payouts"' })),
   ];
   const present = all.filter((t) => !only || (only === 'registry' ? t.key === 'SourceRegistry' : t.key !== 'SourceRegistry'));
+  // setName / setAccessControl need DEFAULT_ADMIN_ROLE on that contract — same hasRole() on all of them
+  const adminOf = useAdminOf('RewardSink', present.map((t) => t.address));
 
   const load = useCallback(async () => {
     if (!ctx.reader) return;
@@ -103,9 +106,18 @@ export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}
         {present.map((t) => {
           const s = state[t.id];
           const aclOn = s && isAddr(s.acl) && !sameAddr(s.acl, ZERO);
+          const isAdmin = adminOf[t.address.toLowerCase()] === true;
           return (
             <div key={t.id} className="bg-surface-tertiary rounded-lg p-3 space-y-3">
               <h4 className="text-sm font-semibold">{t.title} <span className="font-mono text-xs text-txt-secondary">{t.address}</span></h4>
+              {!isAdmin && (
+                <p className="text-xs text-txt-secondary">
+                  Name: <span className="text-txt-primary">{s ? s.name || '(none)' : '…'}</span>
+                  {t.accessControl && <> · Access control: <span className="text-txt-primary">{!s ? '…' : aclOn ? ctx.nameOf(s.acl) : 'off'}</span></>}
+                  {adminOf[t.address.toLowerCase()] === false && <span className="text-yellow-300"> · View only — only this contract&apos;s admin can change these.</span>}
+                </p>
+              )}
+              {isAdmin && (
               <div className={`grid grid-cols-1 ${t.accessControl ? 'md:grid-cols-2' : ''} gap-3`}>
                 <Field label={`Name — currently: ${s ? s.name || '(none)' : '…'}`} hint={t.nameHint}>
                   <div className="flex gap-2">
@@ -137,6 +149,7 @@ export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}
                   </Field>
                 )}
               </div>
+              )}
             </div>
           );
         })}

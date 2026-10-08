@@ -5,6 +5,7 @@ import Card from '@/components/card';
 import { NETWORKS } from '@/lib/contracts/config';
 import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import { useAdminOf } from './use-role';
 import { useSourceOptions } from './source-options';
 import ExtraSinksCard from './extra-sinks-card';
 import { ContractTag, AddressInput, AddressOption, Field, NavButtons, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
@@ -19,7 +20,9 @@ const ERC20_ABI = [
 // ERC721 / ERC1155 deposits left out for now, matching the RewardSink wiring step
 type Kind = 'native' | 'erc20';
 const OTHER_POOL = '__other__';
-interface TokenBal { address: string; label: string; balance: string }
+// held = what the pool holds; reserved = set aside by VoucherNFT for minted Reserved-mode vouchers;
+// free = held - reserved (what new mints, On-claim payouts and withdrawals can use)
+interface TokenBal { address: string; label: string; balance: string; reserved: string; free: string }
 
 export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const ctx = useVoucherV2();
@@ -31,12 +34,14 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const [token, setToken] = useState('');
   const [amount, setAmount] = useState('');
   const [meta, setMeta] = useState<{ symbol: string; decimals: number; wallet: string } | null>(null);
-  const [native, setNative] = useState('—');
+  const [native, setNative] = useState<{ balance: string; reserved: string; free: string }>({ balance: '—', reserved: '—', free: '—' });
   const [balances, setBalances] = useState<TokenBal[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [w, setW] = useState({ token: ZERO, amount: '', to: account });
+  // withdraw*() needs DEFAULT_ADMIN_ROLE on the selected pool
+  const poolAdmin = useAdminOf('RewardSink', isAddr(pool) ? [pool] : [])[pool.toLowerCase()];
 
   useEffect(() => { if (!pool && c.RewardSink) setPool(c.RewardSink); }, [c.RewardSink, pool]);
 
@@ -49,7 +54,12 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
     if (!isAddr(pool) || !reader) return;
     setLoading(true);
     try {
-      setNative(fromUnits(await reader.getBalance(pool), 18));
+      // VoucherNFT.reservedOf(pool, token, 0) is in 18-decimal fixed point (same as availableBalance)
+      const nft = ctx.book.contracts.VoucherNFT ? read('VoucherNFT') : null;
+      const reservedOf = async (token: string) => (nft ? await nft.reservedOf(pool, token, 0).catch(() => ethers.BigNumber.from(0)) : ethers.BigNumber.from(0));
+      const nativeHeld = await reader.getBalance(pool);
+      const nativeRes = await reservedOf(ZERO);
+      setNative({ balance: fromUnits(nativeHeld, 18), reserved: fromUnits(nativeRes, 18), free: fromUnits(nativeHeld.sub(nativeRes).lt(0) ? 0 : nativeHeld.sub(nativeRes), 18) });
       const addrs = new Set(Object.values(ctx.book.tokens));
       if (ctx.book.contracts.VoucherNFT) {
         const types = await loadVoucherTypes(read('VoucherNFT')).catch(() => []);
@@ -62,7 +72,16 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
           const [sym, dec, bal] = await Promise.all([t.symbol(), t.decimals(), t.balanceOf(pool)]);
           const known = nameOf(a);
           // "tUSDT" — add the book's label only when it says something the symbol doesn't
-          out.push({ address: a, label: known.startsWith('0x') || known.toLowerCase().includes(sym.toLowerCase()) ? sym : `${sym} (${known})`, balance: fromUnits(bal, dec) });
+          const held18 = dec <= 18 ? bal.mul(ethers.BigNumber.from(10).pow(18 - dec)) : bal.div(ethers.BigNumber.from(10).pow(dec - 18));
+          const res = await reservedOf(a);
+          const free = held18.sub(res);
+          out.push({
+            address: a,
+            label: known.startsWith('0x') || known.toLowerCase().includes(sym.toLowerCase()) ? sym : `${sym} (${known})`,
+            balance: fromUnits(bal, dec),
+            reserved: fromUnits(res, 18),
+            free: fromUnits(free.lt(0) ? 0 : free, 18),
+          });
         } catch {
           // not an ERC20 (e.g. an NFT collection saved in the book) — skip
         }
@@ -142,15 +161,15 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
               <button className={btnSecondaryCls} disabled={loading} onClick={loadBalances}>{loading ? 'Loading…' : 'Reload'}</button>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-2 pr-3">Asset</th><th className="py-2 pr-3">Address</th><th className="py-2">Pool balance</th></tr></thead>
+              <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-2 pr-3">Asset</th><th className="py-2 pr-3">Address</th><th className="py-2 pr-3">Held</th><th className="py-2 pr-3">Reserved</th><th className="py-2">Free</th></tr></thead>
               <tbody>
-                <tr className="border-b border-white/5"><td className="py-2 pr-3">{symbol} (native)</td><td className="py-2 pr-3 text-txt-secondary">—</td><td className="py-2">{native}</td></tr>
+                <tr className="border-b border-white/5"><td className="py-2 pr-3">{symbol} (native)</td><td className="py-2 pr-3 text-txt-secondary">—</td><td className="py-2 pr-3">{native.balance}</td><td className="py-2 pr-3">{native.reserved}</td><td className="py-2 font-semibold">{native.free}</td></tr>
                 {balances.map((b) => (
-                  <tr key={b.address} className="border-b border-white/5"><td className="py-2 pr-3">{b.label}</td><td className="py-2 pr-3 font-mono break-all">{b.address}</td><td className="py-2">{b.balance}</td></tr>
+                  <tr key={b.address} className="border-b border-white/5"><td className="py-2 pr-3">{b.label}</td><td className="py-2 pr-3 font-mono break-all">{b.address}</td><td className="py-2 pr-3">{b.balance}</td><td className="py-2 pr-3">{b.reserved}</td><td className="py-2 font-semibold">{b.free}</td></tr>
                 ))}
               </tbody>
             </table>
-            <p className="text-[11px] text-txt-secondary mt-2">Lists ERC20s saved in the address book plus every approved ERC20 on a registered type.</p>
+            <p className="text-[11px] text-txt-secondary mt-2"><b>Reserved</b> = set aside for vouchers already minted in Reserved mode (released on claim, revoke or expiry). <b>Free</b> = what new mints, on-claim payouts and withdrawals can use. Lists ERC20s in the address book plus every approved ERC20 on a type.</p>
           </Card>
 
           <Card title="Deposit">
@@ -173,9 +192,12 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
             <button className={`${btnCls} mt-4`} disabled={busy} onClick={deposit}>{busy ? 'Sending…' : 'Deposit to pool'}</button>
           </Card>
 
+          {poolAdmin === false ? (
+            <Card title="Withdraw (admin)"><p className="text-xs text-txt-secondary">View only — only this pool&apos;s admin can withdraw from it.</p></Card>
+          ) : (
           <Card title="Withdraw (admin)">
         <ContractTag contract={sameAddr(pool, c.VoucherIncentive) || (ctx.book.extraSinks || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherIncentive') ? 'VoucherIncentive' : 'RewardSink'} methods={['withdrawNative', 'withdrawERC20']} />
-            <p className="text-xs text-txt-secondary mb-3">RewardSink / VoucherIncentive admin only. Sends from the pool to the given address. Enter the amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
+            <p className="text-xs text-txt-secondary mb-3">RewardSink / VoucherIncentive admin only. Sends from the pool to the given address — only the <b>Free</b> amount (see Pool balances); reserved tokens stay for their vouchers. Enter the amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="Asset">
                 <Select value={w.token} onChange={(v) => setW({ ...w, token: v })} options={[{ label: `${symbol} (native)`, value: ZERO }, ...tokenOptions]} />
@@ -185,6 +207,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
             </div>
             <button className={`${btnSecondaryCls} mt-4`} disabled={busy} onClick={withdraw}>Withdraw</button>
           </Card>
+          )}
         </>
       ) : (
         <Card><p className="text-sm text-txt-secondary text-center py-4">Pick a pool (deploy RewardSink first, or paste an address).</p></Card>

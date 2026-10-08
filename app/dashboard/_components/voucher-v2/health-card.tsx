@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 import Card from '@/components/card';
 import {
-  ARTIFACTS, RewardTiming, VoucherMode, VoucherType, ZERO, loadVoucherTypes, role, sameAddr, typeLabel,
+  ARTIFACTS, FundingMode, VoucherMode, VoucherType, ZERO, loadVoucherTypes, role, sameAddr, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import { DESTINATION_LISTS } from './destinations-card';
@@ -59,11 +59,22 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
         }
         if (reward && t.approvedTokens.length === 0) add('bad', 'no approved payout token — every mint reverts.', 'types');
 
-        // funded? (Immediate rewards check the pool at mint time)
-        if (reward && !noSource && t.rewardTiming === RewardTiming.Immediate && t.approvedTokens.length) {
+        // free = what the pool holds minus what VoucherNFT has reserved for vouchers already minted.
+        // Reserved types need free tokens to mint; On-claim types need them when someone claims.
+        if (reward && !noSource && t.approvedTokens.length && t.payoutMode !== 2 /* External holds nothing */) {
+          const token = t.approvedTokens[0];
           const sink = new ethers.Contract(t.fundingSource, ARTIFACTS.RewardSink.abi, ctx.reader);
-          const bal = await sink.availableBalance(t.id, t.tokenStandard, t.approvedTokens[0], 0).catch(() => null);
-          if (bal && bal.isZero()) add('warn', `pool ${ctx.nameOf(t.fundingSource)} is empty for ${sameAddr(t.approvedTokens[0], ZERO) ? 'the native coin' : ctx.nameOf(t.approvedTokens[0])} — mints will revert until funded.`, 'funding');
+          const held = await sink.availableBalance(t.id, t.tokenStandard, token, 0).catch(() => null);
+          const reserved = await nft.reservedOf(t.fundingSource, token, 0).catch(() => null);
+          if (held && reserved) {
+            const free = held.sub(reserved);
+            const what = sameAddr(token, ZERO) ? 'native coin' : ctx.nameOf(token);
+            if (free.lte(0)) {
+              add('warn', t.fundingMode === FundingMode.Reserved
+                ? `pool ${ctx.nameOf(t.fundingSource)} has no free ${what}${reserved.gt(0) ? ' (all of it is reserved)' : ''} — new mints will fail until it's topped up.`
+                : `pool ${ctx.nameOf(t.fundingSource)} has no free ${what} — claims will fail until it's topped up.`, 'funding');
+            }
+          }
         }
 
         const minters: string[] = await nft.getRoleMembers(await nft.typeMinterRole(t.id));

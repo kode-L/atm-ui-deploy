@@ -5,6 +5,7 @@ import { getExplorerAddressUrl, BSC_MAINNET } from '@/lib/contracts/config';
 import { PoolKind, TokenStandard, ZERO, isAddr, poolKind, sameAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import { APPROVE_POOL_KEY } from './allowlists-card';
+import { useAdminOf } from './use-role';
 import { Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
 
 // What each pool type can be approved for in the registry. "points" = setPointsSinkApproved;
@@ -43,6 +44,8 @@ export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin
     ...extras.map((x) => ({ name: x.name, address: x.address, kind: poolKind(x) })),
   ];
 
+  // "Change" (access control) is only useful to that pool's admin
+  const adminOf = useAdminOf('RewardSink', pools.map((p) => p.address));
   const [typeId, setTypeId] = useState('sink');
   const type = POOL_TYPES.find((t) => t.id === typeId) || POOL_TYPES[0];
   const [name, setName] = useState('');
@@ -187,7 +190,7 @@ export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin
             {aclOf[x.address] !== undefined && aclOf[x.address] !== '' && (
               <span className="text-txt-secondary">
                 Access control: {sameAddr(aclOf[x.address], ZERO) ? 'off' : <span className="text-txt-primary">{ctx.nameOf(aclOf[x.address])}</span>}
-                {mode === 'deploy' && <> · <button className="text-accent hover:underline" onClick={() => document.getElementById('pool-settings')?.scrollIntoView({ behavior: 'smooth' })}>Change</button></>}
+                {mode === 'deploy' && adminOf[x.address.toLowerCase()] && <> · <button className="text-accent hover:underline" onClick={() => document.getElementById('pool-settings')?.scrollIntoView({ behavior: 'smooth' })}>Change</button></>}
               </span>
             )}
             <span className="flex-1" />

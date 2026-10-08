@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Card from '@/components/card';
 import {
-  MAX_UINT, PayoutMode, PointsDirection, RewardTiming, TokenStandard, VoucherMode, VoucherType, ZERO,
+  MAX_UINT, PayoutMode, PointsDirection, FundingMode, TokenStandard, VoucherMode, VoucherType, ZERO,
   eventArg, isAddr, loadVoucherTypes, role, sameAddr, settledRead, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
@@ -197,7 +197,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
       const nft = ctx.write('VoucherNFT');
       const receipt = await ctx.send('Register debit-record type', nft, 'registerVoucherType', [
         'Transfer Debit Record', 0, false, 1, VoucherMode.Points, TokenStandard.Native, ZERO, ZERO,
-        RewardTiming.Immediate, PointsDirection.Debit, ZERO, ZERO, PayoutMode.Direct, ZERO,
+        FundingMode.Reserved, PointsDirection.Debit, ZERO, ZERO, PayoutMode.Direct, ZERO,
       ]);
       const typeId = Number(eventArg(receipt, nft, 'VoucherTypeRegistered', 'typeId'));
       await ctx.send(`Type ${typeId}: pause redemption`, nft, 'setVoucherTypeRedemptionPaused', [typeId, true]);

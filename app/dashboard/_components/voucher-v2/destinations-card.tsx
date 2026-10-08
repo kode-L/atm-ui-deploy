@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { isAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import { useHasRole } from './use-role';
 import { Collapsible, ContractTag, Field, btnDangerCls, btnSecondaryCls, linkBtnCls } from './ui';
 
 // SourceRegistry keeps one allowlist per key; VoucherNFT checks a type's fixed
@@ -26,6 +27,8 @@ const parseList = (text: string) => text.split(/[\s,]+/).map((a) => a.trim()).fi
 // only: show just one list (by key), without the card wrapper — used inside the Allowlists card
 export default function DestinationsCard({ only }: { only?: string } = {}) {
   const ctx = useVoucherV2();
+  // approve / remove / label need OPERATOR_ROLE on SourceRegistry — hide them otherwise
+  const canEdit = useHasRole('SourceRegistry', 'OPERATOR_ROLE') === true;
   const registry = ctx.book.contracts.SourceRegistry;
   const [members, setMembers] = useState<Record<string, string[]>>({});
   const [input, setInput] = useState<Record<string, string>>({});
@@ -111,7 +114,7 @@ export default function DestinationsCard({ only }: { only?: string } = {}) {
             <div key={l.key} className="bg-surface-tertiary rounded-lg p-3 space-y-2">
               <h4 className="text-sm font-semibold">{l.title} <span className="text-txt-secondary font-normal">({members[l.key]?.length ?? '…'})</span></h4>
               <p className="text-[11px] text-txt-secondary">{l.note}</p>
-              <Field label="Add addresses" hint="One or many — separated by commas, spaces or new lines. Many addresses go in one transaction.">
+              {canEdit && <><Field label="Add addresses" hint="One or many — separated by commas, spaces or new lines. Many addresses go in one transaction.">
                 <textarea
                   className="w-full bg-surface-secondary rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-accent"
                   rows={2}
@@ -124,14 +127,15 @@ export default function DestinationsCard({ only }: { only?: string } = {}) {
                 <button className={btnSecondaryCls} disabled={busy} onClick={() => update(l, parseList(input[l.key] || ''), true)}>Approve</button>
                 <button className={btnDangerCls} disabled={busy} onClick={() => update(l, parseList(input[l.key] || ''), false)}>Remove listed</button>
               </div>
+              </>}
               <Collapsible title={`Approved (${members[l.key]?.length ?? '…'})`} summary="view, label or remove">
               <div className="space-y-1">
                 {(members[l.key] || []).map((a) => (
                   <div key={a} className="flex items-center gap-2 text-xs">
                     <span className="font-mono break-all flex-1">{a}</span>
                     <span className="text-txt-primary">{labels[a] || (ctx.nameOf(a).startsWith('0x') ? '' : ctx.nameOf(a))}</span>
-                    <button className={linkBtnCls} disabled={busy} onClick={() => editLabel(a)}>{labels[a] ? 'Rename' : 'Label'}</button>
-                    <button className={linkBtnCls} disabled={busy} onClick={() => update(l, [a], false)}>Remove</button>
+                    {canEdit && <button className={linkBtnCls} disabled={busy} onClick={() => editLabel(a)}>{labels[a] ? 'Rename' : 'Label'}</button>}
+                    {canEdit && <button className={linkBtnCls} disabled={busy} onClick={() => update(l, [a], false)}>Remove</button>}
                   </div>
                 ))}
                 {members[l.key]?.length === 0 && <p className="text-xs text-txt-secondary">None approved yet.</p>}

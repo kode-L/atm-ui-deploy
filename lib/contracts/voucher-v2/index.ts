@@ -54,7 +54,10 @@ export const role = (name: string) => ethers.utils.id(name);
 // Ordinals of VoucherNFT's enums.
 export const VoucherMode = { Points: 0, Reward: 1 } as const;
 export const TokenStandard = { Native: 0, ERC20: 1, ERC721: 2, ERC1155: 3 } as const;
-export const RewardTiming = { Immediate: 0, Deferred: 1 } as const;
+// v0.56: was RewardTiming { Immediate, Deferred } — same ordinals.
+// Reserved = the pool must hold the tokens at mint; they stay set aside until claim / revoke / expiry.
+// OnClaim  = nothing checked or set aside at mint; the claim pays from the pool's free balance.
+export const FundingMode = { Reserved: 0, OnClaim: 1 } as const;
 export const PointsDirection = { Credit: 0, Debit: 1 } as const;
 export const PayoutMode = { Direct: 0, Routed: 1, External: 2 } as const;
 export const enumName = (e: Record<string, number>, v: number) => Object.keys(e).find((k) => e[k] === Number(v)) || String(v);
@@ -156,8 +159,28 @@ const errorIface = (() => {
   return new ethers.utils.Interface(frags);
 })();
 
+// Wallets nest the revert data in different places (MetaMask: error.data.originalError.data,
+// ethers: error.error.data, JSON-RPC bodies as strings…) — collect every 0x… string that could be it.
+function revertDataCandidates(e: any): string[] {
+  const out: string[] = [];
+  const seen = new Set<any>();
+  const walk = (v: any, depth: number) => {
+    if (v == null || depth > 6 || seen.has(v)) return;
+    if (typeof v === 'string') {
+      if (/^0x[0-9a-fA-F]{8,}$/.test(v)) out.push(v);
+      else if (v.startsWith('{')) { try { walk(JSON.parse(v), depth + 1); } catch { /* not JSON */ } }
+      return;
+    }
+    if (typeof v !== 'object') return;
+    seen.add(v);
+    for (const k of Object.keys(v)) if (k !== 'transaction' && k !== 'tx') walk(v[k], depth + 1);
+  };
+  walk(e, 0);
+  return out;
+}
+
 export function decodeVoucherError(e: any): string {
-  const candidates = [e?.error?.data?.data, e?.error?.data, e?.data?.data, e?.data, e?.error?.error?.data];
+  const candidates = [e?.error?.data?.data, e?.error?.data, e?.data?.data, e?.data, e?.error?.error?.data, ...revertDataCandidates(e)];
   for (const c of candidates) {
     if (typeof c !== 'string' || !c.startsWith('0x') || c.length < 10) continue;
     try {
@@ -171,6 +194,10 @@ export function decodeVoucherError(e: any): string {
         NativeTransferFailed: 'the native coin payout could not be sent to the recipient',
         FeeOnTransferNotSupported: 'this token takes a fee on transfer — the pool does not support such tokens',
         NFTNotInInventory: "the pool doesn't hold that NFT",
+        FundingSourceInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — top it up on the Pools tab",
+        AmountReserved: "that amount is reserved for vouchers already minted — only the free balance can be withdrawn",
+        ReservationsOutstanding: 'vouchers of this type still hold reserved tokens in the current pool — they must be claimed, revoked or expire first',
+        NotReleasable: 'that voucher has no reservation to release, or has not expired yet',
       };
       if (friendly[parsed.name]) return `Reverted: ${parsed.name} — ${friendly[parsed.name]}`;
       if (parsed.name === 'AutoExecuteOutOfGas') {
@@ -185,7 +212,17 @@ export function decodeVoucherError(e: any): string {
     }
   }
   const reason = e?.reason || e?.error?.reason;
+  // a bare "execution reverted" carries no error code: almost always the contract at that address
+  // doesn't have this function (an older deployment / wrong network), or a role check in a wallet
+  // that dropped the details
+  if (reason && /^execution reverted\.?$/i.test(String(reason).trim())) {
+    return 'Reverted with no reason — the contract at this address may be an older deployment without this function, or you may be on the wrong network. Check the address in the address book (Overview), or redeploy.';
+  }
   if (reason) return String(reason).replace(/^execution reverted: /, '');
+  const message = String(e?.error?.message || e?.message || '');
+  if (/execution reverted/i.test(message) && !/execution reverted: ./i.test(message)) {
+    return 'Reverted with no reason — the contract at this address may be an older deployment without this function, or you may be on the wrong network. Check the address in the address book (Overview), or redeploy.';
+  }
   return decodeError(e);
 }
 
@@ -220,7 +257,7 @@ export interface VoucherType {
   redemptionPaused: boolean;
   payoutRecipient: string;
   fundingSource: string;
-  rewardTiming: number;
+  fundingMode: number;
   pointsDirection: number;
   transferGate: string;
   revokeDestination: string;
@@ -246,7 +283,7 @@ export async function loadVoucherTypes(nft: ethers.Contract): Promise<VoucherTyp
         redemptionPaused: t.redemptionPaused,
         payoutRecipient: t.payoutRecipient,
         fundingSource: t.fundingSource,
-        rewardTiming: Number(t.rewardTiming),
+        fundingMode: Number(t.fundingMode),
         pointsDirection: Number(t.pointsDirection),
         transferGate: t.transferGate,
         revokeDestination: t.revokeDestination,
@@ -261,7 +298,7 @@ export async function loadVoucherTypes(nft: ethers.Contract): Promise<VoucherTyp
 export function kindOf(t: VoucherType) {
   return t.mode === VoucherMode.Points
     ? `Points ${enumName(PointsDirection, t.pointsDirection)}`
-    : `Reward ${enumName(TokenStandard, t.tokenStandard)}${t.rewardTiming === RewardTiming.Deferred ? ' (deferred)' : ''}`;
+    : `Reward ${enumName(TokenStandard, t.tokenStandard)}${t.fundingMode === FundingMode.OnClaim ? ' (on claim)' : ''}`;
 }
 // "#2 Weekly bonus · Reward Native" — the kind is left out when the name already says it
 export const typeLabel = (t: VoucherType) => {
