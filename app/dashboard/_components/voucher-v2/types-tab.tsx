@@ -80,7 +80,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
       { id: 'rewardNative', label: 'Reward · Native coin (RewardSink)', note: "Pays the chain's native coin from RewardSink. faceValue uses 18 decimals.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, approvedTokens: [ZERO] } },
       { id: 'rewardErc20', label: 'Reward · ERC20 (RewardSink)', note: "Pays any approved ERC20 from RewardSink. faceValue is always 18-decimal; the sink rescales to each token's decimals.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingSource: rs } },
       { id: 'rewardDeferred', label: 'Reward · ERC20 deferred (VoucherIncentive)', note: 'Non-custodial: claiming records an entitlement on VoucherIncentive instead of paying out. Needs wire step 6.', apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, rewardTiming: RewardTiming.Deferred, redemptionDays: 14, fundingSource: vi } },
-      { id: 'daoGoverned', label: 'Reward · Native, DAO-governed 2-of-2', note: 'Mints need a VoucherDAO proposal + approvals (quorum 2). Add proposers/approvers on the Roles tab.', apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
+      { id: 'daoGoverned', label: 'Reward · Native, DAO-governed 2-of-2', note: 'Mints need a VoucherDAO proposal + approvals (quorum 2). Add at least 2 approvers on Minters & roles (approvers propose and approve).', apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
       { id: 'custom', label: 'Custom (blank)', note: '', apply: {} },
     ] as { id: string; label: string; note: string; apply: Partial<Form> }[];
   }, [c.VoucherIncentive, c.RewardSink, c.RevocationVault]);
@@ -475,7 +475,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
           {f.mintApprovalsRequired <= 1 && (
             <label className="flex items-center gap-2"><input type="checkbox" checked={f.grantSelfMinter} onChange={(e) => set('grantSelfMinter', e.target.checked)} /> Make the connected wallet a minter of this type</label>
           )}
-          <label className="flex items-center gap-2" title="VoucherDAO mints for its proposers / approvers. With 1 approval required, a proposal executes as soon as it is proposed.">
+          <label className="flex items-center gap-2" title="VoucherDAO mints for its approvers (they propose and approve). With 1 approval required, a proposal executes as soon as it is proposed.">
             <input type="checkbox" disabled={!c.VoucherDAO} checked={f.grantDaoMinter} onChange={(e) => set('grantDaoMinter', e.target.checked)} /> Let VoucherDAO mint this type (unlimited)
           </label>
         </div>

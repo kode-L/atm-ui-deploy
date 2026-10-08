@@ -50,7 +50,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const daoTypes = types.filter((t) => t.mintApprovalsRequired > 1 || daoMinterOf.includes(t.id));
   const typeId = daoTypes.some((t) => t.id === ctx.typeId) ? ctx.typeId : daoTypes[0]?.id ?? -1;
   const setTypeId = ctx.setTypeId;
-  const [roles, setRoles] = useState({ proposer: false, approver: false, admin: false, daoMinter: false, proposers: 0, approvers: 0 });
+  // v0.53: one approver group per type — approvers both propose and approve
+  const [roles, setRoles] = useState({ approver: false, admin: false, daoMinter: false, approvers: 0 });
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
   const [kind, setKind] = useState<Kind>('mint');
@@ -126,12 +127,12 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
     (async () => {
       const dao = ctx.read('VoucherDAO');
       const nft = ctx.read('VoucherNFT');
-      const [pr, ar] = await Promise.all([dao.typeProposerRole(typeId), dao.typeApproverRole(typeId)]);
-      const [proposer, approver, admin, daoMinter, proposers, approvers] = await Promise.all([
-        dao.hasRole(pr, ctx.account), dao.hasRole(ar, ctx.account), dao.hasRole(DEFAULT_ADMIN_ROLE, ctx.account),
-        nft.hasRole(await nft.typeMinterRole(typeId), c.VoucherDAO), dao.getProposersOf(typeId), dao.getApproversOf(typeId),
+      const ar = await dao.typeApproverRole(typeId);
+      const [approver, admin, daoMinter, approvers] = await Promise.all([
+        dao.hasRole(ar, ctx.account), dao.hasRole(DEFAULT_ADMIN_ROLE, ctx.account),
+        nft.hasRole(await nft.typeMinterRole(typeId), c.VoucherDAO), dao.getApproversOf(typeId),
       ]);
-      setRoles({ proposer, approver, admin, daoMinter, proposers: proposers.length, approvers: approvers.length });
+      setRoles({ approver, admin, daoMinter, approvers: approvers.length });
     })().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, c.VoucherDAO, c.VoucherNFT, ctx.reader, ctx.account, ctx.revision]);
@@ -232,11 +233,11 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
           {selected && (
             <div className="text-xs space-y-1 self-end pb-1">
               <div>
-                Quorum <b>{quorum}</b> · {roles.proposers} proposer(s) · {roles.approvers} approver(s) ·{' '}
-                You: {[roles.proposer && 'proposer', roles.approver && 'approver', roles.admin && 'DAO admin'].filter(Boolean).join(', ') || 'no role'}
+                Needs <b>{quorum}</b> approval{quorum === 1 ? '' : 's'} · {roles.approvers} approver(s) ·{' '}
+                You: {[roles.approver && 'approver', roles.admin && 'DAO admin'].filter(Boolean).join(', ') || 'no role'}
               </div>
               {!roles.daoMinter && <p className="text-red-300">⚠ VoucherDAO can&apos;t mint this type — reaching quorum will fail. <button className={linkBtnCls} onClick={() => onGo('roles')}>Grant it on Roles</button></p>}
-              {roles.approvers + 1 < quorum && <p className="text-yellow-300">⚠ Fewer approvers than the quorum needs — add some on the <button className={linkBtnCls} onClick={() => onGo('roles')}>Roles tab</button>.</p>}
+              {roles.approvers < quorum && <p className="text-yellow-300">⚠ Fewer approvers than the approvals needed (the proposer counts as one) — add some on the <button className={linkBtnCls} onClick={() => onGo('roles')}>Roles tab</button>.</p>}
             </div>
           )}
         </div>
@@ -291,8 +292,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
               <input className={inputCls} value={form.hours} onChange={(e) => set('hours', e.target.value)} />
             </Field>
           </div>
-          <button className={`${btnCls} mt-4`} disabled={busy || (kind !== 'revoke' && !roles.proposer)} onClick={propose}>{busy ? 'Sending…' : 'Propose'}</button>
-          {kind !== 'revoke' && !roles.proposer && <span className="text-xs text-txt-secondary ml-3">Your wallet isn&apos;t a proposer for this type — add it on the Roles tab.</span>}
+          <button className={`${btnCls} mt-4`} disabled={busy || !roles.approver} onClick={propose}>{busy ? 'Sending…' : 'Propose'}</button>
+          {!roles.approver && <span className="text-xs text-txt-secondary ml-3">Only this type&apos;s approvers can propose — add your wallet on Minters &amp; roles.</span>}
         </Card>
       )}
 

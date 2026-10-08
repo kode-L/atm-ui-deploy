@@ -6,11 +6,11 @@ import { useVoucherV2 } from './context';
 import { btnSecondaryCls } from './ui';
 
 // address → typeId → what it may do on that type
-type Cell = { mint?: string; propose?: boolean; approve?: boolean };
+type Cell = { mint?: string; approve?: boolean };
 
 /**
  * "Who can do what": every address that may mint (VoucherNFT per-type minter role) or vote
- * (VoucherDAO per-type proposer / approver roles), against every voucher type.
+ * (VoucherDAO per-type approver group, who both propose and approve), against every voucher type.
  */
 export default function PermissionsCard() {
   const ctx = useVoucherV2();
@@ -45,9 +45,7 @@ export default function PermissionsCard() {
         const daoGoverns = t.mintApprovalsRequired > 1 || minters.some((m) => sameAddr(m, c.VoucherDAO));
         if (daoGoverned.current) daoGoverned.current[t.id] = daoGoverns;
         if (dao && daoGoverns) {
-          const [props, apprs] = await Promise.all([dao.getProposersOf(t.id), dao.getApproversOf(t.id)]);
-          for (const a of props) cell(a, t.id).propose = true;
-          for (const a of apprs) cell(a, t.id).approve = true;
+          for (const a of await dao.getApproversOf(t.id)) cell(a, t.id).approve = true;
         }
       }
       setTypes(ts);
@@ -72,7 +70,7 @@ export default function PermissionsCard() {
     <Card title="Who can do what">
       <div className="flex flex-wrap items-center gap-3 -mt-2 mb-3">
         <p className="text-xs text-txt-secondary flex-1">
-          <b className="text-txt-primary">Mint</b> = may mint that type directly (with its cap). <b className="text-txt-primary">Propose</b> / <b className="text-txt-primary">Approve</b> = VoucherDAO committee, on types the DAO mints (&quot;DAO n&quot; = approvals needed).
+          <b className="text-txt-primary">Mint</b> = may mint that type directly (with its cap). <b className="text-txt-primary">Propose &amp; approve</b> = VoucherDAO approver of that type (approvers do both), on types the DAO mints (&quot;DAO n&quot; = approvals needed).
           Click a type to manage it below.
         </p>
         <button className={btnSecondaryCls} disabled={loading} onClick={load}>{loading ? 'Loading…' : 'Reload'}</button>
@@ -114,8 +112,7 @@ export default function PermissionsCard() {
                           {!cl ? <span className="text-txt-secondary/40">—</span> : (
                             <div className="flex flex-wrap gap-1">
                               {cl.mint && <span className="px-1.5 py-0.5 rounded bg-green-900/40 text-green-300">Mint {cl.mint}</span>}
-                              {cl.propose && <span className="px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300">Propose</span>}
-                              {cl.approve && <span className="px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300">Approve</span>}
+                                                            {cl.approve && <span className="px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300">Propose &amp; approve</span>}
                             </div>
                           )}
                         </td>
