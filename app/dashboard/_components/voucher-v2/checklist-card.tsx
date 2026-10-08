@@ -54,7 +54,7 @@ export default function ChecklistCard({ onGo }: { onGo: (t: string) => void }) {
       { title: 'Put rewards in a pool', detail: funded ? 'the main pool holds rewards' : 'top up the main pool (or deploy more pools)', tab: 'funding', done: funded },
       { title: 'Create a voucher type', detail: typeCount ? `${typeCount} type(s)` : 'pick what claiming gives, name it', tab: 'types', done: typeCount > 0 },
       { title: 'Choose who can mint', detail: typeCount ? `${withMinter} of ${typeCount} types have a minter` : 'after creating a type', tab: 'roles', done: typeCount > 0 && withMinter === typeCount },
-      { title: 'Mint a test voucher', detail: minted ? `${minted} voucher(s) minted` : 'Test mint on the VoucherNFT tab', tab: 'types', done: minted > 0 },
+      { title: 'Mint a test voucher', detail: minted ? `${minted} voucher(s) minted` : 'VoucherNFT tab → Vouchers → Mint', tab: 'types', done: minted > 0 },
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.reader, ctx.book, ctx.revision]);

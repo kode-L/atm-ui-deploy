@@ -97,8 +97,10 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
   };
 
   const doClear = () => {
-    if (!window.confirm('Forget every Voucher V2 address saved for this network in this browser? Deployed contracts are not affected. Export first if you need them.')) return;
+    if (!window.confirm('Start fresh: forget every Voucher V2 address, extra pool, saved token and saved transaction for this network in this browser? Deployed contracts are not affected. Export first if you need them.')) return;
     ctx.replaceBook(emptyBook());
+    ctx.clearTxLog();
+    ctx.setTypeId(-1);
   };
 
   const addToken = () => {
@@ -149,7 +151,7 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
         <div className="flex flex-wrap gap-2 mb-4">
           <button className={btnSecondaryCls} onClick={doExport}>Export JSON</button>
           <button className={btnSecondaryCls} onClick={() => setShowImport(!showImport)}>Import JSON</button>
-          <button className={btnDangerCls} onClick={doClear}>Clear</button>
+          <button className={btnDangerCls} onClick={doClear}>Start fresh</button>
         </div>
         {msg && <p className={`text-xs mb-3 ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
         {showImport && (

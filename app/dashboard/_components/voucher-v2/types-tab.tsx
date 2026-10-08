@@ -514,26 +514,6 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
       </Card>
       </Collapsible>
 
-      <Card title="Test mint">
-        <ContractTag contract="VoucherNFT" methods={['mint']} />
-        <p className="text-xs text-txt-secondary mb-3">Mints one voucher straight from the connected wallet to prove a type works. The wallet needs that type&apos;s minter role (Roles tab).</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="Type">
-            <Select value={m.typeId} onChange={(v) => setM({ ...m, typeId: v })} options={[{ label: 'Select a type', value: -1 }, ...types.map((t) => ({ label: typeLabel(t), value: t.id }))]} />
-          </Field>
-          <Field label="Recipient"><AddressInput value={m.to} onChange={(v) => setM({ ...m, to: v })} options={[{ label: 'Connected wallet', value: ctx.account }]} /></Field>
-          <Field label="Face value" hint={faceHint}><input className={inputCls} value={m.faceValue} onChange={(e) => setM({ ...m, faceValue: e.target.value })} /></Field>
-          {mintType?.mode === VoucherMode.Reward && (
-            <Field label="Payout token">
-              <Select value={m.token || mintType.approvedTokens[0] || ''} onChange={(v) => setM({ ...m, token: v })} options={mintType.approvedTokens.map((a) => ({ label: nameOf(a), value: a }))} />
-            </Field>
-          )}
-          {mintType?.mode === VoucherMode.Reward && mintType.tokenStandard >= TokenStandard.ERC721 && (
-            <Field label="Token id"><input className={inputCls} value={m.tokenId} onChange={(e) => setM({ ...m, tokenId: e.target.value })} /></Field>
-          )}
-        </div>
-        <button className={`${btnCls} mt-4`} disabled={busy || !mintType} onClick={testMint}>Mint</button>
-      </Card>
 
     </div>
   );

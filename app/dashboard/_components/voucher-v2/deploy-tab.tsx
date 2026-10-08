@@ -5,6 +5,7 @@ import { getExplorerAddressUrl } from '@/lib/contracts/config';
 import { BSC_MAINNET } from '@/lib/contracts/config';
 import { ContractKey, isAddr, sameAddr, shortAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import StartFresh from './start-fresh';
 import { DEPLOY_STEPS, DeployStep, StepResult, checkDeployStep, runDeployStep } from './steps';
 import { Field, NavButtons, StepCard, StepStatus, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
@@ -127,6 +128,7 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
+      <StartFresh />
       <Card title="Deployment settings">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Admin address" hint="Gets DEFAULT_ADMIN_ROLE on every contract. Keep it as the connected wallet, or the wiring steps can't be sent from here.">
