@@ -80,7 +80,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
       { id: 'rewardNative', label: 'Reward — native coin (BNB)', note: "Claiming pays native coin from the chosen pool.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, approvedTokens: [ZERO] } },
       { id: 'rewardErc20', label: 'Reward — ERC20 token', note: "Claiming pays an ERC20 token (e.g. USDT) from the chosen pool.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingSource: rs } },
       { id: 'rewardDeferred', label: 'Reward — ERC20 via VoucherIncentive (paid on claim)', note: "Claiming records what the holder is owed on VoucherIncentive; it can pay them directly, route the tokens to another pool, or leave delivery to another system.", apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingMode: FundingMode.OnClaim, redemptionDays: 14, fundingSource: vi } },
-      { id: 'daoGoverned', label: 'Reward — native coin, minted by a 2-vote DAO', note: "Every mint is a VoucherDAO proposal that needs 2 operator votes. Add at least 2 operators on Minters & roles.", apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
+      { id: 'daoGoverned', label: 'Reward — native coin, minted by a 2-vote DAO', note: "Every mint is a VoucherDAO proposal that needs 2 operator votes. Add at least 2 operators on Minters & roles.", apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, fundingSource: rs, mintApprovalsRequired: 2, grantDaoMinter: true, grantSelfMinter: false, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
       { id: 'custom', label: 'Custom (blank)', note: '', apply: {} },
     ] as { id: string; label: string; note: string; apply: Partial<Form> }[];
   }, [c.VoucherIncentive, c.RewardSink, c.RevocationVault]);
@@ -121,6 +121,15 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     : sameAddr(f.fundingSource, ZERO) ? ZERO : (sourceOptions.find((o) => sameAddr(o.value, f.fundingSource))?.value ?? ZERO);
 
   const isReward = isRewardMode(f.mode);
+  // "Who mints it": maps onto grantSelfMinter / grantDaoMinter; votes only matter for the DAO
+  const minter: 'wallet' | 'dao' | 'both' = f.grantDaoMinter ? (f.grantSelfMinter ? 'both' : 'dao') : 'wallet';
+  const setMinter = (m: string) => setF((prev) => ({
+    ...prev,
+    grantSelfMinter: m !== 'dao',
+    grantDaoMinter: m !== 'wallet',
+    // direct-only minting has no vote
+    mintApprovalsRequired: m === 'wallet' ? 1 : prev.mintApprovalsRequired,
+  }));
   // payout modes are read by VoucherIncentive only — a RewardSink always pays the claimer
   // (or the fixed payout recipient), so anything but Direct would be silently ignored there
   const usesIncentive = !!c.VoucherIncentive && sameAddr(f.fundingSource, c.VoucherIncentive);
@@ -199,6 +208,13 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     if (destWarnings.length) return setMsg({ ok: false, text: destWarnings[0] });
     setBusy(true);
     setMsg(null);
+    ctx.beginFlow(`Create "${f.name.trim()}"`, [
+      'Register the voucher type',
+      ...(isReward ? f.approvedTokens.map((t) => `Approve payout token ${sameAddr(t, ZERO) ? 'native coin' : nameOf(t)}`) : []),
+      ...(f.pauseRedemption ? ['Pause claiming'] : []),
+      ...(f.grantSelfMinter ? ['Make my wallet a minter'] : []),
+      ...(f.grantDaoMinter && c.VoucherDAO ? ['Make VoucherDAO a minter (unlimited)'] : []),
+    ]);
     try {
       const nft = ctx.write('VoucherNFT');
       setProgress('Registering type…');
@@ -229,7 +245,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         setProgress('Pausing redemption…');
         await ctx.send(`Type ${typeId}: pause redemption`, nft, 'setVoucherTypeRedemptionPaused', [typeId, true]);
       }
-      if (f.mintApprovalsRequired <= 1 && f.grantSelfMinter) {
+      if (f.grantSelfMinter) {
         setProgress('Granting minter role…');
         await ctx.send(`Type ${typeId}: minter → wallet`, nft, 'grantTypeMinterWithCap', [typeId, ctx.account, 0, 0]);
       }
@@ -393,7 +409,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
           </Field>
           <Field
             label={isReward ? 'Pays from (pool)' : 'Points ledger'}
-            hint={<>✓ = approved for {isReward ? `${enumName(TokenStandard, f.tokenStandard)} rewards` : 'points'}. Pools are deployed on the Fund pools tab.</>}
+            hint={<>✓ = approved for {isReward ? `${enumName(TokenStandard, f.tokenStandard)} rewards` : 'points'}. Pools are deployed on the Pools tab.</>}
           >
             <Select
               value={sourceChoice}
@@ -432,20 +448,32 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
               ]} />
             </Field>
           )}
-          <Field label="Votes needed to mint" hint="1 = minters mint directly. 2 or more = every mint is a VoucherDAO proposal its operators vote on.">
-            <input className={inputCls} type="number" min={1} value={f.mintApprovalsRequired} onChange={(e) => { const v = num(e.target.value); setF((prev) => ({ ...prev, mintApprovalsRequired: v, grantDaoMinter: v > 1 ? true : prev.grantDaoMinter })); }} />
+          <Field
+            label="Who mints it"
+            hint={minter === 'wallet' ? 'Your wallet mints directly — no vote. More minters can be added later on Minters below.'
+              : minter === 'dao' ? 'Every mint is a VoucherDAO proposal by one of its operators (added on the VoucherDAO tab).'
+              : 'Your wallet mints directly, and VoucherDAO operators can also mint through proposals.'}
+          >
+            <Select value={minter} onChange={setMinter} options={[
+              { label: 'My wallet (direct, no vote)', value: 'wallet' },
+              ...(c.VoucherDAO ? [
+                { label: 'VoucherDAO (operators propose)', value: 'dao' },
+                { label: 'Both — my wallet and VoucherDAO', value: 'both' },
+              ] : []),
+            ]} />
           </Field>
-        </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3 text-sm">
-          <span className="text-xs text-txt-secondary w-full">Who can mint it</span>
-          {f.mintApprovalsRequired <= 1 && (
-            <label className="flex items-center gap-2"><input type="checkbox" checked={f.grantSelfMinter} onChange={(e) => set('grantSelfMinter', e.target.checked)} /> My wallet</label>
+          {minter !== 'wallet' && (
+            <Field
+              label="Votes needed (VoucherDAO)"
+              hint={f.mintApprovalsRequired <= 1 ? "1 = an operator's proposal mints immediately (no second vote)." : `${f.mintApprovalsRequired} operator votes per mint — the proposer counts as one, so you need at least ${f.mintApprovalsRequired} operators.`}
+            >
+              <input className={inputCls} type="number" min={1} value={f.mintApprovalsRequired} onChange={(e) => set('mintApprovalsRequired', Math.max(1, num(e.target.value)))} />
+            </Field>
           )}
-          <label className="flex items-center gap-2" title="VoucherDAO mints for its operators (they propose and approve). With 1 vote needed, a proposal mints as soon as it is proposed.">
-            <input type="checkbox" disabled={!c.VoucherDAO} checked={f.grantDaoMinter} onChange={(e) => set('grantDaoMinter', e.target.checked)} /> VoucherDAO (through proposals)
-          </label>
-          <span className="text-xs text-txt-secondary">More minters can be added later on Minters &amp; roles.</span>
         </div>
+        {minter === 'both' && f.mintApprovalsRequired > 1 && (
+          <p className="text-xs text-yellow-300 mt-2">⚠ Your wallet can mint this type directly, skipping the {f.mintApprovalsRequired}-vote DAO process. Pick &quot;VoucherDAO&quot; if every mint must be voted on.</p>
+        )}
 
         {/* 3 — everything else, already set by the preset */}
         <div className="mt-5">

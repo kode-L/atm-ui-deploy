@@ -8,10 +8,11 @@ import Card from '@/components/card';
 import { VoucherV2Provider, useVoucherV2 } from './voucher-v2/context';
 import OverviewTab from './voucher-v2/overview-tab';
 import DeployTab from './voucher-v2/deploy-tab';
-import WireTab from './voucher-v2/wire-tab';
+import WireTab, { useSetupDone } from './voucher-v2/wire-tab';
 import TypesTab from './voucher-v2/types-tab';
 import RolesTab from './voucher-v2/roles-tab';
 import TxLogCard from './voucher-v2/tx-log';
+import FlowPanel from './voucher-v2/flow-panel';
 import FundingTab from './voucher-v2/funding-tab';
 import DaoTab from './voucher-v2/dao-tab';
 import ReleaseExpiredCard from './voucher-v2/release-card';
@@ -92,6 +93,7 @@ function VoucherV2Inner() {
   }, [nft, ctx.account, ctx.reader, ctx.revision]);
 
   const network = NETWORKS[ctx.chainId];
+  const nftSetupDone = useSetupDone('VoucherNFT');
 
   return (
     <div className="space-y-4">
@@ -146,7 +148,8 @@ function VoucherV2Inner() {
           {tab === 'deploy' && <DeployTab onGo={go} />}
           {tab === 'nft' && (
             <div className={TWO_COL}>
-              <WireTab onGo={go} target="VoucherNFT" />
+              {/* setup goes first while something is left to do, then moves to the bottom */}
+              {nftSetupDone === false && <WireTab onGo={go} target="VoucherNFT" />}
               <TypesTab onGo={go} />
               <EditTypeCard />
               <RolesTab onGo={go} part="nft" />
@@ -154,6 +157,7 @@ function VoucherV2Inner() {
               <ReleaseExpiredCard />
               <VaultCard />
               <NftAdminCard />
+              {nftSetupDone !== false && <WireTab onGo={go} target="VoucherNFT" />}
             </div>
           )}
           {tab === 'dao' && (
@@ -184,6 +188,7 @@ function VoucherV2Inner() {
       )}
 
       {ctx.txLog.length > 0 && <TxLogCard />}
+      <FlowPanel />
     </div>
   );
 }

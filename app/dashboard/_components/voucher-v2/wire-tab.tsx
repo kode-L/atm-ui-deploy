@@ -20,7 +20,7 @@ const WIRE_GROUPS: { contract: 'VoucherNFT' | 'SourceRegistry'; note: string }[]
 
 export default function WireTab({ onGo, target }: { onGo: (t: string) => void; target?: 'VoucherNFT' | 'SourceRegistry' }) {
   const ctx = useVoucherV2();
-  // opened expanded when arriving from a pool's "Change access control" link (Fund pools tab)
+  // opened expanded when arriving from a pool's "Change access control" link (Pools tab)
   const [openAdvanced] = useState(() => {
     try {
       const v = sessionStorage.getItem(OPEN_ADVANCED_KEY) === '1';
@@ -131,7 +131,14 @@ export default function WireTab({ onGo, target }: { onGo: (t: string) => void; t
     for (const s of pendingRequired) if (!(await runOne(s))) break;
   };
 
-  return (
+  // done count for the collapsed summary (contract tabs only)
+  const mine = WIRE_STEPS.filter((x) => !target || x.target === target);
+  const required = mine.filter((x) => !x.optional);
+  const requiredLeft = required.filter((x) => statusOf(x) !== 'done').length;
+  const stillChecking = mine.some((x) => statusOf(x) === 'checking');
+  const doneCount = mine.filter((x) => statusOf(x) === 'done').length;
+
+  const body = (
     <div className="space-y-4">
       <Card title={target ? `${target} setup` : 'Wire the contracts together'}>
         <p className="text-sm text-txt-secondary">
@@ -228,4 +235,34 @@ export default function WireTab({ onGo, target }: { onGo: (t: string) => void; t
 
     </div>
   );
+
+  if (!target) return body;
+  return (
+    <Collapsible
+      // remount when it flips between "all done" and "something to do" so it opens / closes itself
+      key={stillChecking ? 'checking' : requiredLeft ? 'todo' : 'done'}
+      title={`${target} setup`}
+      summary={stillChecking ? 'checking…' : requiredLeft ? `${requiredLeft} required step${requiredLeft === 1 ? '' : 's'} to do` : `${doneCount} of ${mine.length} done`}
+      defaultOpen={!stillChecking && requiredLeft > 0}
+    >
+      {body}
+    </Collapsible>
+  );
+}
+
+/** true once every required setup step for `target` is in place (null while checking). */
+export function useSetupDone(target: 'VoucherNFT' | 'SourceRegistry'): boolean | null {
+  const ctx = useVoucherV2();
+  const [done, setDone] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const req = WIRE_STEPS.filter((x) => x.target === target && !x.optional);
+      const results = await Promise.all(req.map((x) => checkWireStep(ctx, x).catch(() => ({ done: false }))));
+      if (!cancelled) setDone(results.every((x) => x.done));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, ctx.book, ctx.reader, ctx.account, ctx.revision]);
+  return done;
 }

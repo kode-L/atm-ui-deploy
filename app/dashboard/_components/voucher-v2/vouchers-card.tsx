@@ -6,6 +6,7 @@ import {
   TokenStandard, VoucherMode, VoucherType, ZERO, eventArg, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import PoolFundingBox from './pool-funding-box';
 import { AddressInput, Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 const SCAN_LIMIT = 2000; // vouchers read per browse scan (newest first)
@@ -27,6 +28,14 @@ interface Voucher {
 const fungible = (t?: VoucherType) => !!t && t.mode === VoucherMode.Reward && t.tokenStandard <= TokenStandard.ERC20;
 const toDate = (d: string) => (d ? Math.floor(new Date(d).getTime() / 1000) : 0);
 const fmtDate = (s: number) => (s ? new Date(s * 1000).toLocaleString() : '—');
+// total value a mint form will reserve, in 18-dp fixed point (0 when it can't be parsed yet)
+const neededFor = (t: VoucherType | undefined, bulk: boolean, quantity: string, value: string, rows: string) => {
+  if (!fungible(t)) return ethers.BigNumber.from(0);
+  const p = (v: string) => { try { return ethers.utils.parseUnits((v || '0').trim(), 18); } catch { return ethers.BigNumber.from(0); } };
+  if (!bulk) return p(value).mul(Math.max(0, parseInt(quantity || '0', 10) || 0));
+  return rows.split('\n').map((l) => l.trim()).filter(Boolean).reduce((s, l) => s.add(p(l.split(/[,\s]+/)[1] || '0')), ethers.BigNumber.from(0));
+};
+
 
 /** Mint, claim and browse vouchers — every call here goes to VoucherNFT. */
 export default function VouchersCard() {
@@ -91,6 +100,7 @@ function MintPanel({ types }: { types: VoucherType[] }) {
   const [bulk, setBulk] = useState(false);
   const [f, setF] = useState({ to: ctx.account, quantity: '1', faceValue: '', token: '', tokenId: '0', start: '', expiry: '', rows: '' });
   const [isMinter, setIsMinter] = useState<boolean | null>(null);
+  const [short, setShort] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -175,7 +185,9 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         <Field label="Claimable from (optional)"><input type="datetime-local" className={inputCls} value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
         <Field label="Expires (optional)"><input type="datetime-local" className={inputCls} value={f.expiry} onChange={(e) => set('expiry', e.target.value)} /></Field>
       </div>
-      <button className={btnCls} disabled={busy || !t || t.mintApprovalsRequired > 1 || isMinter === false} onClick={mint}>{busy ? 'Minting…' : bulk ? 'Mint all' : 'Mint'}</button>
+      {t && t.mintApprovalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, f.rows)} onShort={setShort} />}
+      <button className={btnCls} disabled={busy || !t || t.mintApprovalsRequired > 1 || isMinter === false || short} onClick={mint}>{busy ? 'Minting…' : bulk ? 'Mint all' : 'Mint'}</button>
+      {short && <span className="text-xs text-yellow-300 ml-3">Top up the pool first (above) — minting now would fail.</span>}
       {msg && <p className={`text-xs break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
     </div>
   );

@@ -194,7 +194,7 @@ export function decodeVoucherError(e: any): string {
         NativeTransferFailed: 'the native coin payout could not be sent to the recipient',
         FeeOnTransferNotSupported: 'this token takes a fee on transfer — the pool does not support such tokens',
         NFTNotInInventory: "the pool doesn't hold that NFT",
-        FundingSourceInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — top it up on the Pools tab",
+        FundingSourceInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — use Top up in the pool box on the Mint / proposal form (or the Pools tab)",
         AmountReserved: "that amount is reserved for vouchers already minted — only the free balance can be withdrawn",
         ReservationsOutstanding: 'vouchers of this type still hold reserved tokens in the current pool — they must be claimed, revoked or expire first',
         NotReleasable: 'that voucher has no reservation to release, or has not expired yet',

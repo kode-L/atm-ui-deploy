@@ -6,6 +6,7 @@ import {
   DEFAULT_ADMIN_ROLE, TokenStandard, VoucherMode, VoucherType, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import PoolFundingBox from './pool-funding-box';
 import { ContractTag, AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 // VoucherDAO: proposing counts as the first approval; at the type's quorum
@@ -35,6 +36,13 @@ interface Proposal {
 }
 
 const fungible = (t?: VoucherType) => !!t && t.mode === VoucherMode.Reward && t.tokenStandard <= TokenStandard.ERC20;
+// what a proposal will reserve when it executes, in 18-dp fixed point
+const neededFor = (t: VoucherType | undefined, kind: string, quantity: string, value: string, rows: string) => {
+  if (!fungible(t) || kind === 'revoke') return ethers.BigNumber.from(0);
+  const p = (v: string) => { try { return ethers.utils.parseUnits((v || '0').trim(), 18); } catch { return ethers.BigNumber.from(0); } };
+  if (kind === 'mint') return p(value).mul(Math.max(0, parseInt(quantity || '0', 10) || 0));
+  return rows.split('\n').map((l) => l.trim()).filter(Boolean).reduce((s, l) => s.add(p(l.split(/[,\s]+/)[1] || '0')), ethers.BigNumber.from(0));
+};
 const toFace = (t: VoucherType | undefined, v: string) => (fungible(t) ? toUnits(v, 18) : String(Math.max(0, parseInt(v || '0', 10) || 0)));
 const showFace = (t: VoucherType | undefined, v: ethers.BigNumberish) => (fungible(t) ? fromUnits(v, 18) : String(v));
 const toDate = (d: string) => (d ? Math.floor(new Date(d).getTime() / 1000) : 0);
@@ -239,7 +247,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
                 You: {[roles.operator && 'operator', roles.admin && 'DAO admin'].filter(Boolean).join(', ') || 'no role'}
               </div>
               {!roles.daoMinter && <p className="text-red-300">⚠ VoucherDAO can&apos;t mint this type — reaching quorum will fail. <button className={linkBtnCls} onClick={() => onGo('roles')}>Grant it on Roles</button></p>}
-              {roles.operators < quorum && <p className="text-yellow-300">⚠ Fewer operators than the approvals needed (the proposer counts as one) — add some on the <button className={linkBtnCls} onClick={() => onGo('roles')}>Roles tab</button>.</p>}
+              {roles.operators < quorum && <p className="text-yellow-300">⚠ Fewer operators than the approvals needed (the proposer counts as one) — add some in <i>VoucherDAO operators</i> below.</p>}
             </div>
           )}
         </div>
@@ -295,6 +303,11 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
               <input className={inputCls} value={form.hours} onChange={(e) => set('hours', e.target.value)} />
             </Field>
           </div>
+          {kind !== 'revoke' && (
+            <div className="mt-3">
+              <PoolFundingBox type={selected} token={selected.mode === VoucherMode.Reward ? form.token || selected.approvedTokens[0] || ZERO : ZERO} needed={neededFor(selected, kind, form.quantity, form.faceValue, form.bulk)} />
+            </div>
+          )}
           <button className={`${btnCls} mt-4`} disabled={busy || !roles.operator} onClick={propose}>{busy ? 'Sending…' : 'Propose'}</button>
           {!roles.operator && <span className="text-xs text-txt-secondary ml-3">Only this type&apos;s operators can propose — add your wallet on Minters &amp; roles.</span>}
         </Card>

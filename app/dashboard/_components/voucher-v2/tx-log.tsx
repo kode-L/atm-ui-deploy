@@ -116,6 +116,9 @@ export default function TxLogCard() {
                   <CopyBtn text={addr} id={`a${t.id}`} />
                 </span>
               )}
+              {(t.status === 'pending' || t.status === 'unknown' || (t.status === 'error' && t.hash)) && t.hash && (
+                <button className="text-accent hover:underline" onClick={() => ctx.recheckTx(t.id)}>Check status</button>
+              )}
               {t.error && <span className="text-red-300 break-all w-full">{t.error}</span>}
             </div>
           );

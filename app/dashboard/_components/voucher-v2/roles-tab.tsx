@@ -119,6 +119,7 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
     const cap = unlimited ? MAX_UINT : String(parseInt(mint.cap || '0', 10) || 0);
     const window = unlimited ? 0 : Math.round(Number(mint.windowHours || 0) * 3600);
     const ids = forceUnlimited ? [typeId] : [typeId, ...alsoTypes.filter((t) => t !== typeId)];
+    if (ids.length > 1) ctx.beginFlow(`Minter ${ctx.nameOf(address)} on ${ids.length} types`, ids.map((id) => `Type #${id}: grant minter`));
     for (const id of ids) {
       // one tx per type (the contract grants per type); stop at the first failure
       if (!(await tx(`Type ${id}: minter ${ctx.nameOf(address)}${unlimited ? ' (unlimited)' : ''}`, 'VoucherNFT', 'grantTypeMinterWithCap', [id, address, cap, window]))) return;

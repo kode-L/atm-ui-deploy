@@ -91,6 +91,8 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
       `${s.key} already has an address in this book. Redeploying replaces it here, and anything already pointing at the old one ` +
       '(other contracts, backends, roles) will NOT follow automatically. Continue?'
     )) return;
+    const hasImpl = !!impl || !!ctx.getBook().pendingImpl[s.key];
+    ctx.beginFlow(`Deploy ${s.key}`, s.proxy ? [...(hasImpl ? [] : [`Deploy ${s.key} implementation`]), `Deploy ${s.key} proxy`] : [`Deploy ${s.key}`]);
     await run(s, impl);
     await refresh();
   };
@@ -118,6 +120,8 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
     }
     if (!confirmMainnet()) return;
     let allOk = true;
+    ctx.beginFlow('Deploy all contracts', remaining.filter((s) => !missingDeps(s).length || s.needs.every((n) => remaining.some((r) => r.key === n) || ctx.getBook().contracts[n])).flatMap((s) =>
+      s.proxy ? [...(ctx.getBook().pendingImpl[s.key] ? [] : [`Deploy ${s.key} implementation`]), `Deploy ${s.key} proxy`] : [`Deploy ${s.key}`]));
     for (const s of remaining) {
       if (missingDeps(s).length) continue;
       if (!(await run(s))) { allOk = false; break; }

@@ -215,7 +215,7 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
           <input className={inputCls} value={tokAddr} onChange={(e) => setTokAddr(e.target.value.trim())} placeholder="Token address 0x…" />
           <button className={btnSecondaryCls} onClick={addToken} disabled={!tokName.trim() || !isAddr(tokAddr)}>Add payout token</button>
         </div>
-        <p className="text-[11px] text-txt-secondary mt-2">Saved tokens appear as quick picks on the Voucher types and Fund pools tabs.</p>
+        <p className="text-[11px] text-txt-secondary mt-2">Saved tokens appear as quick picks on the Voucher types and Pools tabs.</p>
       </Card>
       </Collapsible>
     </div>

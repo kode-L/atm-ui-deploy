@@ -153,7 +153,7 @@ const RULES: { phase: string; items: React.ReactNode[] }[] = [
     phase: 'Voucher types',
     items: [
       <>Type ids are permanent and numbered in registration order. The PageRank backend maps type ids to coins (<code>voucher_config.py</code>), so register types in a planned order and update that mapping afterwards.</>,
-      <>Reward types need at least one approved token, and the pool must already hold enough of it — otherwise mint reverts with <code>FundingSourceInsufficient</code>. Fund on the Fund pools tab first.</>,
+      <>Reward types need at least one approved token, and the pool must already hold enough of it — otherwise mint reverts with <code>FundingSourceInsufficient</code>. Fund on the Pools tab first.</>,
       <>ERC20 / native <b>faceValue is always in 18 decimals</b>, whatever the token&apos;s own decimals (12.5 USDC = 12.5 × 10¹⁸). The pool converts it on payout. Pool withdrawals use the same convention.</>,
       <>Types with mint approvals &gt; 1 mint through VoucherDAO: VoucherDAO needs that type&apos;s minter role, and you need at least as many operators as the quorum.</>,
     ],
