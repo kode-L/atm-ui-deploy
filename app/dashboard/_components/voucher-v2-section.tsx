@@ -16,6 +16,7 @@ import FundingTab from './voucher-v2/funding-tab';
 import DaoTab from './voucher-v2/dao-tab';
 import ReleaseExpiredCard from './voucher-v2/release-card';
 import VouchersCard from './voucher-v2/vouchers-card';
+import { EditTypeCard, NftAdminCard, VaultCard } from './voucher-v2/nft-manage-cards';
 import ExtraSinksCard from './voucher-v2/extra-sinks-card';
 import AllowlistsCard, { RegistryAccessCard } from './voucher-v2/allowlists-card';
 import PoolsCard from './voucher-v2/pools-card';
@@ -147,9 +148,12 @@ function VoucherV2Inner() {
             <div className={TWO_COL}>
               <WireTab onGo={go} target="VoucherNFT" />
               <TypesTab onGo={go} />
+              <EditTypeCard />
               <RolesTab onGo={go} part="nft" />
               <VouchersCard />
               <ReleaseExpiredCard />
+              <VaultCard />
+              <NftAdminCard />
             </div>
           )}
           {tab === 'dao' && (

@@ -70,7 +70,7 @@ export default function VouchersCard() {
 
   return (
     <Card title="Vouchers">
-      <ContractTag contract="VoucherNFT" methods={part === 'mint' ? ['mint', 'mintBatch'] : part === 'mine' ? ['claim'] : []} label={part === 'browse' ? 'Reads' : 'Calls'} />
+      <ContractTag contract="VoucherNFT" methods={part === 'mint' ? ['mint', 'mintBatch'] : part === 'mine' ? ['claim'] : ['revokeVoucher']} />
       <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1 w-fit mb-4">
         {([['mint', 'Mint'], ['mine', 'My vouchers'], ['browse', 'Browse']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setPart(id)} className={`px-3 py-1.5 rounded text-xs font-medium ${part === id ? 'bg-accent text-black' : 'text-txt-secondary hover:text-txt-primary'}`}>{label}</button>
@@ -195,6 +195,13 @@ function ListPanel({ types, mine, readVoucher, showValue, statusOf }: {
   const [typeFilter, setTypeFilter] = useState(-1);
   const [holder, setHolder] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
+  // revokeVoucher() needs REVOKE_ROLE on VoucherNFT
+  const [canRevoke, setCanRevoke] = useState(false);
+  useEffect(() => {
+    if (!ctx.reader || mine) return;
+    ctx.read('VoucherNFT').hasRole(ethers.utils.id('REVOKE_ROLE'), ctx.account).then(setCanRevoke).catch(() => setCanRevoke(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.reader, ctx.account, mine, ctx.revision]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const now = Math.floor(Date.now() / 1000);
 
@@ -229,6 +236,21 @@ function ListPanel({ types, mine, readVoucher, showValue, statusOf }: {
     try {
       await ctx.send(`Claim voucher #${v.id}`, ctx.write('VoucherNFT'), 'claim', [v.id]);
       setMsg({ ok: true, text: `Claimed voucher #${v.id} — ${showValue(v)}` });
+    } catch (e: any) {
+      setMsg({ ok: false, text: e.message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const revoke = async (v: Voucher) => {
+    const reason = window.prompt(`Revoke voucher #${v.id}? It moves to the type's revoke destination and can no longer be claimed. Reason (stored on-chain):`, '');
+    if (reason === null) return;
+    setBusyId(v.id);
+    setMsg(null);
+    try {
+      await ctx.send(`Revoke voucher #${v.id}`, ctx.write('VoucherNFT'), 'revokeVoucher', [v.id, reason.trim()]);
+      setMsg({ ok: true, text: `Revoked voucher #${v.id}` });
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
     } finally {
@@ -297,6 +319,7 @@ function ListPanel({ types, mine, readVoucher, showValue, statusOf }: {
                   <td className="py-2 pr-3"><Badge tone={st.tone}>{st.text}</Badge></td>
                   <td className="py-2 text-right">
                     {canClaim && <button className={btnCls} disabled={busyId !== null} onClick={() => claim(v)}>{busyId === v.id ? 'Claiming…' : 'Claim'}</button>}
+                    {!mine && canRevoke && !v.redeemed && !v.revoked && <button className={linkBtnCls} disabled={busyId !== null} onClick={() => revoke(v)}>{busyId === v.id ? 'Revoking…' : 'Revoke'}</button>}
                   </td>
                 </tr>
               );

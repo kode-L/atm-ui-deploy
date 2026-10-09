@@ -264,7 +264,7 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
             </Field>
           )}
           <button className={`${btnCls} mt-4`} disabled={busy || !isAddr(mint.address)} onClick={() => grantMinter(mint.address)}>
-            Grant / update minter{alsoTypes.length ? ` on ${alsoTypes.length + 1} types` : ''}
+            Grant / update minter cap{alsoTypes.length ? ` on ${alsoTypes.length + 1} types` : ''}
           </button>
         </Card>
       )}
@@ -299,7 +299,7 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
             <Field label="Proposal cap per window"><input className={inputCls} value={apprCap.cap} onChange={(e) => setApprCap({ ...apprCap, cap: e.target.value })} placeholder="blank = default (100)" /></Field>
             <Field label="Window (hours)"><input className={inputCls} value={apprCap.hours} onChange={(e) => setApprCap({ ...apprCap, hours: e.target.value })} placeholder="blank = default (24)" /></Field>
           </div>
-          <button className={`${btnCls} mt-3`} disabled={busy || !isAddr(daoAddr)} onClick={grantApprover}>Add / update operator</button>
+          <button className={`${btnCls} mt-3`} disabled={busy || !isAddr(daoAddr)} onClick={grantApprover}>Add / update operator cap</button>
         </Card>
       )}
 
