@@ -50,12 +50,12 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
       for (const t of types) {
         const add = (level: Issue['level'], text: string, tab: string) => out.push({ level, text: text.charAt(0).toUpperCase() + text.slice(1), tab, typeId: t.id, type: typeLabel(t) });
         const reward = t.mode === VoucherMode.Reward;
-        const noSource = sameAddr(t.fundingSource, ZERO);
+        const noSource = sameAddr(t.sink, ZERO);
 
         if (reward && noSource) add('bad', 'no funding source — it cannot pay out.', 'types');
         if (reg && !noSource) {
-          const ok = reward ? await reg.isRewardSinkApproved(t.tokenStandard, t.fundingSource) : await reg.isPointsSinkApproved(t.fundingSource);
-          if (!ok) add('bad', `its pool ${ctx.nameOf(t.fundingSource)} is no longer approved in SourceRegistry.`, 'registry');
+          const ok = reward ? await reg.isRewardSinkApproved(t.tokenStandard, t.sink) : await reg.isPointsSinkApproved(t.sink);
+          if (!ok) add('bad', `its pool ${ctx.nameOf(t.sink)} is no longer approved in SourceRegistry.`, 'registry');
         }
         if (reward && t.approvedTokens.length === 0) add('bad', 'no approved payout token — every mint reverts.', 'types');
 
@@ -63,27 +63,27 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
         // Reserved types need free tokens to mint; On-claim types need them when someone claims.
         if (reward && !noSource && t.approvedTokens.length && t.payoutMode !== 2 /* External holds nothing */) {
           const token = t.approvedTokens[0];
-          const sink = new ethers.Contract(t.fundingSource, ARTIFACTS.RewardSink.abi, ctx.reader);
+          const sink = new ethers.Contract(t.sink, ARTIFACTS.RewardSink.abi, ctx.reader);
           const held = await sink.availableBalance(t.id, t.tokenStandard, token, 0).catch(() => null);
-          const reserved = await nft.reservedOf(t.fundingSource, token, 0).catch(() => null);
+          const reserved = await nft.reservedOf(t.sink, token, 0).catch(() => null);
           if (held && reserved) {
             const free = held.sub(reserved);
             const what = sameAddr(token, ZERO) ? 'native coin' : ctx.nameOf(token);
             if (free.lte(0)) {
               add('warn', t.fundingMode === FundingMode.Reserved
-                ? `pool ${ctx.nameOf(t.fundingSource)} has no free ${what}${reserved.gt(0) ? ' (all of it is reserved)' : ''} — new mints will fail until it's topped up.`
-                : `pool ${ctx.nameOf(t.fundingSource)} has no free ${what} — claims will fail until it's topped up.`, 'funding');
+                ? `pool ${ctx.nameOf(t.sink)} has no free ${what}${reserved.gt(0) ? ' (all of it is reserved)' : ''} — new mints will fail until it's topped up.`
+                : `pool ${ctx.nameOf(t.sink)} has no free ${what} — claims will fail until it's topped up.`, 'funding');
             }
           }
         }
 
         const minters: string[] = await nft.getRoleMembers(await nft.typeMinterRole(t.id));
-        if (t.mintApprovalsRequired > 1) {
-          if (!c.VoucherDAO || !minters.some((m) => sameAddr(m, c.VoucherDAO))) add('bad', `needs ${t.mintApprovalsRequired} approvals but VoucherDAO cannot mint it.`, 'roles');
+        if (t.approvalsRequired > 1) {
+          if (!c.VoucherDAO || !minters.some((m) => sameAddr(m, c.VoucherDAO))) add('bad', `needs ${t.approvalsRequired} approvals but VoucherDAO cannot mint it.`, 'roles');
           if (dao) {
             // operators both propose and approve; the proposer's own proposal counts as one approval
             const apprs: string[] = await dao.getOperatorsOf(t.id);
-            if (apprs.length < t.mintApprovalsRequired) add('warn', `${apprs.length} DAO operator(s) — it needs ${t.mintApprovalsRequired} approvals, so at least ${t.mintApprovalsRequired} operators.`, 'dao');
+            if (apprs.length < t.approvalsRequired) add('warn', `${apprs.length} DAO operator(s) — it needs ${t.approvalsRequired} approvals, so at least ${t.approvalsRequired} operators.`, 'dao');
           }
           const direct = minters.filter((m) => !sameAddr(m, c.VoucherDAO));
           if (direct.length) add('warn', `${direct.length} direct minter(s) besides VoucherDAO — they can mint without a vote.`, 'roles');
@@ -99,7 +99,7 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
           if (!ok) add('warn', `fixed payout recipient ${ctx.nameOf(t.payoutRecipient)} is no longer on the allowlist (existing setting still works).`, 'registry');
         }
         if (t.mintingPaused) add('warn', 'minting is paused.', 'types');
-        if (t.redemptionPaused && !(t.mode === VoucherMode.Points && noSource)) add('warn', 'redemption (claim) is paused.', 'types');
+        if (t.claimPaused && !(t.mode === VoucherMode.Points && noSource)) add('warn', 'claiming is paused.', 'types');
       }
     } catch (e: any) {
       out.push({ level: 'bad', text: `Could not finish the check: ${e.message}`, tab: 'overview' });

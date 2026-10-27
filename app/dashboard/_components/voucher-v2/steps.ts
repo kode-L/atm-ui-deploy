@@ -31,12 +31,12 @@ export const DEPLOY_STEPS: DeployStep[] = [
   },
   {
     key: 'SourceRegistry', gas: 1574313, proxy: true, needs: [],
-    what: 'Allowlist of payout pools (sinks). Once wired, a voucher type can only use an approved fundingSource.',
+    what: 'Allowlist of payout pools (sinks). Once wired, a voucher type can only use an approved sink.',
     args: (_c, admin) => [admin, 'Voucher V2 registry'], // (admin, name) — name is informational, renameable later
   },
   {
     key: 'VoucherDAO', gas: 3176232, proxy: true, needs: ['VoucherNFT'], linkGetter: 'nft',
-    what: 'Propose / approve / quorum governance for mints and revokes on types with mintApprovalsRequired > 1.',
+    what: 'Propose / approve / quorum governance for mints and revokes on types with approvalsRequired > 1.',
     args: (c, admin) => [admin, nftAddr(c)],
   },
   {

@@ -189,12 +189,12 @@ export function decodeVoucherError(e: any): string {
         return `Access denied: ${shortAddr(parsed.args[0])} is missing role ${roleName(parsed.args[1])}`;
       }
       const friendly: Record<string, string> = {
-        DailyCapExceeded: "this wallet's daily cap for this type is used up (minter cap on VoucherNFT, or the operator's proposal cap on VoucherDAO) — wait for the window to reset or raise the cap on Minters & roles",
+        MintCapExceeded: "this wallet's mint cap for this type is used up (minter cap on VoucherNFT, or the operator's proposal cap on VoucherDAO) — wait for the window to reset or raise the cap on Minters & roles",
         InsufficientPoints: "the holder doesn't have enough points for this debit",
         NativeTransferFailed: 'the native coin payout could not be sent to the recipient',
         FeeOnTransferNotSupported: 'this token takes a fee on transfer — the pool does not support such tokens',
         NFTNotInInventory: "the pool doesn't hold that NFT",
-        FundingSourceInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — use Top up in the pool box on the Mint / proposal form (or the Pools tab)",
+        SinkInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — use Top up in the pool box on the Mint / proposal form (or the Pools tab)",
         AmountReserved: "that amount is reserved for vouchers already minted — only the free balance can be withdrawn",
         ReservationsOutstanding: 'vouchers of this type still hold reserved tokens in the current pool — they must be claimed, revoked or expire first',
         NotReleasable: 'that voucher has no reservation to release, or has not expired yet',
@@ -250,13 +250,13 @@ export interface VoucherType {
   name: string;
   redemptionDays: number;
   transferable: boolean;
-  mintApprovalsRequired: number;
+  approvalsRequired: number;
   mode: number;
   tokenStandard: number;
   mintingPaused: boolean;
-  redemptionPaused: boolean;
+  claimPaused: boolean;
   payoutRecipient: string;
-  fundingSource: string;
+  sink: string;
   fundingMode: number;
   pointsDirection: number;
   transferGate: string;
@@ -276,13 +276,13 @@ export async function loadVoucherTypes(nft: ethers.Contract): Promise<VoucherTyp
         name: t.name,
         redemptionDays: Number(t.redemptionDays),
         transferable: t.transferable,
-        mintApprovalsRequired: Number(t.mintApprovalsRequired),
+        approvalsRequired: Number(t.approvalsRequired),
         mode: Number(t.mode),
         tokenStandard: Number(t.tokenStandard),
         mintingPaused: t.mintingPaused,
-        redemptionPaused: t.redemptionPaused,
+        claimPaused: t.claimPaused,
         payoutRecipient: t.payoutRecipient,
-        fundingSource: t.fundingSource,
+        sink: t.sink,
         fundingMode: Number(t.fundingMode),
         pointsDirection: Number(t.pointsDirection),
         transferGate: t.transferGate,

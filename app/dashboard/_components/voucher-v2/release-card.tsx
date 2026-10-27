@@ -18,11 +18,11 @@ interface Expired {
 const fungible = (t?: VoucherType) => !!t && t.mode === VoucherMode.Reward && t.tokenStandard <= TokenStandard.ERC20;
 
 const SCAN_LIMIT = 2000; // vouchers checked per scan (newest first)
-const PER_TX = 100; // ids per releaseExpired() call
+const PER_TX = 100; // ids per releaseExpiredReservations() call
 
 /**
  * Reserved-mode vouchers keep their tokens set aside until claimed, revoked or expired.
- * Expired ones only release when someone calls VoucherNFT.releaseExpired(ids) — anyone may.
+ * Expired ones only release when someone calls VoucherNFT.releaseExpiredReservations(ids) — anyone may.
  */
 export default function ReleaseExpiredCard() {
   const ctx = useVoucherV2();
@@ -49,9 +49,9 @@ export default function ReleaseExpiredCard() {
         const id = (await nft.tokenByIndex(i)).toNumber();
         const v = await nft.vouchers(id);
         const expiry = Number(v.expiryDate);
-        if (!(v.reserved && !v.redeemed && !v.revoked && expiry > 0 && expiry < now)) continue;
+        if (!(v.reserved && !v.claimed && !v.revoked && expiry > 0 && expiry < now)) continue;
         const owner = await nft.ownerOf(id).catch(() => ZERO);
-        out.push({ id, owner, typeId: Number(v.voucherType), faceValue: ethers.BigNumber.from(v.faceValue), token: v.token, expiryDate: expiry });
+        out.push({ id, owner, typeId: Number(v.typeId), faceValue: ethers.BigNumber.from(v.faceValue), token: v.token, expiryDate: expiry });
       }
       setScanned(n);
       setFound(out);
@@ -71,14 +71,14 @@ export default function ReleaseExpiredCard() {
     const t = typeById.get(v.typeId);
     return fungible(t) ? `${fromUnits(v.faceValue, 18)} ${nameToken(v.token)}` : `${v.faceValue.toString()} × ${nameToken(v.token)}`;
   };
-  const poolOf = (v: Expired) => typeById.get(v.typeId)?.fundingSource || ZERO;
+  const poolOf = (v: Expired) => typeById.get(v.typeId)?.sink || ZERO;
 
   // what releasing frees, per pool + token
   const totals = useMemo(() => {
     const m = new Map<string, { pool: string; token: string; amount: ethers.BigNumber; count: number; fungible: boolean }>();
     for (const v of found || []) {
       const t = typeById.get(v.typeId);
-      const pool = t?.fundingSource || ZERO;
+      const pool = t?.sink || ZERO;
       const k = `${pool.toLowerCase()}|${v.token.toLowerCase()}`;
       const cur = m.get(k) || { pool, token: v.token, amount: ethers.BigNumber.from(0), count: 0, fungible: fungible(t) };
       cur.amount = cur.amount.add(v.faceValue);
@@ -96,7 +96,7 @@ export default function ReleaseExpiredCard() {
       const all = found.map((v) => v.id);
       for (let i = 0; i < all.length; i += PER_TX) {
         const ids = all.slice(i, i + PER_TX);
-        await ctx.send(`Release ${ids.length} expired reservation(s)`, ctx.write('VoucherNFT'), 'releaseExpired', [ids]);
+        await ctx.send(`Release ${ids.length} expired reservation(s)`, ctx.write('VoucherNFT'), 'releaseExpiredReservations', [ids]);
       }
       setMsg({ ok: true, text: `Released ${all.length} expired reservation(s) — those tokens are free again` });
       setFound([]);
@@ -111,7 +111,7 @@ export default function ReleaseExpiredCard() {
 
   return (
     <Card title="Release expired reservations">
-      <ContractTag contract="VoucherNFT" methods={['releaseExpired']} />
+      <ContractTag contract="VoucherNFT" methods={['releaseExpiredReservations']} />
       <p className="text-xs text-txt-secondary mb-3">
         A <b>Reserved</b>-mode voucher keeps its tokens set aside in the pool until it is claimed, revoked or expires.
         Expired ones are only released when someone sends this — anyone can, no role needed. Released tokens become free in the pool again.

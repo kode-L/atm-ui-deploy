@@ -17,7 +17,7 @@ const FLOW = [
   ['Deploy', 'each contract (UUPS proxies, your wallet becomes admin), or paste an existing address below.'],
   ['Wire', 'them together: registry link, sink approvals, DAO revoke role.'],
   ['Voucher types', 'register each type (Points credit/debit, Reward native/ERC20/NFT…) and its approved payout tokens.'],
-  ['Minters & roles', 'who may mint each type (with daily caps), DAO operators (they propose and approve).'],
+  ['Minters & roles', 'who may mint each type (with mint caps), DAO operators (they propose and approve).'],
   ['Fund pools', 'top up RewardSink with the assets Reward types pay out.'],
 ];
 

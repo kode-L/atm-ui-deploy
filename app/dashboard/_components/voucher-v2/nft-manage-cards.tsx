@@ -55,8 +55,8 @@ export function EditTypeCard() {
   // form starts from the type's current settings whenever the type (or chain state) changes
   useEffect(() => {
     if (!t) return;
-    setV({ name: t.name, source: t.fundingSource, fundingMode: t.fundingMode, recipient: t.payoutRecipient, payoutMode: t.payoutMode, route: t.routeTarget, revokeTo: t.revokeDestination, gate: t.transferGate });
-  }, [t?.id, t?.name, t?.fundingSource, t?.fundingMode, t?.payoutRecipient, t?.payoutMode, t?.routeTarget, t?.revokeDestination, t?.transferGate]); // eslint-disable-line react-hooks/exhaustive-deps
+    setV({ name: t.name, source: t.sink, fundingMode: t.fundingMode, recipient: t.payoutRecipient, payoutMode: t.payoutMode, route: t.routeTarget, revokeTo: t.revokeDestination, gate: t.transferGate });
+  }, [t?.id, t?.name, t?.sink, t?.fundingMode, t?.payoutRecipient, t?.payoutMode, t?.routeTarget, t?.revokeDestination, t?.transferGate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!c.VoucherNFT || !types.length) return null;
   const reward = t?.mode === VoucherMode.Reward;
@@ -73,13 +73,13 @@ export function EditTypeCard() {
 
   return (
     <Card title="Edit a voucher type">
-      <ContractTag contract="VoucherNFT" methods={['setVoucherTypeName', 'setVoucherTypeFundingSource', 'setVoucherTypePayoutRecipient', 'setVoucherTypePayoutConfig', 'setVoucherTypeRevokeDestination', 'setVoucherTypeTransferGate', 'emergencyShutdownType', 'reactivateType']} />
+      <ContractTag contract="VoucherNFT" methods={['setVoucherTypeName', 'setVoucherTypeSink', 'setVoucherTypePayoutRecipient', 'setVoucherTypePayoutConfig', 'setVoucherTypeRevokeDestination', 'setVoucherTypeTransferGate', 'emergencyShutdownType', 'reactivateType']} />
       <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-3 mb-3">
         <Field label="Type"><Select value={ctx.typeId} onChange={ctx.setTypeId} options={types.map((x) => ({ label: typeLabel(x), value: x.id }))} /></Field>
         {t && (
           <div className="self-end pb-2 flex flex-wrap gap-2 text-xs">
             {t.mintingPaused ? <Badge tone="bad">minting paused</Badge> : <Badge tone="good">minting on</Badge>}
-            {t.redemptionPaused ? <Badge tone="bad">claiming paused</Badge> : <Badge tone="good">claiming on</Badge>}
+            {t.claimPaused ? <Badge tone="bad">claiming paused</Badge> : <Badge tone="good">claiming on</Badge>}
           </div>
         )}
       </div>
@@ -92,8 +92,8 @@ export function EditTypeCard() {
           <Row
             label={reward ? 'Pays from (pool) + funding mode' : 'Points ledger'}
             hint="Can't move to another pool while this type's vouchers still hold reserved tokens in the current one."
-            dirty={changed(v.source, t.fundingSource) || v.fundingMode !== t.fundingMode}
-            onSave={() => run(`Type ${t.id}: pool → ${ctx.nameOf(v.source)}`, 'VoucherNFT', 'setVoucherTypeFundingSource', [t.id, v.source, v.fundingMode])}
+            dirty={changed(v.source, t.sink) || v.fundingMode !== t.fundingMode}
+            onSave={() => run(`Type ${t.id}: pool → ${ctx.nameOf(v.source)}`, 'VoucherNFT', 'setVoucherTypeSink', [t.id, v.source, v.fundingMode])}
           >
             <Select value={sources.some((o) => sameAddr(o.value, v.source)) ? (sources.find((o) => sameAddr(o.value, v.source)) as { value: string }).value : v.source} onChange={(x) => setV({ ...v, source: x })}
               options={[...sources.map((o) => ({ label: `${o.approved === false ? '✗ ' : ''}${o.label}`, value: o.value })), ...(sources.some((o) => sameAddr(o.value, v.source)) ? [] : [{ label: ctx.nameOf(v.source), value: v.source }])]} />
@@ -201,7 +201,7 @@ export function VaultCard() {
   if (!vault) return null;
   return (
     <Card title="Revoked vouchers (RevocationVault)">
-      <ContractTag contract="RevocationVault" methods={['release']} />
+      <ContractTag contract="RevocationVault" methods={['releaseRevokedVoucher']} />
       <p className="text-xs text-txt-secondary mb-3">Vouchers revoked to the vault stay here. Its admin can release one to an address (it stays revoked — it can&apos;t be claimed).</p>
       {ids === null ? <p className="text-xs text-txt-secondary">Loading…</p> : !ids.length ? <p className="text-xs text-txt-secondary">The vault holds no vouchers.</p> : (
         <div className="space-y-1.5">
@@ -211,7 +211,7 @@ export function VaultCard() {
               {isAdmin && (
                 <>
                   <div className="flex-1 min-w-[220px]"><AddressInput value={to[id] || ''} onChange={(x) => setTo((p) => ({ ...p, [id]: x }))} placeholder="release to 0x…" /></div>
-                  <button className={linkBtnCls} disabled={busy || !isAddr(to[id] || '')} onClick={() => run(`Release voucher #${id} → ${ctx.nameOf(to[id])}`, 'RevocationVault', 'release', [ctx.book.contracts.VoucherNFT, id, to[id]])}>Release</button>
+                  <button className={linkBtnCls} disabled={busy || !isAddr(to[id] || '')} onClick={() => run(`Release voucher #${id} → ${ctx.nameOf(to[id])}`, 'RevocationVault', 'releaseRevokedVoucher', [ctx.book.contracts.VoucherNFT, id, to[id]])}>Release</button>
                 </>
               )}
             </div>

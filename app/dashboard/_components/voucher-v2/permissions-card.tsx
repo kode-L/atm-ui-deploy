@@ -37,12 +37,12 @@ export default function PermissionsCard() {
       for (const t of ts) {
         const minters: string[] = await nft.getRoleMembers(await nft.typeMinterRole(t.id));
         for (const a of minters) {
-          const cap = await nft.getMinterDailyCap(t.id, a);
+          const cap = await nft.getMinterCap(t.id, a);
           const hours = Math.round(cap.windowDuration.toNumber() / 3600);
           cell(a, t.id).mint = cap.limit.toString() === MAX_UINT ? 'unlimited' : `${cap.limit}/${hours === 24 ? 'day' : `${hours}h`}`;
         }
         // the DAO governs a type when it needs 2+ approvals or VoucherDAO is one of its minters
-        const daoGoverns = t.mintApprovalsRequired > 1 || minters.some((m) => sameAddr(m, c.VoucherDAO));
+        const daoGoverns = t.approvalsRequired > 1 || minters.some((m) => sameAddr(m, c.VoucherDAO));
         if (daoGoverned.current) daoGoverned.current[t.id] = daoGoverns;
         if (dao && daoGoverns) {
           for (const a of await dao.getOperatorsOf(t.id)) cell(a, t.id).approve = true;
@@ -88,9 +88,9 @@ export default function PermissionsCard() {
                     <button
                       onClick={() => ctx.setTypeId(t.id)}
                       className={`text-left hover:text-accent ${ctx.typeId === t.id ? 'text-accent' : ''}`}
-                      title={daoGoverned.current[t.id] ? `VoucherDAO, ${t.mintApprovalsRequired} approval(s)` : 'direct minting'}
+                      title={daoGoverned.current[t.id] ? `VoucherDAO, ${t.approvalsRequired} approval(s)` : 'direct minting'}
                     >
-                      #{t.id} {t.name}{daoGoverned.current[t.id] && <span className="text-txt-secondary"> · DAO {t.mintApprovalsRequired}</span>}
+                      #{t.id} {t.name}{daoGoverned.current[t.id] && <span className="text-txt-secondary"> · DAO {t.approvalsRequired}</span>}
                     </button>
                   </th>
                 ))}

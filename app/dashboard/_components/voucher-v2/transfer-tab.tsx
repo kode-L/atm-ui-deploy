@@ -41,7 +41,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
   const isUnlimitedMinter = useCallback(async (typeId: number) => {
     const nft = read('VoucherNFT');
     if (!(await nft.hasRole(await nft.typeMinterRole(typeId), xferAddr))) return false;
-    return (await nft.getMinterDailyCap(typeId, xferAddr)).limit.toString() === MAX_UINT;
+    return (await nft.getMinterCap(typeId, xferAddr)).limit.toString() === MAX_UINT;
   }, [read, xferAddr]);
 
   const steps = useMemo<PairStep[]>(() => {
@@ -54,19 +54,19 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
       {
         id: 'creditShape',
         title: `Credit type #${c.id} is backed by a points ledger`,
-        why: 'Its fundingSource is the ledger VoucherTransfer debits the sender on — it must be a real points sink.',
-        check: async () => sameAddr(c.fundingSource, ZERO)
-          ? { done: false, detail: 'fundingSource is 0x0 — pick a credit type backed by VoucherIncentive' }
-          : { done: true, detail: `Ledger: ${nameOf(c.fundingSource)}` },
+        why: 'Its sink is the ledger VoucherTransfer debits the sender on — it must be a real points sink.',
+        check: async () => sameAddr(c.sink, ZERO)
+          ? { done: false, detail: 'sink is 0x0 — pick a credit type backed by VoucherIncentive' }
+          : { done: true, detail: `Ledger: ${nameOf(c.sink)}` },
       },
       {
         id: 'debitShape',
-        title: `Debit type #${d.id} is a pure record (fundingSource 0x0, redemption paused)`,
+        title: `Debit type #${d.id} is a pure record (sink 0x0, claiming paused)`,
         why: "Guarantees claiming the sender's record voucher can never move value. approveDebitType() checks this.",
-        check: async () => !sameAddr(d.fundingSource, ZERO)
-          ? { done: false, detail: "fundingSource isn't 0x0 — register a fresh debit-record type instead" }
-          : d.redemptionPaused ? { done: true } : { done: false, detail: "Redemption isn't paused yet" },
-        run: sameAddr(d.fundingSource, ZERO) ? () => send(`Type ${d.id}: pause redemption`, 'VoucherNFT', 'setVoucherTypeRedemptionPaused', [d.id, true]) : undefined,
+        check: async () => !sameAddr(d.sink, ZERO)
+          ? { done: false, detail: "sink isn't 0x0 — register a fresh debit-record type instead" }
+          : d.claimPaused ? { done: true } : { done: false, detail: "Claiming isn't paused yet" },
+        run: sameAddr(d.sink, ZERO) ? () => send(`Type ${d.id}: pause claiming`, 'VoucherNFT', 'setVoucherTypeClaimPaused', [d.id, true]) : undefined,
       },
       {
         id: 'approveCredit',
@@ -102,12 +102,12 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
       },
       {
         id: 'settler',
-        title: `VoucherTransfer holds SETTLER_ROLE on ${nameOf(c.fundingSource)}`,
+        title: `VoucherTransfer holds SETTLER_ROLE on ${nameOf(c.sink)}`,
         why: 'Required for the synchronous applyPoints() debit of the sender.',
-        check: async () => sameAddr(c.fundingSource, ZERO)
+        check: async () => sameAddr(c.sink, ZERO)
           ? { done: false, detail: 'No ledger' }
-          : { done: await read('VoucherIncentive', c.fundingSource).hasRole(role('SETTLER_ROLE'), xferAddr) },
-        run: () => ctxSend('Grant SETTLER_ROLE to VoucherTransfer', write('VoucherIncentive', c.fundingSource), 'grantRole', [role('SETTLER_ROLE'), xferAddr]),
+          : { done: await read('VoucherIncentive', c.sink).hasRole(role('SETTLER_ROLE'), xferAddr) },
+        run: () => ctxSend('Grant SETTLER_ROLE to VoucherTransfer', write('VoucherIncentive', c.sink), 'grantRole', [role('SETTLER_ROLE'), xferAddr]),
       },
     ];
   }, [credit, debit, xferAddr, read, write, ctxSend, nameOf, isUnlimitedMinter]);
@@ -124,9 +124,9 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
 
   const loadBalance = useCallback(async () => {
     setBalance(null);
-    if (!credit || sameAddr(credit.fundingSource, ZERO)) return;
+    if (!credit || sameAddr(credit.sink, ZERO)) return;
     try {
-      setBalance((await read('VoucherIncentive', credit.fundingSource).globalPoints(account)).toString());
+      setBalance((await read('VoucherIncentive', credit.sink).globalPoints(account)).toString());
     } catch {
       setBalance(null);
     }
@@ -144,7 +144,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
       const ts = await loadVoucherTypes(ctx.read('VoucherNFT'));
       setTypes(ts);
       setCreditId((prev) => (prev >= 0 ? prev : ts.find((t) => t.mode === VoucherMode.Points && t.pointsDirection === PointsDirection.Credit)?.id ?? -1));
-      setDebitId((prev) => (prev >= 0 ? prev : ts.find((t) => t.mode === VoucherMode.Points && t.pointsDirection === PointsDirection.Debit && sameAddr(t.fundingSource, ZERO))?.id ?? -1));
+      setDebitId((prev) => (prev >= 0 ? prev : ts.find((t) => t.mode === VoucherMode.Points && t.pointsDirection === PointsDirection.Debit && sameAddr(t.sink, ZERO))?.id ?? -1));
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
     }
@@ -170,7 +170,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
       await s.run();
       if (s.id === 'debitShape') {
         // type config changed — reload so the step list re-derives from fresh data
-        const fresh = await settledRead(() => loadVoucherTypes(ctx.read('VoucherNFT')), (ts) => !!ts.find((t) => t.id === debitId)?.redemptionPaused);
+        const fresh = await settledRead(() => loadVoucherTypes(ctx.read('VoucherNFT')), (ts) => !!ts.find((t) => t.id === debitId)?.claimPaused);
         if (fresh) setTypes(fresh);
         return true;
       }
@@ -200,7 +200,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
         FundingMode.Reserved, PointsDirection.Debit, ZERO, ZERO, PayoutMode.Direct, ZERO,
       ]);
       const typeId = Number(eventArg(receipt, nft, 'VoucherTypeRegistered', 'typeId'));
-      await ctx.send(`Type ${typeId}: pause redemption`, nft, 'setVoucherTypeRedemptionPaused', [typeId, true]);
+      await ctx.send(`Type ${typeId}: pause claiming`, nft, 'setVoucherTypeClaimPaused', [typeId, true]);
       const fresh = await settledRead(() => loadVoucherTypes(ctx.read('VoucherNFT')), (ts) => ts.length > typeId);
       if (fresh) setTypes(fresh);
       setDebitId(typeId);
@@ -216,7 +216,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
     setBusy(true);
     setMsg(null);
     try {
-      await ctx.send(`Transfer ${amount} points → ${ctx.nameOf(to)}`, ctx.write('VoucherTransfer'), 'transfer', [creditId, debitId, to, String(parseInt(amount, 10))]);
+      await ctx.send(`Transfer ${amount} points → ${ctx.nameOf(to)}`, ctx.write('VoucherTransfer'), 'transferPoints', [debitId, creditId, to, String(parseInt(amount, 10))]);
       setMsg({ ok: true, text: 'Transfer sent — the recipient now claims their Credit voucher to receive the points.' });
       setTimeout(loadBalance, 2500);
     } catch (e: any) {
@@ -263,7 +263,7 @@ export default function TransferTab({ onGo }: { onGo: (t: string) => void }) {
           <Field label="Credit type (recipient claims it)" hint={creditTypes.length ? undefined : 'No Points · Credit type yet — register one on the Voucher types tab.'}>
             <Select value={creditId} onChange={setCreditId} options={[{ label: 'Select…', value: -1 }, ...creditTypes.map((t) => ({ label: typeLabel(t), value: t.id }))]} />
           </Field>
-          <Field label="Debit record type (sender's record)" hint={<button className={linkBtnCls} disabled={busy} onClick={createDebitRecord}>+ Register a new debit-record type (fundingSource 0x0, redemption paused)</button>}>
+          <Field label="Debit record type (sender's record)" hint={<button className={linkBtnCls} disabled={busy} onClick={createDebitRecord}>+ Register a new debit-record type (sink 0x0, claiming paused)</button>}>
             <Select value={debitId} onChange={setDebitId} options={[{ label: 'Select…', value: -1 }, ...debitTypes.map((t) => ({ label: typeLabel(t), value: t.id }))]} />
           </Field>
         </div>

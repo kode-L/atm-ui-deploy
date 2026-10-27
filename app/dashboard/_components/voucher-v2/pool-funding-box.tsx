@@ -28,7 +28,7 @@ export default function PoolFundingBox({ type, token, needed, onShort }: { type?
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const reward = type?.mode === VoucherMode.Reward;
-  const pool = type?.fundingSource || ZERO;
+  const pool = type?.sink || ZERO;
   const isNative = sameAddr(token, ZERO);
   // External payouts hold nothing; points need no tokens
   const relevant = reward && !sameAddr(pool, ZERO) && type?.payoutMode !== PayoutMode.External;

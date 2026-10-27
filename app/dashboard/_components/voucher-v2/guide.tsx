@@ -144,7 +144,7 @@ const RULES: { phase: string; items: React.ReactNode[] }[] = [
   {
     phase: 'Wire',
     items: [
-      <>Finish all required wiring <b>before</b> registering voucher types — a type whose funding source isn&apos;t approved in the registry reverts with <code>FundingSourceNotApproved</code>.</>,
+      <>Finish all required wiring <b>before</b> registering voucher types — a type whose funding source isn&apos;t approved in the registry reverts with <code>SinkNotApproved</code>.</>,
       <>Wiring must be sent by the admin wallet. <code>AccessControlUnauthorizedAccount</code> means the wrong wallet is connected.</>,
       <>If a step says &quot;sent, but the chain doesn&apos;t show it yet&quot;, wait a few seconds and press Re-check. Don&apos;t send it again — public BSC RPCs often lag behind a fresh write.</>,
     ],
@@ -153,7 +153,7 @@ const RULES: { phase: string; items: React.ReactNode[] }[] = [
     phase: 'Voucher types',
     items: [
       <>Type ids are permanent and numbered in registration order. The PageRank backend maps type ids to coins (<code>voucher_config.py</code>), so register types in a planned order and update that mapping afterwards.</>,
-      <>Reward types need at least one approved token, and the pool must already hold enough of it — otherwise mint reverts with <code>FundingSourceInsufficient</code>. Fund on the Pools tab first.</>,
+      <>Reward types need at least one approved token, and the pool must already hold enough of it — otherwise mint reverts with <code>SinkInsufficient</code>. Fund on the Pools tab first.</>,
       <>ERC20 / native <b>faceValue is always in 18 decimals</b>, whatever the token&apos;s own decimals (12.5 USDC = 12.5 × 10¹⁸). The pool converts it on payout. Pool withdrawals use the same convention.</>,
       <>Types with mint approvals &gt; 1 mint through VoucherDAO: VoucherDAO needs that type&apos;s minter role, and you need at least as many operators as the quorum.</>,
     ],

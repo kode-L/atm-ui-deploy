@@ -10,7 +10,7 @@ import PoolFundingBox from './pool-funding-box';
 import { ContractTag, AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 // VoucherDAO: proposing counts as the first approval; at the type's quorum
-// (VoucherNFT.requiredApprovals = mintApprovalsRequired) the mint/revoke executes automatically.
+// (VoucherNFT.requiredApprovals = approvalsRequired) the mint/revoke executes automatically.
 // execute*() is only a manual retry for when that automatic attempt failed.
 type Kind = 'mint' | 'bulk' | 'revoke';
 const MAX_SHOWN = 50; // newest proposals per kind
@@ -55,7 +55,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const [types, setTypes] = useState<VoucherType[]>([]);
   // types VoucherDAO can mint (any quorum), plus 2+-approval types even before it's granted (so the warning shows)
   const [daoMinterOf, setDaoMinterOf] = useState<number[]>([]);
-  const daoTypes = types.filter((t) => t.mintApprovalsRequired > 1 || daoMinterOf.includes(t.id));
+  const daoTypes = types.filter((t) => t.approvalsRequired > 1 || daoMinterOf.includes(t.id));
   const typeId = daoTypes.some((t) => t.id === ctx.typeId) ? ctx.typeId : daoTypes[0]?.id ?? -1;
   const setTypeId = ctx.setTypeId;
   // no DAO type selected yet (e.g. a direct-mint type picked elsewhere): share the one shown here
@@ -86,11 +86,11 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       const out: Proposal[] = [];
       const range = (n: number) => Array.from({ length: Math.min(n, MAX_SHOWN) }, (_, i) => n - 1 - i);
 
-      for (const id of range((await dao.nextProposalId()).toNumber())) {
+      for (const id of range((await dao.nextMintProposalId()).toNumber())) {
         const p = await dao.mintProposals(id);
-        const t = tmap.get(Number(p.voucherType));
+        const t = tmap.get(Number(p.typeId));
         out.push({
-          kind: 'mint', id, typeId: Number(p.voucherType), proposer: p.proposer, approvals: Number(p.approvalCount),
+          kind: 'mint', id, typeId: Number(p.typeId), proposer: p.proposer, approvals: Number(p.approvalCount),
           executed: p.executed, cancelled: p.cancelled, expiresAt: Number(p.expiresAt),
           iApproved: await dao.mintApprovals(id, ctx.account),
           vouchers: Number(p.quantity),
@@ -99,11 +99,11 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       }
       for (const id of range((await dao.nextBulkProposalId()).toNumber())) {
         const p = await dao.bulkMintProposals(id);
-        const t = tmap.get(Number(p.voucherType));
+        const t = tmap.get(Number(p.typeId));
         const [recipients, faces] = await Promise.all([dao.getBulkMintRecipients(id), dao.getBulkMintFaceValues(id)]);
         const total = faces.reduce((s: ethers.BigNumber, f: ethers.BigNumber) => s.add(f), ethers.BigNumber.from(0));
         out.push({
-          kind: 'bulk', id, typeId: Number(p.voucherType), proposer: p.proposer, approvals: Number(p.approvalCount),
+          kind: 'bulk', id, typeId: Number(p.typeId), proposer: p.proposer, approvals: Number(p.approvalCount),
           executed: p.executed, cancelled: p.cancelled, expiresAt: Number(p.expiresAt),
           iApproved: await dao.bulkMintApprovals(id, ctx.account),
           vouchers: recipients.length,
@@ -179,7 +179,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         if (!form.faceValue) throw new Error('Enter a face value');
         return run(`DAO: propose mint ${q}× type ${selected.id} → ${ctx.nameOf(form.to)}`, 'proposeMint',
           [selected.id, form.to, q, toFace(selected, form.faceValue), toDate(form.start), toDate(form.expiry), token, 0, d],
-          selected.mintApprovalsRequired <= 1 ? execGas('mint', q) : undefined);
+          selected.approvalsRequired <= 1 ? execGas('mint', q) : undefined);
       }
       if (kind === 'bulk') {
         const rows = form.bulk.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => l.split(/[,\s]+/));
@@ -188,18 +188,18 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         if (bad.length) throw new Error(`Bad line(s): ${bad.map((r) => r.join(' ')).join('; ')}`);
         return run(`DAO: propose bulk mint (${rows.length}) type ${selected.id}`, 'proposeBulkMint',
           [selected.id, rows.map((r) => r[0]), rows.map((r) => toFace(selected, r[1])), toDate(form.start), toDate(form.expiry), token, rows.map(() => 0), d],
-          selected.mintApprovalsRequired <= 1 ? execGas('bulk', rows.length) : undefined);
+          selected.approvalsRequired <= 1 ? execGas('bulk', rows.length) : undefined);
       }
       if (!/^\d+$/.test(form.voucherId)) throw new Error('Enter the voucher id to revoke');
       return run(`DAO: propose revoke voucher #${form.voucherId}`, 'proposeRevoke', [form.voucherId, form.reason.trim(), d],
-        selected.mintApprovalsRequired <= 1 ? execGas('revoke', 0) : undefined);
+        selected.approvalsRequired <= 1 ? execGas('revoke', 0) : undefined);
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
     }
   };
 
   const statusOf = (p: Proposal) => {
-    const quorum = typeById.get(p.typeId)?.mintApprovalsRequired ?? 0;
+    const quorum = typeById.get(p.typeId)?.approvalsRequired ?? 0;
     if (p.executed) return { tone: 'good' as const, text: 'Executed' };
     if (p.cancelled) return { tone: 'muted' as const, text: 'Cancelled' };
     if (now > p.expiresAt) return { tone: 'muted' as const, text: 'Expired' };
@@ -227,7 +227,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   }
 
   const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
-  const quorum = selected?.mintApprovalsRequired ?? 0;
+  const quorum = selected?.approvalsRequired ?? 0;
 
   return (
     <div className="space-y-4">
@@ -238,7 +238,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         </p>
         <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-3">
           <Field label="Voucher type">
-            <Select value={typeId} onChange={setTypeId} options={daoTypes.map((t) => ({ label: `${typeLabel(t)} · ${t.mintApprovalsRequired} approval${t.mintApprovalsRequired === 1 ? ' (executes on propose)' : 's'}`, value: t.id }))} />
+            <Select value={typeId} onChange={setTypeId} options={daoTypes.map((t) => ({ label: `${typeLabel(t)} · ${t.approvalsRequired} approval${t.approvalsRequired === 1 ? ' (executes on propose)' : 's'}`, value: t.id }))} />
           </Field>
           {selected && (
             <div className="text-xs space-y-1 self-end pb-1">
@@ -325,7 +325,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
           {shown.map((p) => {
             const st = statusOf(p);
             const t = typeById.get(p.typeId);
-            const q = t?.mintApprovalsRequired ?? 0;
+            const q = t?.approvalsRequired ?? 0;
             const open = isOpen(p);
             const [approveM, executeM, cancelM] = method[p.kind];
             const canCancel = open && (sameAddr(p.proposer, ctx.account) || roles.admin);

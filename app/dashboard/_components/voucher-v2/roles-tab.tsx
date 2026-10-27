@@ -63,15 +63,15 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
     const nft = ctx.read('VoucherNFT');
     const members: string[] = await nft.getRoleMembers(await nft.typeMinterRole(id));
     setMinters(await Promise.all(members.map(async (address) => {
-      const cap = await nft.getMinterDailyCap(id, address);
-      return { address, limit: cap.limit.toString(), window: cap.windowDuration.toNumber(), used: cap.mintedInWindow.toString() };
+      const cap = await nft.getMinterCap(id, address);
+      return { address, limit: cap.limit.toString(), window: cap.windowDuration.toNumber(), used: cap.usedInWindow.toString() };
     })));
     if (ctx.getBook().contracts.VoucherDAO) {
       const dao = ctx.read('VoucherDAO');
       const apprs: string[] = await dao.getOperatorsOf(id);
       setApproverCaps(await Promise.all(apprs.map(async (address) => {
-        const cap = await dao.getOperatorDailyCap(id, address);
-        return { address, limit: cap.limit.toString(), window: cap.windowDuration.toNumber(), used: cap.proposedInWindow.toString() };
+        const cap = await dao.getOperatorCap(id, address);
+        return { address, limit: cap.limit.toString(), window: cap.windowDuration.toNumber(), used: cap.usedInWindow.toString() };
       })));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,7 +147,7 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
     try {
       const gate = ctx.read('AllowlistTransferGate');
       const out: Record<string, boolean> = {};
-      for (const a of gateList()) out[a] = await gate.allowed(a);
+      for (const a of gateList()) out[a] = await gate.allowedRecipient(a);
       setGateResults(out);
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
@@ -158,8 +158,8 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
       const list = gateList();
       if (!list.length) return;
       const ok = list.length === 1
-        ? await tx(`Gate: ${allowed ? 'allow' : 'disallow'} ${list[0]}`, 'AllowlistTransferGate', 'setAllowed', [list[0], allowed])
-        : await tx(`Gate: ${allowed ? 'allow' : 'disallow'} ${list.length} addresses`, 'AllowlistTransferGate', 'setAllowedBatch', [list, allowed]);
+        ? await tx(`Gate: ${allowed ? 'allow' : 'disallow'} ${list[0]}`, 'AllowlistTransferGate', 'setAllowedRecipient', [list[0], allowed])
+        : await tx(`Gate: ${allowed ? 'allow' : 'disallow'} ${list.length} addresses`, 'AllowlistTransferGate', 'setAllowedRecipients', [list, allowed]);
       if (ok) setTimeout(gateCheck, 2500);
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
@@ -194,13 +194,13 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
           </div>
           <button className={btnSecondaryCls} onClick={reloadAll}>Reload</button>
         </div>
-        {selected && selected.mintApprovalsRequired > 1 && c.VoucherDAO && !daoIsMinter && (
+        {selected && selected.approvalsRequired > 1 && c.VoucherDAO && !daoIsMinter && (
           <p className="text-xs text-yellow-300 mt-3">
-            ⚠ This type needs {selected.mintApprovalsRequired} approvals, but VoucherDAO can&apos;t mint it yet.{' '}
+            ⚠ This type needs {selected.approvalsRequired} approvals, but VoucherDAO can&apos;t mint it yet.{' '}
             <button className={linkBtnCls} disabled={busy} onClick={() => grantMinter(c.VoucherDAO as string, true)}>Grant VoucherDAO the minter role (unlimited)</button>
           </p>
         )}
-        {selected && selected.mintApprovalsRequired <= 1 && c.VoucherDAO && !daoIsMinter && (
+        {selected && selected.approvalsRequired <= 1 && c.VoucherDAO && !daoIsMinter && (
           <p className="text-xs text-txt-secondary mt-3">
             Optional: let VoucherDAO mint this type too, so its operators can mint through it (with 1 approval a proposal executes at once).{' '}
             <button className={linkBtnCls} disabled={busy} onClick={() => grantMinter(c.VoucherDAO as string, true)}>Grant VoucherDAO the minter role (unlimited)</button>
@@ -270,12 +270,12 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
         </Card>
       )}
 
-      {showDao && selected && c.VoucherDAO && (selected.mintApprovalsRequired > 1 || daoIsMinter) && (
+      {showDao && selected && c.VoucherDAO && (selected.approvalsRequired > 1 || daoIsMinter) && (
         <Card title={`VoucherDAO operators for type #${selected.id}`}>
         <ContractTag contract="VoucherDAO" methods={['grantTypeOperatorWithCap', 'revokeRole']} />
           <p className="text-xs text-txt-secondary mb-3">
-            Operators both <b>propose</b> and <b>approve</b> — a proposal counts as its proposer&apos;s approval. With {selected.mintApprovalsRequired} approval{selected.mintApprovalsRequired === 1 ? '' : 's'} needed
-            {selected.mintApprovalsRequired === 1 ? ', a proposal executes as soon as it is proposed' : `, you need at least ${selected.mintApprovalsRequired} operators`}.
+            Operators both <b>propose</b> and <b>approve</b> — a proposal counts as its proposer&apos;s approval. With {selected.approvalsRequired} approval{selected.approvalsRequired === 1 ? '' : 's'} needed
+            {selected.approvalsRequired === 1 ? ', a proposal executes as soon as it is proposed' : `, you need at least ${selected.approvalsRequired} operators`}.
             Each operator has a budget of vouchers they can propose per time window.
           </p>
           <div className="overflow-x-auto mb-4">
@@ -318,7 +318,7 @@ export default function RolesTab({ onGo, part }: { onGo: (t: string) => void; pa
 
       {showNft && c.AllowlistTransferGate && (
         <Card title="Transfer gate allowlist">
-        <ContractTag contract="AllowlistTransferGate" methods={['setAllowed', 'setAllowedBatch']} />
+        <ContractTag contract="AllowlistTransferGate" methods={['setAllowedRecipient', 'setAllowedRecipients']} />
           <p className="text-xs text-txt-secondary mb-3">Only matters for types whose transfer gate is AllowlistTransferGate. Paste one or many addresses (comma / newline separated).</p>
           <textarea className={`${inputCls} min-h-[70px]`} value={gateText} onChange={(e) => setGateText(e.target.value)} placeholder="0x…, 0x…" />
           <div className="flex flex-wrap gap-2 mt-3">

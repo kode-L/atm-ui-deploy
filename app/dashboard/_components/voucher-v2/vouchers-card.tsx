@@ -20,7 +20,7 @@ interface Voucher {
   token: string;
   startDate: number;
   expiryDate: number;
-  redeemed: boolean;
+  claimed: boolean;
   revoked: boolean;
   reserved: boolean;
 }
@@ -59,19 +59,19 @@ export default function VouchersCard() {
     return fungible(t) ? `${fromUnits(v.faceValue, 18)} ${nameToken(v.token)}` : `${v.faceValue.toString()} × ${nameToken(v.token)}`;
   };
   const statusOf = (v: Voucher, now: number) => {
-    if (v.redeemed) return { tone: 'good' as const, text: 'Claimed' };
+    if (v.claimed) return { tone: 'good' as const, text: 'Claimed' };
     if (v.revoked) return { tone: 'bad' as const, text: 'Revoked' };
     if (v.expiryDate && now > v.expiryDate) return { tone: 'muted' as const, text: 'Expired' };
     if (now < v.startDate) return { tone: 'muted' as const, text: 'Not yet claimable' };
-    if (typeById.get(v.typeId)?.redemptionPaused) return { tone: 'warn' as const, text: 'Claiming paused' };
+    if (typeById.get(v.typeId)?.claimPaused) return { tone: 'warn' as const, text: 'Claiming paused' };
     return { tone: 'warn' as const, text: 'Claimable' };
   };
 
   const readVoucher = async (nft: ethers.Contract, id: number): Promise<Voucher> => {
     const [v, owner] = await Promise.all([nft.vouchers(id), nft.ownerOf(id).catch(() => ZERO)]);
     return {
-      id, owner, typeId: Number(v.voucherType), faceValue: ethers.BigNumber.from(v.faceValue), token: v.token,
-      startDate: Number(v.startDate), expiryDate: Number(v.expiryDate), redeemed: v.redeemed, revoked: v.revoked, reserved: v.reserved,
+      id, owner, typeId: Number(v.typeId), faceValue: ethers.BigNumber.from(v.faceValue), token: v.token,
+      startDate: Number(v.startDate), expiryDate: Number(v.expiryDate), claimed: v.claimed, revoked: v.revoked, reserved: v.reserved,
     };
   };
 
@@ -105,7 +105,7 @@ function MintPanel({ types }: { types: VoucherType[] }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
-  useEffect(() => { if (typeId < 0 && types.length) setTypeId((types.find((x) => x.mintApprovalsRequired <= 1) ?? types[0]).id); }, [types, typeId]);
+  useEffect(() => { if (typeId < 0 && types.length) setTypeId((types.find((x) => x.approvalsRequired <= 1) ?? types[0]).id); }, [types, typeId]);
   useEffect(() => {
     if (typeId < 0 || !ctx.reader) return setIsMinter(null);
     const nft = ctx.read('VoucherNFT');
@@ -152,14 +152,14 @@ function MintPanel({ types }: { types: VoucherType[] }) {
     <div className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-3">
         <Field label="Voucher type">
-          <Select value={typeId} onChange={setTypeId} options={types.map((x) => ({ label: `${typeLabel(x)}${x.mintApprovalsRequired > 1 ? ' — mint via VoucherDAO' : ''}`, value: x.id }))} />
+          <Select value={typeId} onChange={setTypeId} options={types.map((x) => ({ label: `${typeLabel(x)}${x.approvalsRequired > 1 ? ' — mint via VoucherDAO' : ''}`, value: x.id }))} />
         </Field>
         <Field label="How many recipients">
           <Select value={bulk ? 'bulk' : 'one'} onChange={(v) => setBulk(v === 'bulk')} options={[{ label: 'One recipient', value: 'one' }, { label: `Many (bulk, up to ${MAX_BATCH})`, value: 'bulk' }]} />
         </Field>
       </div>
-      {t && t.mintApprovalsRequired > 1 && <p className="text-xs text-yellow-300">This type needs {t.mintApprovalsRequired} votes — mint it through a proposal on the VoucherDAO tab.</p>}
-      {isMinter === false && t && t.mintApprovalsRequired <= 1 && <p className="text-xs text-yellow-300">Your wallet isn&apos;t a minter of this type — add it under Minters (this tab).</p>}
+      {t && t.approvalsRequired > 1 && <p className="text-xs text-yellow-300">This type needs {t.approvalsRequired} votes — mint it through a proposal on the VoucherDAO tab.</p>}
+      {isMinter === false && t && t.approvalsRequired <= 1 && <p className="text-xs text-yellow-300">Your wallet isn&apos;t a minter of this type — add it under Minters (this tab).</p>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {!bulk ? (
           <>
@@ -185,8 +185,8 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         <Field label="Claimable from (optional)"><input type="datetime-local" className={inputCls} value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
         <Field label="Expires (optional)"><input type="datetime-local" className={inputCls} value={f.expiry} onChange={(e) => set('expiry', e.target.value)} /></Field>
       </div>
-      {t && t.mintApprovalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, f.rows)} onShort={setShort} />}
-      <button className={btnCls} disabled={busy || !t || t.mintApprovalsRequired > 1 || isMinter === false || short} onClick={mint}>{busy ? 'Minting…' : bulk ? 'Mint all' : 'Mint'}</button>
+      {t && t.approvalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, f.rows)} onShort={setShort} />}
+      <button className={btnCls} disabled={busy || !t || t.approvalsRequired > 1 || isMinter === false || short} onClick={mint}>{busy ? 'Minting…' : bulk ? 'Mint all' : 'Mint'}</button>
       {short && <span className="text-xs text-yellow-300 ml-3">Top up the pool first (above) — minting now would fail.</span>}
       {msg && <p className={`text-xs break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
     </div>
@@ -277,10 +277,10 @@ function ListPanel({ types, mine, readVoucher, showValue, statusOf }: {
     return {
       t,
       minted: of.length,
-      claimed: of.filter((v) => v.redeemed).length,
+      claimed: of.filter((v) => v.claimed).length,
       revoked: of.filter((v) => v.revoked).length,
-      expired: of.filter((v) => !v.redeemed && !v.revoked && v.expiryDate && now > v.expiryDate).length,
-      open: of.filter((v) => !v.redeemed && !v.revoked && !(v.expiryDate && now > v.expiryDate)).length,
+      expired: of.filter((v) => !v.claimed && !v.revoked && v.expiryDate && now > v.expiryDate).length,
+      open: of.filter((v) => !v.claimed && !v.revoked && !(v.expiryDate && now > v.expiryDate)).length,
     };
   }).filter((x) => x.minted > 0);
 
@@ -331,7 +331,7 @@ function ListPanel({ types, mine, readVoucher, showValue, statusOf }: {
                   <td className="py-2 pr-3"><Badge tone={st.tone}>{st.text}</Badge></td>
                   <td className="py-2 text-right">
                     {canClaim && <button className={btnCls} disabled={busyId !== null} onClick={() => claim(v)}>{busyId === v.id ? 'Claiming…' : 'Claim'}</button>}
-                    {!mine && canRevoke && !v.redeemed && !v.revoked && <button className={linkBtnCls} disabled={busyId !== null} onClick={() => revoke(v)}>{busyId === v.id ? 'Revoking…' : 'Revoke'}</button>}
+                    {!mine && canRevoke && !v.claimed && !v.revoked && <button className={linkBtnCls} disabled={busyId !== null} onClick={() => revoke(v)}>{busyId === v.id ? 'Revoking…' : 'Revoke'}</button>}
                   </td>
                 </tr>
               );
