@@ -7,7 +7,7 @@ import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, 
 import { useVoucherV2 } from './context';
 import { useAdminOf } from './use-role';
 import { useSourceOptions } from './source-options';
-import ExtraSinksCard from './extra-sinks-card';
+import ExtraPoolsCard from './extra-pools-card';
 import { ContractTag, AddressInput, AddressOption, Field, NavButtons, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
 
 const ERC20_ABI = [
@@ -17,7 +17,7 @@ const ERC20_ABI = [
   'function transfer(address to, uint256 amount) returns (bool)',
 ];
 
-// ERC721 / ERC1155 deposits left out for now, matching the RewardSink wiring step
+// ERC721 / ERC1155 deposits left out for now, matching the RewardVault wiring step
 type Kind = 'native' | 'erc20';
 const OTHER_POOL = '__other__';
 // held = what the pool holds; reserved = set aside by VoucherNFT for minted Reserved-mode vouchers;
@@ -29,7 +29,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const { read, reader, signer, account, nameOf } = ctx;
   const c = ctx.book.contracts;
   const symbol = NETWORKS[ctx.chainId]?.nativeCurrency.symbol || 'native';
-  const [pool, setPool] = useState(c.RewardSink || '');
+  const [pool, setPool] = useState(c.RewardVault || '');
   const [kind, setKind] = useState<Kind>('native');
   const [token, setToken] = useState('');
   const [amount, setAmount] = useState('');
@@ -41,11 +41,11 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [w, setW] = useState({ token: ZERO, amount: '', to: account });
   // withdraw*() needs DEFAULT_ADMIN_ROLE on the selected pool
-  const poolAdmin = useAdminOf('RewardSink', isAddr(pool) ? [pool] : [])[pool.toLowerCase()];
+  const poolAdmin = useAdminOf('RewardVault', isAddr(pool) ? [pool] : [])[pool.toLowerCase()];
 
-  useEffect(() => { if (!pool && c.RewardSink) setPool(c.RewardSink); }, [c.RewardSink, pool]);
+  useEffect(() => { if (!pool && c.RewardVault) setPool(c.RewardVault); }, [c.RewardVault, pool]);
 
-  // every pool by name: main + extra RewardSinks, VoucherIncentive, and anything the registry approved
+  // every pool by name: main + extra RewardVaults, VoucherSettlement, and anything the registry approved
   const poolOptions: AddressOption[] = useSourceOptions(null, 0).map((o) => ({ label: o.label, value: o.value }));
   const tokenOptions: AddressOption[] = Object.entries(ctx.book.tokens).map(([k, v]) => ({ label: k, value: v }));
   const erc20 = useCallback((a: string, s?: ethers.Signer | null) => new ethers.Contract(a, ERC20_ABI, s || reader || undefined), [reader]);
@@ -126,13 +126,13 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
 
   const withdraw = () => run(async () => {
     if (!isAddr(w.to)) throw new Error('Recipient is not a valid address');
-    const extra = (ctx.book.extraSinks || []).find((x) => sameAddr(x.address, pool));
-    const key = sameAddr(pool, c.VoucherIncentive) || (extra && extra.kind === 'VoucherIncentive') ? 'VoucherIncentive' : 'RewardSink';
-    const sink = ctx.write(key, pool);
-    if (sameAddr(w.token, ZERO)) return ctx.send(`Withdraw ${w.amount} ${symbol}`, sink, 'withdrawNative', [w.to, toUnits(w.amount, 18)]);
-    // Both sinks take ERC20 withdraw amounts in the same 18-decimal fixed point as faceValue
+    const extra = (ctx.book.extraPools || []).find((x) => sameAddr(x.address, pool));
+    const key = sameAddr(pool, c.VoucherSettlement) || (extra && extra.kind === 'VoucherSettlement') ? 'VoucherSettlement' : 'RewardVault';
+    const vault = ctx.write(key, pool);
+    if (sameAddr(w.token, ZERO)) return ctx.send(`Withdraw ${w.amount} ${symbol}`, vault, 'withdrawNative', [w.to, toUnits(w.amount, 18)]);
+    // Both pool contracts take ERC20 withdraw amounts in the same 18-decimal fixed point as faceValue
     // and rescale to the token's own decimals on-chain — never pass raw token units here.
-    return ctx.send(`Withdraw ${w.amount} ${nameOf(w.token)}`, sink, 'withdrawERC20', [w.token, w.to, toUnits(w.amount, 18)]);
+    return ctx.send(`Withdraw ${w.amount} ${nameOf(w.token)}`, vault, 'withdrawERC20', [w.token, w.to, toUnits(w.amount, 18)]);
   }, 'Withdrawn');
 
   return (
@@ -196,8 +196,8 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
             <Card title="Withdraw (admin)"><p className="text-xs text-txt-secondary">View only — only this pool&apos;s admin can withdraw from it.</p></Card>
           ) : (
           <Card title="Withdraw (admin)">
-        <ContractTag contract={sameAddr(pool, c.VoucherIncentive) || (ctx.book.extraSinks || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherIncentive') ? 'VoucherIncentive' : 'RewardSink'} methods={['withdrawNative', 'withdrawERC20']} />
-            <p className="text-xs text-txt-secondary mb-3">RewardSink / VoucherIncentive admin only. Sends from the pool to the given address — only the <b>Free</b> amount (see Pool balances); reserved tokens stay for their vouchers. Enter the amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
+        <ContractTag contract={sameAddr(pool, c.VoucherSettlement) || (ctx.book.extraPools || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherSettlement') ? 'VoucherSettlement' : 'RewardVault'} methods={['withdrawNative', 'withdrawERC20']} />
+            <p className="text-xs text-txt-secondary mb-3">RewardVault / VoucherSettlement admin only. Sends from the pool to the given address — only the <b>Free</b> amount (see Pool balances); reserved tokens stay for their vouchers. Enter the amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="Asset">
                 <Select value={w.token} onChange={(v) => setW({ ...w, token: v })} options={[{ label: `${symbol} (native)`, value: ZERO }, ...tokenOptions]} />
@@ -210,7 +210,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
           )}
         </>
       ) : (
-        <Card><p className="text-sm text-txt-secondary text-center py-4">Pick a pool (deploy RewardSink first, or paste an address).</p></Card>
+        <Card><p className="text-sm text-txt-secondary text-center py-4">Pick a pool (deploy RewardVault first, or paste an address).</p></Card>
       )}
 
     </div>

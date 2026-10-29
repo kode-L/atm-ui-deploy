@@ -8,15 +8,15 @@ import { APPROVE_POOL_KEY } from './allowlists-card';
 import { useAdminOf } from './use-role';
 import { Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls } from './ui';
 
-// What each pool type can be approved for in the registry. "points" = setPointsSinkApproved;
-// a number = setRewardSinkApproved for that token standard.
+// What each pool type can be approved for in the registry. "points" = setPointsLedgerApproved;
+// a number = setRewardVaultApproved for that token standard.
 type Approval = { id: string; label: string; standard?: number };
 const APPROVALS: Record<PoolKind, Approval[]> = {
-  RewardSink: [
+  RewardVault: [
     { id: 'native', label: 'Native', standard: TokenStandard.Native },
     { id: 'erc20', label: 'ERC20', standard: TokenStandard.ERC20 },
   ],
-  VoucherIncentive: [
+  VoucherSettlement: [
     { id: 'points', label: 'Points' },
     { id: 'erc20', label: 'ERC20 rewards', standard: TokenStandard.ERC20 },
   ],
@@ -27,26 +27,26 @@ export const OPEN_ADVANCED_KEY = 'dg_voucherV2OpenAdvanced';
 
 // The pool types the selector offers. Access control is an optional field for either one.
 const POOL_TYPES: { id: string; kind: PoolKind; acl: boolean; label: string; what: string }[] = [
-  { id: 'sink', kind: 'RewardSink', acl: false, label: 'RewardSink', what: 'Holds the reward tokens and pays them on claim (Native / ERC20) to the claimer or the type’s fixed payout recipient. Add an access control contract below if payouts should be checked.' },
-  { id: 'incentive', kind: 'VoucherIncentive', acl: false, label: 'VoucherIncentive', what: 'A points ledger (Points types), plus ERC20 rewards that are recorded as entitlements and paid Direct, Routed to a route target, or External.' },
+  { id: 'settlementTarget', kind: 'RewardVault', acl: false, label: 'RewardVault', what: 'Holds the reward tokens and pays them on claim (Native / ERC20) to the claimer or the type’s fixed payout recipient. Add an access control contract below if payouts should be checked.' },
+  { id: 'incentive', kind: 'VoucherSettlement', acl: false, label: 'VoucherSettlement', what: 'A points ledger (Points types), plus ERC20 rewards that are recorded as entitlements and paid Direct, Routed to a route target, or External.' },
 ];
 
-/** Deploy any number of extra pools (RewardSink or VoucherIncentive), each its own proxy. */
+/** Deploy any number of extra pools (RewardVault or VoucherSettlement), each its own proxy. */
 // mode "deploy" (Pools tab): deploy pools + see their status; "approve" (SourceRegistry tab): the
 // registry's approve calls for every pool — so each tab only calls its own contract.
-export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin: string; onGo?: (tab: string) => void; mode?: 'deploy' | 'approve' }) {
+export default function ExtraPoolsCard({ admin, onGo, mode = 'deploy' }: { admin: string; onGo?: (tab: string) => void; mode?: 'deploy' | 'approve' }) {
   const ctx = useVoucherV2();
   const c = ctx.book.contracts;
-  const extras = ctx.book.extraSinks || [];
+  const extras = ctx.book.extraPools || [];
   const pools: { name: string; address: string; kind: PoolKind }[] = [
-    ...(c.RewardSink ? [{ name: 'Main RewardSink', address: c.RewardSink, kind: 'RewardSink' as const }] : []),
-    ...(c.VoucherIncentive ? [{ name: 'Main VoucherIncentive', address: c.VoucherIncentive, kind: 'VoucherIncentive' as const }] : []),
+    ...(c.RewardVault ? [{ name: 'Main RewardVault', address: c.RewardVault, kind: 'RewardVault' as const }] : []),
+    ...(c.VoucherSettlement ? [{ name: 'Main VoucherSettlement', address: c.VoucherSettlement, kind: 'VoucherSettlement' as const }] : []),
     ...extras.map((x) => ({ name: x.name, address: x.address, kind: poolKind(x) })),
   ];
 
   // "Change" (access control) is only useful to that pool's admin
-  const adminOf = useAdminOf('RewardSink', pools.map((p) => p.address));
-  const [typeId, setTypeId] = useState('sink');
+  const adminOf = useAdminOf('RewardVault', pools.map((p) => p.address));
+  const [typeId, setTypeId] = useState('settlementTarget');
   const type = POOL_TYPES.find((t) => t.id === typeId) || POOL_TYPES[0];
   const [name, setName] = useState('');
   // step 1 → step 2: the implementation the new pool's proxy points at. Prefilled with the main
@@ -79,7 +79,7 @@ export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin
       for (const x of pools) {
         out[x.address] = {};
         for (const a of APPROVALS[x.kind]) {
-          out[x.address][a.id] = a.standard === undefined ? await reg.isPointsSinkApproved(x.address) : await reg.isRewardSinkApproved(a.standard, x.address);
+          out[x.address][a.id] = a.standard === undefined ? await reg.isPointsLedgerApproved(x.address) : await reg.isRewardVaultApproved(a.standard, x.address);
         }
       }
       setApproved(out);
@@ -117,19 +117,19 @@ export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin
     if (type.acl && !isAddr(acl)) return setMsg({ ok: false, text: 'This pool type needs the access control contract address' });
     if (acl && !isAddr(acl)) return setMsg({ ok: false, text: 'Access control is not a valid address (leave it blank for none)' });
     if (ctx.chainId === BSC_MAINNET.chainId && !window.confirm(`Deploy ${type.kind} "${n}" on BSC MAINNET? This spends real BNB.`)) return;
-    run(async () => { await ctx.deployExtraSink(n, admin, impl, acl, type.kind); setName(''); setAcl(''); }, `${type.kind} "${n}" deployed — approve it below for what it will pay out`);
+    run(async () => { await ctx.deployExtraPool(n, admin, impl, acl, type.kind); setName(''); setAcl(''); }, `${type.kind} "${n}" deployed — approve it below for what it will pay out`);
   };
 
   const deployImpl = () => {
     if (ctx.chainId === BSC_MAINNET.chainId && !window.confirm(`Deploy a ${type.kind} implementation on BSC MAINNET? This spends real BNB.`)) return;
-    run(async () => { const a = await ctx.deployExtraSinkImpl(type.kind); setImpl(a); setImplSource('new'); }, 'Implementation deployed — it is filled in step 2');
+    run(async () => { const a = await ctx.deployExtraPoolImpl(type.kind); setImpl(a); setImplSource('new'); }, 'Implementation deployed — it is filled in step 2');
   };
 
   const approve = (pool: { name: string; address: string; kind: PoolKind }, a: Approval) =>
     run(
       () => a.standard === undefined
-        ? ctx.send(`Approve ${pool.kind} "${pool.name}" (points)`, ctx.write('SourceRegistry', registry), 'setPointsSinkApproved', [pool.address, true, pool.name])
-        : ctx.send(`Approve ${pool.kind} "${pool.name}" (${a.label})`, ctx.write('SourceRegistry', registry), 'setRewardSinkApproved', [a.standard, pool.address, true, pool.name]),
+        ? ctx.send(`Approve ${pool.kind} "${pool.name}" (points)`, ctx.write('SourceRegistry', registry), 'setPointsLedgerApproved', [pool.address, true, pool.name])
+        : ctx.send(`Approve ${pool.kind} "${pool.name}" (${a.label})`, ctx.write('SourceRegistry', registry), 'setRewardVaultApproved', [a.standard, pool.address, true, pool.name]),
       `"${pool.name}" approved for ${a.label}`,
     );
 
@@ -137,11 +137,11 @@ export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin
     <Card title={mode === 'approve' ? 'Approved pools' : 'Reward pools'}>
       {mode === 'approve' ? (
         <>
-          <ContractTag contract="SourceRegistry" methods={['setRewardSinkApproved', 'setPointsSinkApproved']} />
+          <ContractTag contract="SourceRegistry" methods={['setRewardVaultApproved', 'setPointsLedgerApproved']} />
           <p className="text-xs text-txt-secondary mb-3">A voucher type can only pay from a pool approved here for what it pays out. New pools are deployed on the Pools tab.</p>
         </>
       ) : (<>
-      <ContractTag contract="RewardSink / VoucherIncentive" methods={['deploy implementation', 'deploy proxy + initialize']} label="Deploys" />
+      <ContractTag contract="RewardVault / VoucherSettlement" methods={['deploy implementation', 'deploy proxy + initialize']} label="Deploys" />
       <p className="text-xs text-txt-secondary mb-3">
         Deploy as many pools as you need (e.g. one per token or campaign). Each voucher type picks one as its <b>Funding source</b>; approve a pool for what it pays out first.
       </p>
@@ -206,7 +206,7 @@ export default function ExtraSinksCard({ admin, onGo, mode = 'deploy' }: { admin
             )}
           </div>
         ))}
-        {!pools.length && <p className="text-xs text-txt-secondary">No pools yet — deploy the main RewardSink on the Deploy tab first.</p>}
+        {!pools.length && <p className="text-xs text-txt-secondary">No pools yet — deploy the main RewardVault on the Deploy tab first.</p>}
       </div>
       {!registry && pools.length > 0 && <p className="text-xs text-yellow-300 mt-2">⚠ Deploy SourceRegistry to approve these pools.</p>}
       {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}

@@ -43,7 +43,7 @@ const TABS = [
   // Standalone contract with its own admin/minter role model, enforced on-chain and
   // reflected in the tab's own UI — not gated by GameHub walletRole.
   { id: 'atm-vouchers', label: 'ATM Vouchers', icon: <Ticket className="w-4 h-4" />, adminOnly: false },
-  // Step-by-step deploy + configuration of the voucher-repo system (VoucherNFT, VoucherDAO, sinks,
+  // Step-by-step deploy + configuration of the voucher-repo system (VoucherNFT, VoucherDAO, pools,
   // registry, VoucherTransfer) — its own admin roles, enforced on-chain, not gated by GameHub walletRole.
   { id: 'voucher-v2', label: 'Voucher V2', icon: <Layers className="w-4 h-4" />, adminOnly: false },
   // Standalone contract with its own admin/operator role model (operators propose/approve,

@@ -5,7 +5,7 @@ import { settledRead } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import DestinationsCard from './destinations-card';
 import PoolsCard from './pools-card';
-import { OPEN_ADVANCED_KEY } from './extra-sinks-card';
+import { OPEN_ADVANCED_KEY } from './extra-pools-card';
 import { WIRE_STEPS, WireStep, StepResult, checkWireStep, wirePrefill } from './steps';
 import { Collapsible, ContractGroup, ContractTag, Field, NavButtons, StepCard, StepStatus, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 import { isAddr, sameAddr } from '@/lib/contracts/voucher-v2';

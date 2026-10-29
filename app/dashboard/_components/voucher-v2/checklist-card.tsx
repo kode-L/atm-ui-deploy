@@ -30,11 +30,11 @@ export default function ChecklistCard({ onGo }: { onGo: (t: string) => void }) {
     let withMinter = 0;
     let minted = 0;
     try {
-      if (c.RewardSink) {
-        funded = (await ctx.reader.getBalance(c.RewardSink)).gt(0);
+      if (c.RewardVault) {
+        funded = (await ctx.reader.getBalance(c.RewardVault)).gt(0);
         for (const t of Object.values(ctx.book.tokens)) {
           if (funded) break;
-          funded = (await new ethers.Contract(t, ERC20_BAL, ctx.reader).balanceOf(c.RewardSink).catch(() => ethers.BigNumber.from(0))).gt(0);
+          funded = (await new ethers.Contract(t, ERC20_BAL, ctx.reader).balanceOf(c.RewardVault).catch(() => ethers.BigNumber.from(0))).gt(0);
         }
       }
       if (c.VoucherNFT) {

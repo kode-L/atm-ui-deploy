@@ -55,12 +55,12 @@ export function EditTypeCard() {
   // form starts from the type's current settings whenever the type (or chain state) changes
   useEffect(() => {
     if (!t) return;
-    setV({ name: t.name, source: t.sink, fundingMode: t.fundingMode, recipient: t.payoutRecipient, payoutMode: t.payoutMode, route: t.routeTarget, revokeTo: t.revokeDestination, gate: t.transferGate });
-  }, [t?.id, t?.name, t?.sink, t?.fundingMode, t?.payoutRecipient, t?.payoutMode, t?.routeTarget, t?.revokeDestination, t?.transferGate]); // eslint-disable-line react-hooks/exhaustive-deps
+    setV({ name: t.name, source: t.settlementTarget, fundingMode: t.fundingMode, recipient: t.payoutRecipient, payoutMode: t.payoutMode, route: t.routeTarget, revokeTo: t.revokeDestination, gate: t.transferGate });
+  }, [t?.id, t?.name, t?.settlementTarget, t?.fundingMode, t?.payoutRecipient, t?.payoutMode, t?.routeTarget, t?.revokeDestination, t?.transferGate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!c.VoucherNFT || !types.length) return null;
   const reward = t?.mode === VoucherMode.Reward;
-  const usesIncentive = !!t && sameAddr(v.source, c.VoucherIncentive || '') || (ctx.book.extraSinks || []).some((x) => x.kind === 'VoucherIncentive' && sameAddr(x.address, v.source));
+  const usesSettlement = !!t && sameAddr(v.source, c.VoucherSettlement || '') || (ctx.book.extraPools || []).some((x) => x.kind === 'VoucherSettlement' && sameAddr(x.address, v.source));
   const changed = (a: unknown, b: unknown) => String(a).toLowerCase() !== String(b).toLowerCase();
   const Row = ({ label, hint, children, onSave, dirty }: { label: string; hint?: string; children: React.ReactNode; onSave: () => void; dirty: boolean }) => (
     <Field label={label} hint={hint}>
@@ -73,7 +73,7 @@ export function EditTypeCard() {
 
   return (
     <Card title="Edit a voucher type">
-      <ContractTag contract="VoucherNFT" methods={['setVoucherTypeName', 'setVoucherTypeSink', 'setVoucherTypePayoutRecipient', 'setVoucherTypePayoutConfig', 'setVoucherTypeRevokeDestination', 'setVoucherTypeTransferGate', 'emergencyShutdownType', 'reactivateType']} />
+      <ContractTag contract="VoucherNFT" methods={['setVoucherTypeName', 'setVoucherTypeSettlementTarget', 'setVoucherTypePayoutRecipient', 'setVoucherTypePayoutConfig', 'setVoucherTypeRevokeDestination', 'setVoucherTypeTransferGate', 'emergencyShutdownType', 'reactivateType']} />
       <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-3 mb-3">
         <Field label="Type"><Select value={ctx.typeId} onChange={ctx.setTypeId} options={types.map((x) => ({ label: typeLabel(x), value: x.id }))} /></Field>
         {t && (
@@ -92,8 +92,8 @@ export function EditTypeCard() {
           <Row
             label={reward ? 'Pays from (pool) + funding mode' : 'Points ledger'}
             hint="Can't move to another pool while this type's vouchers still hold reserved tokens in the current one."
-            dirty={changed(v.source, t.sink) || v.fundingMode !== t.fundingMode}
-            onSave={() => run(`Type ${t.id}: pool → ${ctx.nameOf(v.source)}`, 'VoucherNFT', 'setVoucherTypeSink', [t.id, v.source, v.fundingMode])}
+            dirty={changed(v.source, t.settlementTarget) || v.fundingMode !== t.fundingMode}
+            onSave={() => run(`Type ${t.id}: pool → ${ctx.nameOf(v.source)}`, 'VoucherNFT', 'setVoucherTypeSettlementTarget', [t.id, v.source, v.fundingMode])}
           >
             <Select value={sources.some((o) => sameAddr(o.value, v.source)) ? (sources.find((o) => sameAddr(o.value, v.source)) as { value: string }).value : v.source} onChange={(x) => setV({ ...v, source: x })}
               options={[...sources.map((o) => ({ label: `${o.approved === false ? '✗ ' : ''}${o.label}`, value: o.value })), ...(sources.some((o) => sameAddr(o.value, v.source)) ? [] : [{ label: ctx.nameOf(v.source), value: v.source }])]} />
@@ -110,7 +110,7 @@ export function EditTypeCard() {
             </Row>
           )}
           {reward && (
-            <Row label="Payout mode" hint={usesIncentive ? 'How VoucherIncentive delivers the reward. Routed needs an approved route target.' : 'Only VoucherIncentive pools use this — a RewardSink always pays directly.'}
+            <Row label="Payout mode" hint={usesSettlement ? 'How VoucherSettlement delivers the reward. Routed needs an approved route target.' : 'Only VoucherSettlement pools use this — a RewardVault always pays directly.'}
               dirty={v.payoutMode !== t.payoutMode || changed(v.route, t.routeTarget)}
               onSave={() => run(`Type ${t.id}: payout mode → ${enumName(PayoutMode, v.payoutMode)}`, 'VoucherNFT', 'setVoucherTypePayoutConfig', [t.id, v.payoutMode, v.payoutMode === PayoutMode.Routed ? v.route : ZERO])}>
               <Select value={v.payoutMode} onChange={(x) => setV({ ...v, payoutMode: x })} options={[{ label: 'Direct (to the claimer)', value: PayoutMode.Direct }, { label: 'Routed (to a route target)', value: PayoutMode.Routed }, { label: 'External (nothing moves)', value: PayoutMode.External }]} />

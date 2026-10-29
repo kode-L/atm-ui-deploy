@@ -15,12 +15,12 @@ checks live. This document is the complete list.
 | # | Contract | Kind | Needs | Purpose |
 |---|---|---|---|---|
 | 1 | VoucherNFT | UUPS proxy | — | Core ERC721: voucher types, mint, claim, revoke |
-| 2 | SourceRegistry | UUPS proxy | — | Allowlist of payout pools (sinks) |
+| 2 | SourceRegistry | UUPS proxy | — | Allowlist of payout pools (reward vaults and points ledgers) |
 | 3 | VoucherDAO | UUPS proxy | VoucherNFT | Propose/approve quorum for mints & revokes |
 | 4 | RevocationVault | UUPS proxy | — | Holds revoked vouchers |
 | 5 | AllowlistTransferGate | UUPS proxy | — | *Optional.* Restricts who can send/receive gated types |
-| 6 | RewardSink | UUPS proxy | VoucherNFT | Custodial pool paying Native/ERC20/ERC721/ERC1155 |
-| 7 | VoucherIncentive | UUPS proxy | VoucherNFT | Points ledger (`globalPoints`) + deferred ERC20 entitlements |
+| 6 | RewardVault | UUPS proxy | VoucherNFT | Custodial pool paying Native/ERC20/ERC721/ERC1155 |
+| 7 | VoucherSettlement | UUPS proxy | VoucherNFT | Points ledger (`globalPoints`) + deferred ERC20 entitlements |
 | 8 | VoucherTransfer | UUPS proxy | VoucherNFT | *Optional.* Peer-to-peer points transfer |
 | 9 | VoucherNFTViews | plain | VoucherNFT | Read-only helper views |
 
@@ -77,9 +77,9 @@ Press **Run all required**. The steps, all sent by the admin wallet:
 | VoucherNFT → SourceRegistry | Turns on funding-source validation |
 | OPERATOR_ROLE (VoucherNFT) → admin wallet | Needed to register / configure types and grant minters |
 | REVOKE_ROLE → VoucherDAO | Enables governed revokes |
-| Approve RewardSink ×4 standards | Reward types can use RewardSink |
-| Approve VoucherIncentive (points) | Points types can use VoucherIncentive |
-| *Optional:* VoucherIncentive as ERC20 reward sink | Only for Deferred ERC20 reward types |
+| Approve RewardVault ×4 standards | Reward types can use RewardVault |
+| Approve VoucherSettlement (points) | Points types can use VoucherSettlement |
+| *Optional:* VoucherSettlement as ERC20 reward vault | Only for Deferred ERC20 reward types |
 | *Optional:* SETTLER_ROLE → VoucherTransfer | Required if you use points transfer |
 | *Optional:* REVOKE_ROLE → admin wallet | Direct revoke without a DAO vote |
 
@@ -87,7 +87,7 @@ If a step says *"sent, but the chain doesn't show it yet"*, wait a few seconds a
 **Re-check**. Public BSC RPCs lag behind fresh writes. **Don't resend.**
 
 ### 4. Voucher types
-- Finish wiring **first**, otherwise registration reverts with `FundingSourceNotApproved`.
+- Finish wiring **first**, otherwise registration reverts with `SettlementTargetNotApproved`.
 - **Plan the order.** Type ids are permanent and assigned 0, 1, 2… in registration order. The
   PageRank backend maps type ids to coins (`voucher_config.py`), so write down the planned list
   before registering.
@@ -104,10 +104,10 @@ If a step says *"sent, but the chain doesn't show it yet"*, wait a few seconds a
   behalf of everyone (VoucherDAO, VoucherTransfer) need **Unlimited**.
 - Types with *mint approvals > 1* mint through VoucherDAO. Grant VoucherDAO that type's minter
   role, and add at least as many approvers as the quorum.
-- Settler voting on VoucherIncentive defaults to a quorum of 2.
+- Settler voting on VoucherSettlement defaults to a quorum of 2.
 
 ### 6. Points transfer
-Pick a credit type (Points/Credit backed by VoucherIncentive) and a debit-record type. Then
+Pick a credit type (Points/Credit backed by VoucherSettlement) and a debit-record type. Then
 **Run remaining steps**:
 1. Debit-record type has funding source `0x0` **and** redemption paused (the tab can register
    one for you).
@@ -118,7 +118,7 @@ Pick a credit type (Points/Credit backed by VoucherIncentive) and a debit-record
 Then **Try a transfer**. The recipient must `claim` the Credit voucher to receive the points.
 
 ### 7. Fund pools
-Deposit what Reward types pay out into RewardSink (native, ERC20, ERC721, ERC1155). Admin
+Deposit what Reward types pay out into RewardVault (native, ERC20, ERC721, ERC1155). Admin
 withdrawals take the amount in token units; the pool converts it from 18-decimal internally.
 
 ---
@@ -127,7 +127,7 @@ withdrawals take the amount in token units; the pool converts it from 18-decimal
 
 - [ ] Export the address book and store it somewhere shared.
 - [ ] Copy the addresses into the voucher repo's `deployments/<network>.json`.
-- [ ] If **VoucherIncentive** is new, update the PageRank backend
+- [ ] If **VoucherSettlement** is new, update the PageRank backend
       (`ATM-PageRank-Node-Decentralized-release`):
       - `project/settings.cfg` → `EVENTS['voucher_data']`: `ADDRESS`, `FIRST_BLOCK` (current
         chain head), `LAUNCH_DATE`.
@@ -148,7 +148,7 @@ The tab estimates every transaction first, so most of these appear *before* anyt
 | Error shown | Cause | Fix |
 |---|---|---|
 | `Access denied: … missing role …` | Wrong wallet connected, or the role was never granted | Connect the admin wallet; grant the role on Wire / Roles |
-| `FundingSourceNotApproved` | Sink not approved in the registry for that mode/standard | Run the Wire steps, then register again |
+| `SettlementTargetNotApproved` | Pool (settlement target) not approved in the registry for that mode/standard | Run the Wire steps, then register again |
 | `FundingSourceInsufficient` | Pool doesn't hold enough for this mint | Deposit on Fund pools |
 | `TokenNotApprovedForType` | Mint used a token not approved for the type | Add it under Voucher types → Manage |
 | `RouteTargetRequired` / `RouteTargetNotAllowed` | Payout mode Routed without a target, or a target on a non-Routed type | Fix the payout mode/target |
@@ -157,5 +157,5 @@ The tab estimates every transaction first, so most of these appear *before* anyt
 | `daily mint cap exceeded` | Minter used up its window | Raise the cap / set Unlimited on Roles |
 | `InvalidCreditType` / `InvalidDebitType` | Type has the wrong shape, or isn't approved on VoucherTransfer yet | Follow the Points transfer steps in order |
 | `CombinationNotAllowed` | That debit→credit pair wasn't allowed | Run *Allow the pair* |
-| `VoucherIncentive: insufficient balance` | Sender doesn't have the points | Expected. Only spend what you hold |
+| `VoucherSettlement: insufficient balance` | Sender doesn't have the points | Expected. Only spend what you hold |
 | Empty revert / "function does not exist" | Address points at a different or older contract | Check the address book; old VoucherTransfer versions must be redeployed |

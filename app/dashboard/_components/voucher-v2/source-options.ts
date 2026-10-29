@@ -12,14 +12,14 @@ export interface SourceOption {
 }
 
 const NAME_ABI = ['function name() view returns (string)'];
-const BOOK_SINKS: ContractKey[] = ['RewardSink', 'VoucherIncentive'];
+const BOOK_POOLS: ContractKey[] = ['RewardVault', 'VoucherSettlement'];
 
 /**
  * Funding sources for a voucher type, labelled by who they are: the contract's on-chain
  * name(), the registry's labelOf(), and which contract it is in the address book — e.g.
- * "Main pool (Native + USDT) · RewardSink · 0x8A79…C318". Lists every sink the linked
+ * "Main pool (Native + USDT) · RewardVault · 0x8A79…C318". Lists every pool the linked
  * SourceRegistry approved for this mode/standard (so extra pools show up without being in the
- * address book), plus the book's own sinks.
+ * address book), plus the book's own pools.
  */
 export function useSourceOptions(mode: number | null, tokenStandard: number) {
   const ctx = useVoucherV2();
@@ -41,10 +41,10 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
         if (regAddr) {
           reg = ctx.read('SourceRegistry', regAddr);
           if (mode !== null) {
-            approved = mode === VoucherMode.Reward ? await reg.getApprovedRewardSinks(tokenStandard) : await reg.getApprovedPointsSinks();
+            approved = mode === VoucherMode.Reward ? await reg.getApprovedRewardVaults(tokenStandard) : await reg.getApprovedPointsLedgers();
           } else {
             // any mode: everything the registry has approved anywhere
-            const lists = await Promise.all([reg.getApprovedPointsSinks(), ...[0, 1, 2, 3].map((s) => reg!.getApprovedRewardSinks(s))]);
+            const lists = await Promise.all([reg.getApprovedPointsLedgers(), ...[0, 1, 2, 3].map((s) => reg!.getApprovedRewardVaults(s))]);
             approved = lists.flat();
           }
         }
@@ -54,9 +54,9 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
       // approval only matters (and is only shown) once VoucherNFT enforces the registry
       const showApproval = isLinked && mode !== null;
       const all: string[] = [];
-      const extraList = ctx.book.extraSinks || [];
+      const extraList = ctx.book.extraPools || [];
       const extras = extraList.map((x) => x.address);
-      for (const a of [...approved, ...BOOK_SINKS.map((k) => c[k]).filter(Boolean) as string[], ...extras]) {
+      for (const a of [...approved, ...BOOK_POOLS.map((k) => c[k]).filter(Boolean) as string[], ...extras]) {
         if (!all.some((x) => sameAddr(x, a))) all.push(a);
       }
       const out = await Promise.all(all.map(async (a) => {
@@ -64,9 +64,9 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
           new ethers.Contract(a, NAME_ABI, ctx.reader!).name().catch(() => ''),
           reg ? reg.labelOf(a).catch(() => '') : Promise.resolve(''),
         ]);
-        const bookKey = BOOK_SINKS.find((k) => sameAddr(c[k], a)) || (() => { const x = extraList.find((e) => sameAddr(e.address, a)); return x ? `${poolKind(x)} (extra)` : undefined; })();
+        const bookKey = BOOK_POOLS.find((k) => sameAddr(c[k], a)) || (() => { const x = extraList.find((e) => sameAddr(e.address, a)); return x ? `${poolKind(x)} (extra)` : undefined; })();
         const name = label || onChain;
-        // skip the contract name when the pool's own name already is it ("VoucherIncentive")
+        // skip the contract name when the pool's own name already is it ("VoucherSettlement")
         const parts = [name, bookKey && bookKey !== name ? bookKey : '', shortAddr(a)].filter(Boolean);
         const isApproved = showApproval ? approved.some((x) => sameAddr(x, a)) : null;
         return { value: a, label: parts.join(' · '), approved: isApproved };
@@ -75,7 +75,7 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, tokenStandard, c.VoucherNFT, c.SourceRegistry, c.RewardSink, c.VoucherIncentive, ctx.book.extraSinks, ctx.reader, ctx.revision]);
+  }, [mode, tokenStandard, c.VoucherNFT, c.SourceRegistry, c.RewardVault, c.VoucherSettlement, ctx.book.extraPools, ctx.reader, ctx.revision]);
 
   return options;
 }

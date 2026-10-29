@@ -67,10 +67,10 @@ interface VoucherV2Ctx {
   deployImpl: (key: ContractKey) => Promise<string>;
   setPendingImpl: (key: ContractKey, address: string | null) => void;
   deployPlain: (key: ContractKey, ctorArgs: any[]) => Promise<string>;
-  // another RewardSink pool (impl + proxy + setName), kept in book.extraSinks — never replaces the main one
-  deployExtraSink: (name: string, admin: string, impl?: string, accessControl?: string, kind?: PoolKind) => Promise<string>;
+  // another RewardVault pool (impl + proxy + setName), kept in book.extraPools — never replaces the main one
+  deployExtraPool: (name: string, admin: string, impl?: string, accessControl?: string, kind?: PoolKind) => Promise<string>;
   // an implementation for an extra pool — doesn't touch the main contract's pending impl
-  deployExtraSinkImpl: (kind?: PoolKind) => Promise<string>;
+  deployExtraPoolImpl: (kind?: PoolKind) => Promise<string>;
   // friendly label for a known address: contract/token name from the book, else shortened
   nameOf: (address: string) => string;
   txLog: TxLogEntry[];
@@ -428,11 +428,11 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     return proxy;
   }, [deployRaw, deployImpl, setPendingImpl, updateBook, reader]);
 
-  const deployExtraSinkImpl = useCallback((kind: PoolKind = 'RewardSink') => deployRaw(kind, [], `Deploy ${kind} implementation (extra pool)`), [deployRaw]);
+  const deployExtraPoolImpl = useCallback((kind: PoolKind = 'RewardVault') => deployRaw(kind, [], `Deploy ${kind} implementation (extra pool)`), [deployRaw]);
 
-  // impl: an existing RewardSink implementation (auto-filled / pasted) — many pools can share one
-  // RewardSink and VoucherIncentive share initialize(admin, nft, name, accessControl)
-  const deployExtraSink = useCallback(async (name: string, admin: string, implIn?: string, accessControl?: string, kind: PoolKind = 'RewardSink') => {
+  // impl: an existing RewardVault implementation (auto-filled / pasted) — many pools can share one
+  // RewardVault and VoucherSettlement share initialize(admin, nft, name, accessControl)
+  const deployExtraPool = useCallback(async (name: string, admin: string, implIn?: string, accessControl?: string, kind: PoolKind = 'RewardVault') => {
     const nft = bookRef.current.contracts.VoucherNFT;
     if (!nft) throw new Error(`Deploy VoucherNFT first — every ${kind} is tied to one VoucherNFT`);
     let impl = implIn ? ethers.utils.getAddress(implIn.trim()) : '';
@@ -447,7 +447,7 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     if (acl !== ZERO && reader && (await reader.getCode(acl)) === '0x') throw new Error(`No contract code at access control ${acl} on this network`);
     const initData = new ethers.utils.Interface(ARTIFACTS[kind].abi).encodeFunctionData('initialize', [admin, nft, name, acl]);
     const proxy = await deployRaw('ERC1967Proxy', [impl, initData], `Deploy ${kind} "${name}" proxy`);
-    updateBook((b) => ({ ...b, extraSinks: [...(b.extraSinks || []), { name, address: proxy, implementation: impl, kind }] }));
+    updateBook((b) => ({ ...b, extraPools: [...(b.extraPools || []), { name, address: proxy, implementation: impl, kind }] }));
     return proxy;
   }, [deployRaw, updateBook, reader]);
 
@@ -475,7 +475,7 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
   const nameOf = useCallback((a: string) => {
     if (!a || sameAddr(a, ZERO)) return 'none';
     for (const [k, v] of Object.entries(book.contracts)) if (sameAddr(v, a)) return k;
-    for (const x of book.extraSinks || []) if (sameAddr(x.address, a)) return `${poolKind(x)} "${x.name}"`;
+    for (const x of book.extraPools || []) if (sameAddr(x.address, a)) return `${poolKind(x)} "${x.name}"`;
     for (const [k, v] of Object.entries(book.tokens)) if (sameAddr(v, a)) return k;
     if (sameAddr(a, address)) return 'connected wallet';
     return shortAddr(a);
@@ -500,8 +500,8 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     deployImpl,
     setPendingImpl,
     deployPlain,
-    deployExtraSink,
-    deployExtraSinkImpl,
+    deployExtraPool,
+    deployExtraPoolImpl,
     nameOf,
     txLog,
     clearTxLog: () => updateLog(() => []),
@@ -513,7 +513,7 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     closeFlow,
     recheckTx,
     stepAction,
-  }), [address, chainId, signer, reader, book, setAddress, setToken, replaceBook, markExported, read, write, send, sendValue, deployProxy, deployImpl, setPendingImpl, deployPlain, deployExtraSink, deployExtraSinkImpl, nameOf, txLog, updateLog, revision, typeId, flow, beginFlow, closeFlow, recheckTx, stepAction]);
+  }), [address, chainId, signer, reader, book, setAddress, setToken, replaceBook, markExported, read, write, send, sendValue, deployProxy, deployImpl, setPendingImpl, deployPlain, deployExtraPool, deployExtraPoolImpl, nameOf, txLog, updateLog, revision, typeId, flow, beginFlow, closeFlow, recheckTx, stepAction]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

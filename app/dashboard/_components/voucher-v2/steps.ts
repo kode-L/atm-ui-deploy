@@ -31,7 +31,7 @@ export const DEPLOY_STEPS: DeployStep[] = [
   },
   {
     key: 'SourceRegistry', gas: 1574313, proxy: true, needs: [],
-    what: 'Allowlist of payout pools (sinks). Once wired, a voucher type can only use an approved sink.',
+    what: 'Allowlist of payout pools (reward vaults and points ledgers). Once wired, a voucher type can only use an approved pool.',
     args: (_c, admin) => [admin, 'Voucher V2 registry'], // (admin, name) — name is informational, renameable later
   },
   {
@@ -45,14 +45,14 @@ export const DEPLOY_STEPS: DeployStep[] = [
     args: (_c, admin) => [admin],
   },
   {
-    key: 'RewardSink', gas: 1692730, proxy: true, needs: ['VoucherNFT'], linkGetter: 'voucherNFT',
+    key: 'RewardVault', gas: 1692730, proxy: true, needs: ['VoucherNFT'], linkGetter: 'voucherNFT',
     what: 'Custodial reward pool: holds Native / ERC20 / ERC721 / ERC1155 and pays them out on claim.',
     args: (c, admin) => [admin, nftAddr(c), 'Main reward pool', ZERO], // (admin, nft, name, accessControl = off)
   },
   {
-    key: 'VoucherIncentive', gas: 2963834, proxy: true, needs: ['VoucherNFT'], linkGetter: 'voucherNFT',
+    key: 'VoucherSettlement', gas: 2963834, proxy: true, needs: ['VoucherNFT'], linkGetter: 'voucherNFT',
     what: 'Points ledger (globalPoints) for Points-mode types, plus non-custodial deferred ERC20 entitlements.',
-    args: (c, admin) => [admin, nftAddr(c), 'VoucherIncentive', ZERO], // (admin, nft, name, accessControl = off)
+    args: (c, admin) => [admin, nftAddr(c), 'VoucherSettlement', ZERO], // (admin, nft, name, accessControl = off)
   },
   {
     key: 'VoucherNFTViews', gas: 431780, proxy: false, needs: ['VoucherNFT'], linkGetter: 'nft',
@@ -117,11 +117,11 @@ export interface WireStep {
 }
 
 const STANDARD_NAMES = ['Native', 'ERC20', 'ERC721', 'ERC1155'];
-// what the RewardSink wiring step offers for now — ERC721 / ERC1155 left out to keep setup simple
-const SINK_STANDARDS: number[] = [TokenStandard.Native, TokenStandard.ERC20];
+// what the RewardVault wiring step offers for now — ERC721 / ERC1155 left out to keep setup simple
+const VAULT_STANDARDS: number[] = [TokenStandard.Native, TokenStandard.ERC20];
 const done = (v: boolean): StepResult => ({ done: v });
 const pickedStandards = (v: Record<string, string>) =>
-  (v.standards || '').split(',').filter(Boolean).map(Number).filter((n) => SINK_STANDARDS.includes(n));
+  (v.standards || '').split(',').filter(Boolean).map(Number).filter((n) => VAULT_STANDARDS.includes(n));
 const fromBook = (k: ContractKey) => (ctx: Ctx) => ctx.getBook().contracts[k] || '';
 
 const F: { nft: WireField; registryTarget: WireField; wallet: (what: string) => WireField } = {
@@ -174,30 +174,30 @@ export const WIRE_STEPS: WireStep[] = [
     run: (c, v) => c.send('Grant REVOKE_ROLE to VoucherDAO', c.write('VoucherNFT', v.nft), 'grantRole', [role('REVOKE_ROLE'), v.dao]),
   },
   {
-    id: 'rewardSink',
+    id: 'rewardVault',
     target: 'SourceRegistry',
-    method: 'setRewardSinkApproved',
+    method: 'setRewardVaultApproved',
     title: 'Approve the main pool for the tokens it pays out',
     why: 'Tick what the main pool pays out (Native, ERC20). You can approve more later; one transaction per choice.',
     action: 'Approve selected',
     fields: [
       F.registryTarget,
-      { name: 'sink', label: 'RewardSink (proxy)', note: 'The RewardSink proxy address from the Deploy tab — the pool being approved as a reward sink.', prefill: fromBook('RewardSink') },
+      { name: 'settlementTarget', label: 'RewardVault (proxy)', note: 'The RewardVault proxy address from the Deploy tab — the pool being approved as a reward vault.', prefill: fromBook('RewardVault') },
     ],
     pick: {
       name: 'standards',
       label: 'Token standards to approve',
       note: 'Native = BNB/ETH rewards, ERC20 = token rewards (USDT, USDC…).',
-      options: SINK_STANDARDS.map((s) => ({ value: String(s), label: STANDARD_NAMES[s] })),
+      options: VAULT_STANDARDS.map((s) => ({ value: String(s), label: STANDARD_NAMES[s] })),
     },
     check: async (c, v) => {
       const reg = c.read('SourceRegistry', v.registry);
-      const approved = await Promise.all(SINK_STANDARDS.map((s) => reg.isRewardSinkApproved(s, v.sink)));
-      const have = SINK_STANDARDS.filter((_, i) => approved[i]).map((s) => STANDARD_NAMES[s]);
+      const approved = await Promise.all(VAULT_STANDARDS.map((s) => reg.isRewardVaultApproved(s, v.settlementTarget)));
+      const have = VAULT_STANDARDS.filter((_, i) => approved[i]).map((s) => STANDARD_NAMES[s]);
       const picked = pickedStandards(v);
-      const missing = picked.filter((s) => !approved[SINK_STANDARDS.indexOf(s)]).map((s) => STANDARD_NAMES[s]);
+      const missing = picked.filter((s) => !approved[VAULT_STANDARDS.indexOf(s)]).map((s) => STANDARD_NAMES[s]);
       const detail = `Approved on-chain: ${have.length ? have.join(', ') : 'none'}`;
-      const approvedPicks = SINK_STANDARDS.filter((_, i) => approved[i]).map(String);
+      const approvedPicks = VAULT_STANDARDS.filter((_, i) => approved[i]).map(String);
       if (missing.length) return { done: false, detail: `${detail} · To approve: ${missing.join(', ')}`, approvedPicks };
       if (!have.length) return { done: false, detail: `${detail} · Pick at least one standard`, needsPick: true, approvedPicks };
       return { done: true, detail, approvedPicks };
@@ -205,39 +205,39 @@ export const WIRE_STEPS: WireStep[] = [
     run: async (c, v) => {
       const reg = c.read('SourceRegistry', v.registry);
       for (const s of pickedStandards(v)) {
-        if (await reg.isRewardSinkApproved(s, v.sink)) continue;
-        await c.send(`Approve RewardSink (${STANDARD_NAMES[s]})`, c.write('SourceRegistry', v.registry), 'setRewardSinkApproved', [s, v.sink, true, '']);
+        if (await reg.isRewardVaultApproved(s, v.settlementTarget)) continue;
+        await c.send(`Approve RewardVault (${STANDARD_NAMES[s]})`, c.write('SourceRegistry', v.registry), 'setRewardVaultApproved', [s, v.settlementTarget, true, '']);
       }
     },
   },
   {
-    id: 'pointsSink',
+    id: 'pointsLedger',
     target: 'SourceRegistry',
-    method: 'setPointsSinkApproved',
-    title: 'Approve VoucherIncentive for points',
-    why: 'Lets Points voucher types keep their points balances on VoucherIncentive.',
+    method: 'setPointsLedgerApproved',
+    title: 'Approve VoucherSettlement for points',
+    why: 'Lets Points voucher types keep their points balances on VoucherSettlement.',
     action: 'Approve',
     fields: [
       F.registryTarget,
-      { name: 'sink', label: 'VoucherIncentive (proxy)', note: 'The VoucherIncentive proxy address from the Deploy tab — the points ledger being approved.', prefill: fromBook('VoucherIncentive') },
+      { name: 'settlementTarget', label: 'VoucherSettlement (proxy)', note: 'The VoucherSettlement proxy address from the Deploy tab — the points ledger being approved.', prefill: fromBook('VoucherSettlement') },
     ],
-    check: async (c, v) => done(await c.read('SourceRegistry', v.registry).isPointsSinkApproved(v.sink)),
-    run: (c, v) => c.send('Approve VoucherIncentive (points)', c.write('SourceRegistry', v.registry), 'setPointsSinkApproved', [v.sink, true, '']),
+    check: async (c, v) => done(await c.read('SourceRegistry', v.registry).isPointsLedgerApproved(v.settlementTarget)),
+    run: (c, v) => c.send('Approve VoucherSettlement (points)', c.write('SourceRegistry', v.registry), 'setPointsLedgerApproved', [v.settlementTarget, true, '']),
   },
   {
     id: 'incentiveErc20',
     target: 'SourceRegistry',
-    method: 'setRewardSinkApproved',
-    title: 'Approve VoucherIncentive for ERC20 rewards',
-    why: 'Only needed for deferred / routed ERC20 rewards paid through VoucherIncentive.',
+    method: 'setRewardVaultApproved',
+    title: 'Approve VoucherSettlement for ERC20 rewards',
+    why: 'Only needed for deferred / routed ERC20 rewards paid through VoucherSettlement.',
     action: 'Approve',
     optional: true,
     fields: [
       F.registryTarget,
-      { name: 'sink', label: 'VoucherIncentive (proxy)', note: 'The VoucherIncentive proxy address from the Deploy tab — approved for ERC20 rewards only.', prefill: fromBook('VoucherIncentive') },
+      { name: 'settlementTarget', label: 'VoucherSettlement (proxy)', note: 'The VoucherSettlement proxy address from the Deploy tab — approved for ERC20 rewards only.', prefill: fromBook('VoucherSettlement') },
     ],
-    check: async (c, v) => done(await c.read('SourceRegistry', v.registry).isRewardSinkApproved(TokenStandard.ERC20, v.sink)),
-    run: (c, v) => c.send('Approve VoucherIncentive (ERC20 reward)', c.write('SourceRegistry', v.registry), 'setRewardSinkApproved', [TokenStandard.ERC20, v.sink, true, '']),
+    check: async (c, v) => done(await c.read('SourceRegistry', v.registry).isRewardVaultApproved(TokenStandard.ERC20, v.settlementTarget)),
+    run: (c, v) => c.send('Approve VoucherSettlement (ERC20 reward)', c.write('SourceRegistry', v.registry), 'setRewardVaultApproved', [TokenStandard.ERC20, v.settlementTarget, true, '']),
   },
   {
     id: 'revokeAdmin',

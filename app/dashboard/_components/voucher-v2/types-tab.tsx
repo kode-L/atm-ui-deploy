@@ -19,7 +19,7 @@ interface Form {
   payoutMode: number;
   routeTarget: string;
   payoutRecipient: string;
-  sink: string;
+  settlementTarget: string;
   approvalsRequired: number;
   redemptionDays: number;
   transferGate: string;
@@ -40,7 +40,7 @@ const blank = (): Form => ({
   payoutMode: PayoutMode.Direct,
   routeTarget: '',
   payoutRecipient: ZERO,
-  sink: ZERO,
+  settlementTarget: ZERO,
   approvalsRequired: 1,
   redemptionDays: 0,
   transferGate: ZERO,
@@ -72,18 +72,18 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
   const [m, setM] = useState({ typeId: -1, to: ctx.account, faceValue: '', token: '', tokenId: '0' });
 
   const presets = useMemo(() => {
-    const vi = c.VoucherIncentive || ZERO;
-    const rs = c.RewardSink || ZERO;
+    const vi = c.VoucherSettlement || ZERO;
+    const rs = c.RewardVault || ZERO;
     return [
-      { id: 'pointsCredit', label: 'Points — claiming adds points', note: "Claiming adds the voucher's value to the holder's points balance.", apply: { name: 'Points Credit', sink: vi, revokeDestination: c.RevocationVault || ZERO } },
-      { id: 'pointsDebit', label: 'Points — claiming spends points', note: "Claiming takes the voucher's value from the holder's points (fails if they don't have enough).", apply: { name: 'Points Debit', pointsDirection: PointsDirection.Debit, sink: vi } },
-      { id: 'rewardNative', label: 'Reward — native coin (BNB)', note: "Claiming pays native coin from the chosen pool.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, sink: rs, approvedTokens: [ZERO] } },
-      { id: 'rewardErc20', label: 'Reward — ERC20 token', note: "Claiming pays an ERC20 token (e.g. USDT) from the chosen pool.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, sink: rs } },
-      { id: 'rewardDeferred', label: 'Reward — ERC20 via VoucherIncentive (paid on claim)', note: "Claiming records what the holder is owed on VoucherIncentive; it can pay them directly, route the tokens to another pool, or leave delivery to another system.", apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingMode: FundingMode.OnClaim, redemptionDays: 14, sink: vi } },
-      { id: 'daoGoverned', label: 'Reward — native coin, minted by a 2-vote DAO', note: "Every mint is a VoucherDAO proposal that needs 2 operator votes. Add at least 2 operators on Minters & roles.", apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, sink: rs, approvalsRequired: 2, grantDaoMinter: true, grantSelfMinter: false, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
+      { id: 'pointsCredit', label: 'Points — claiming adds points', note: "Claiming adds the voucher's value to the holder's points balance.", apply: { name: 'Points Credit', settlementTarget: vi, revokeDestination: c.RevocationVault || ZERO } },
+      { id: 'pointsDebit', label: 'Points — claiming spends points', note: "Claiming takes the voucher's value from the holder's points (fails if they don't have enough).", apply: { name: 'Points Debit', pointsDirection: PointsDirection.Debit, settlementTarget: vi } },
+      { id: 'rewardNative', label: 'Reward — native coin (BNB)', note: "Claiming pays native coin from the chosen pool.", apply: { name: 'Reward Native', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, settlementTarget: rs, approvedTokens: [ZERO] } },
+      { id: 'rewardErc20', label: 'Reward — ERC20 token', note: "Claiming pays an ERC20 token (e.g. USDT) from the chosen pool.", apply: { name: 'Reward ERC20', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, settlementTarget: rs } },
+      { id: 'rewardDeferred', label: 'Reward — ERC20 via VoucherSettlement (paid on claim)', note: "Claiming records what the holder is owed on VoucherSettlement; it can pay them directly, route the tokens to another pool, or leave delivery to another system.", apply: { name: 'Reward ERC20 Deferred', mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20, fundingMode: FundingMode.OnClaim, redemptionDays: 14, settlementTarget: vi } },
+      { id: 'daoGoverned', label: 'Reward — native coin, minted by a 2-vote DAO', note: "Every mint is a VoucherDAO proposal that needs 2 operator votes. Add at least 2 operators on Minters & roles.", apply: { name: 'Reward Native (DAO)', mode: VoucherMode.Reward, tokenStandard: TokenStandard.Native, settlementTarget: rs, approvalsRequired: 2, grantDaoMinter: true, grantSelfMinter: false, revokeDestination: c.RevocationVault || ZERO, approvedTokens: [ZERO] } },
       { id: 'custom', label: 'Custom (blank)', note: '', apply: {} },
     ] as { id: string; label: string; note: string; apply: Partial<Form> }[];
-  }, [c.VoucherIncentive, c.RewardSink, c.RevocationVault]);
+  }, [c.VoucherSettlement, c.RewardVault, c.RevocationVault]);
 
   const preset = presets.find((p) => p.id === presetId);
   const applyPreset = (id: string) => {
@@ -115,10 +115,10 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     return kind && !kind.startsWith('0x') ? <><div>{name}</div><div className="text-txt-secondary text-[10px]">{kind}</div></> : name;
   };
   const [otherSource, setOtherSource] = useState(false);
-  const known = sameAddr(f.sink, ZERO) || sourceOptions.some((o) => sameAddr(o.value, f.sink));
-  const sourceChoice = otherSource || (!known && isAddr(f.sink))
+  const known = sameAddr(f.settlementTarget, ZERO) || sourceOptions.some((o) => sameAddr(o.value, f.settlementTarget));
+  const sourceChoice = otherSource || (!known && isAddr(f.settlementTarget))
     ? OTHER
-    : sameAddr(f.sink, ZERO) ? ZERO : (sourceOptions.find((o) => sameAddr(o.value, f.sink))?.value ?? ZERO);
+    : sameAddr(f.settlementTarget, ZERO) ? ZERO : (sourceOptions.find((o) => sameAddr(o.value, f.settlementTarget))?.value ?? ZERO);
 
   const isReward = isRewardMode(f.mode);
   // "Who mints it": maps onto grantSelfMinter / grantDaoMinter; votes only matter for the DAO
@@ -130,19 +130,19 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
     // direct-only minting has no vote
     approvalsRequired: m === 'wallet' ? 1 : prev.approvalsRequired,
   }));
-  // payout modes are read by VoucherIncentive only — a RewardSink always pays the claimer
+  // payout modes are read by VoucherSettlement only — a RewardVault always pays the claimer
   // (or the fixed payout recipient), so anything but Direct would be silently ignored there
-  const usesIncentive = !!c.VoucherIncentive && sameAddr(f.sink, c.VoucherIncentive);
-  const payoutMode = isReward && usesIncentive ? f.payoutMode : PayoutMode.Direct;
+  const usesSettlement = !!c.VoucherSettlement && sameAddr(f.settlementTarget, c.VoucherSettlement);
+  const payoutMode = isReward && usesSettlement ? f.payoutMode : PayoutMode.Direct;
   const warnings = useMemo(() => {
     const w: string[] = [];
     if (!f.name.trim()) w.push('Name is required');
     if (f.approvalsRequired < 1) w.push('Mint approvals required must be at least 1');
     if (f.approvalsRequired > 1 && !f.grantDaoMinter) w.push(`Needs ${f.approvalsRequired} approvals but VoucherDAO won't be a minter — nobody can mint it until you grant VoucherDAO the minter role`);
-    if (!isReward && f.pointsDirection === PointsDirection.Credit && sameAddr(f.sink, ZERO)) w.push('A Points Credit type with no funding source credits nothing on claim');
-    if (isReward && sameAddr(f.sink, ZERO)) w.push('Reward types need a funding source to pay out');
+    if (!isReward && f.pointsDirection === PointsDirection.Credit && sameAddr(f.settlementTarget, ZERO)) w.push('A Points Credit type with no funding source credits nothing on claim');
+    if (isReward && sameAddr(f.settlementTarget, ZERO)) w.push('Reward types need a funding source to pay out');
     if (payoutMode === PayoutMode.Routed && !isAddr(f.routeTarget)) w.push('Routed payout needs a valid route target');
-    for (const a of [f.sink, f.transferGate, f.revokeDestination, ...(isReward ? [f.payoutRecipient, ...f.approvedTokens] : [])]) {
+    for (const a of [f.settlementTarget, f.transferGate, f.revokeDestination, ...(isReward ? [f.payoutRecipient, ...f.approvedTokens] : [])]) {
       if (!isAddr(a)) w.push(`Not a valid address: ${a || '(empty)'}`);
     }
     return w;
@@ -226,7 +226,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
         f.mode,
         isReward ? f.tokenStandard : TokenStandard.Native,
         isReward ? f.payoutRecipient : ZERO,
-        f.sink,
+        f.settlementTarget,
         isReward ? f.fundingMode : FundingMode.Reserved,
         isReward ? PointsDirection.Credit : f.pointsDirection,
         f.transferGate,
@@ -332,7 +332,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                     <td className="py-2 pr-3">{t.name}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">{kindOf(t)}</td>
                     <td className="py-2 pr-3">
-                      {sourceCell(t.sink)}
+                      {sourceCell(t.settlementTarget)}
                       {t.mode === VoucherMode.Reward && <div className="text-[10px] text-txt-secondary">{t.fundingMode === FundingMode.Reserved ? 'Reserved at mint' : 'Paid on claim'}</div>}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
@@ -370,7 +370,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                           <span className="text-txt-secondary">This type&apos;s:</span>
                           <button className={btnSecondaryCls} onClick={() => { ctx.setTypeId(t.id); onGo('roles'); }}>Minters &amp; roles →</button>
                           {(t.approvalsRequired > 1 || daoMints.includes(t.id)) && <button className={btnSecondaryCls} onClick={() => { ctx.setTypeId(t.id); onGo('dao'); }}>DAO proposals →</button>}
-                          {t.mode === VoucherMode.Reward && !sameAddr(t.sink, ZERO) && <button className={btnSecondaryCls} onClick={() => onGo('funding')}>Fund its pool →</button>}
+                          {t.mode === VoucherMode.Reward && !sameAddr(t.settlementTarget, ZERO) && <button className={btnSecondaryCls} onClick={() => onGo('funding')}>Fund its pool →</button>}
                           <span className="text-txt-secondary">· Click a Minting / Claiming badge to pause or resume it.</span>
                         </div>
                         {t.mode === VoucherMode.Reward && (
@@ -413,7 +413,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
           >
             <Select
               value={sourceChoice}
-              onChange={(v) => { if (v !== OTHER) set('sink', v); setOtherSource(v === OTHER); }}
+              onChange={(v) => { if (v !== OTHER) set('settlementTarget', v); setOtherSource(v === OTHER); }}
               options={[
                 { label: 'None', value: ZERO },
                 ...sourceOptions.map((o) => ({ label: `${o.approved === true ? '✓ ' : o.approved === false ? '✗ ' : ''}${o.label}${o.approved === false ? ' — not approved for this' : ''}`, value: o.value })),
@@ -421,7 +421,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
               ]}
             />
             {sourceChoice === OTHER && (
-              <div className="mt-2"><AddressInput value={f.sink} onChange={(v) => set('sink', v)} placeholder="0x… pool address" /></div>
+              <div className="mt-2"><AddressInput value={f.settlementTarget} onChange={(v) => set('settlementTarget', v)} placeholder="0x… pool address" /></div>
             )}
           </Field>
           {isReward && (
@@ -497,8 +497,8 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                   <Field label="Payout token standard">
                     <Select value={f.tokenStandard} onChange={(v) => set('tokenStandard', v)} options={[TokenStandard.Native, TokenStandard.ERC20].map((v) => ({ label: enumName(TokenStandard, v), value: v as number }))} />
                   </Field>
-                  {usesIncentive ? (
-                    <Field label="Payout mode" hint="How VoucherIncentive delivers the reward.">
+                  {usesSettlement ? (
+                    <Field label="Payout mode" hint="How VoucherSettlement delivers the reward.">
                       <Select value={f.payoutMode} onChange={(v) => set('payoutMode', v)} options={[
                         { label: 'Direct (to the claimer)', value: PayoutMode.Direct },
                         { label: 'Routed (to a route target pool)', value: PayoutMode.Routed },
@@ -506,7 +506,7 @@ export default function TypesTab({ onGo }: { onGo: (t: string) => void }) {
                       ]} />
                     </Field>
                   ) : (
-                    <Field label="Payout mode" hint="Routed / External need VoucherIncentive as the pool.">
+                    <Field label="Payout mode" hint="Routed / External need VoucherSettlement as the pool.">
                       <div className="text-sm py-2">Direct — the pool pays the claimer</div>
                     </Field>
                   )}

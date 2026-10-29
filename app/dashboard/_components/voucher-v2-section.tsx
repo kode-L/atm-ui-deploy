@@ -18,12 +18,12 @@ import DaoTab from './voucher-v2/dao-tab';
 import ReleaseExpiredCard from './voucher-v2/release-card';
 import VouchersCard from './voucher-v2/vouchers-card';
 import { EditTypeCard, NftAdminCard, VaultCard } from './voucher-v2/nft-manage-cards';
-import ExtraSinksCard from './voucher-v2/extra-sinks-card';
+import ExtraPoolsCard from './voucher-v2/extra-pools-card';
 import AllowlistsCard, { RegistryAccessCard } from './voucher-v2/allowlists-card';
 import PoolsCard from './voucher-v2/pools-card';
 
 // Step-by-step deploy + configuration of the on-chain voucher system from the voucher repo
-// (VoucherNFT, VoucherDAO, sinks, registry). Separate from the "ATM Vouchers"
+// (VoucherNFT, VoucherDAO, pools, registry). Separate from the "ATM Vouchers"
 // tab, which manages the older standalone ATMVoucher contract.
 // Setup = overview + deploying; Contracts = one tab per contract, holding every call made to it.
 const SUB_TABS = [
@@ -178,7 +178,7 @@ function VoucherV2Inner() {
           {tab === 'pools' && (
             <div className={TWO_COL}>
               <div className={COL}>
-                <ExtraSinksCard admin={ctx.account} onGo={go} mode="deploy" />
+                <ExtraPoolsCard admin={ctx.account} onGo={go} mode="deploy" />
                 <div id="pool-settings"><PoolsCard only="pools" /></div>
               </div>
               <div className={COL}><FundingTab onGo={go} /></div>

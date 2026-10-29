@@ -15,10 +15,10 @@ import { Badge, Collapsible, btnCls, btnDangerCls, btnSecondaryCls, inputCls, li
 
 const FLOW = [
   ['Deploy', 'each contract (UUPS proxies, your wallet becomes admin), or paste an existing address below.'],
-  ['Wire', 'them together: registry link, sink approvals, DAO revoke role.'],
+  ['Wire', 'them together: registry link, pool approvals, DAO revoke role.'],
   ['Voucher types', 'register each type (Points credit/debit, Reward native/ERC20/NFT…) and its approved payout tokens.'],
   ['Minters & roles', 'who may mint each type (with mint caps), DAO operators (they propose and approve).'],
-  ['Fund pools', 'top up RewardSink with the assets Reward types pay out.'],
+  ['Fund pools', 'top up RewardVault with the assets Reward types pay out.'],
 ];
 
 export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
@@ -84,8 +84,8 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
   };
 
   const doExport = () => {
-    const { contracts, implementations, tokens, extraSinks, deployedAt } = ctx.book;
-    const data = { network: NETWORKS[ctx.chainId]?.chainName || `chain ${ctx.chainId}`, chainId: ctx.chainId, deployedAt, contracts, implementations, extraSinks, tokens };
+    const { contracts, implementations, tokens, extraPools, deployedAt } = ctx.book;
+    const data = { network: NETWORKS[ctx.chainId]?.chainName || `chain ${ctx.chainId}`, chainId: ctx.chainId, deployedAt, contracts, implementations, extraPools, tokens };
     const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

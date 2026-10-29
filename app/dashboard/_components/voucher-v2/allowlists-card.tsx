@@ -7,8 +7,8 @@ import { useHasRole } from './use-role';
 import DestinationsCard, { DESTINATION_LISTS } from './destinations-card';
 import { AddressInput, Badge, Collapsible, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
-// What a funding source can be approved for. "points" = setPointsSinkApproved; a number =
-// setRewardSinkApproved for that token standard.
+// What a funding source can be approved for. "points" = setPointsLedgerApproved; a number =
+// setRewardVaultApproved for that token standard.
 type Use = { id: 'native' | 'erc20' | 'points'; label: string; standard?: number };
 const USES: Use[] = [
   { id: 'native', label: 'Native rewards', standard: TokenStandard.Native },
@@ -19,12 +19,12 @@ const USES: Use[] = [
 export const APPROVE_POOL_KEY = 'dg_voucherV2ApprovePool';
 
 // which uses make sense for a known pool type (a pasted, unknown address gets all three)
-const USES_FOR: Record<PoolKind, Use['id'][]> = { RewardSink: ['native', 'erc20'], VoucherIncentive: ['points', 'erc20'] };
+const USES_FOR: Record<PoolKind, Use['id'][]> = { RewardVault: ['native', 'erc20'], VoucherSettlement: ['points', 'erc20'] };
 
 const LISTS = [
   { id: 'sources', title: 'Funding sources', what: 'Pools a voucher type may pay from — approved per kind of payout.' },
   { id: DESTINATION_LISTS[0].key, title: 'Payout recipients', what: 'Fixed addresses a voucher type may always pay to (instead of the claimer).' },
-  { id: DESTINATION_LISTS[1].key, title: 'Route targets', what: 'Pools a Routed type (on VoucherIncentive) may send its payout to.' },
+  { id: DESTINATION_LISTS[1].key, title: 'Route targets', what: 'Pools a Routed type (on VoucherSettlement) may send its payout to.' },
 ];
 
 /** SourceRegistry's three allowlists in one place: approve and remove, each with its own list. */
@@ -40,7 +40,7 @@ export default function AllowlistsCard() {
     <Card title="Allowlists">
       <ContractTag
         contract="SourceRegistry"
-        methods={list === 'sources' ? ['setRewardSinkApproved', 'setPointsSinkApproved'] : ['setDestinationApproved', 'setDestinationsApproved', 'setLabel']}
+        methods={list === 'sources' ? ['setRewardVaultApproved', 'setPointsLedgerApproved'] : ['setDestinationApproved', 'setDestinationsApproved', 'setLabel']}
       />
       <p className="text-xs text-txt-secondary mb-3">
         Once VoucherNFT is linked to this registry, voucher types can only use addresses approved here. Removing an address later doesn&apos;t change types already using it.
@@ -86,12 +86,12 @@ function FundingSources() {
     if (!ctx.reader || !c.SourceRegistry) return;
     try {
       const reg = ctx.read('SourceRegistry');
-      const [native, erc20, points]: string[][] = await Promise.all([reg.getApprovedRewardSinks(TokenStandard.Native), reg.getApprovedRewardSinks(TokenStandard.ERC20), reg.getApprovedPointsSinks()]);
+      const [native, erc20, points]: string[][] = await Promise.all([reg.getApprovedRewardVaults(TokenStandard.Native), reg.getApprovedRewardVaults(TokenStandard.ERC20), reg.getApprovedPointsLedgers()]);
       // known pools (so unapproved ones show with an Approve button) + anything the registry lists
       const known: { address: string; kind: PoolKind; name: string }[] = [
-        ...(c.RewardSink ? [{ address: c.RewardSink, kind: 'RewardSink' as const, name: 'Main RewardSink' }] : []),
-        ...(c.VoucherIncentive ? [{ address: c.VoucherIncentive, kind: 'VoucherIncentive' as const, name: 'Main VoucherIncentive' }] : []),
-        ...(ctx.book.extraSinks || []).map((x) => ({ address: x.address, kind: poolKind(x), name: x.name })),
+        ...(c.RewardVault ? [{ address: c.RewardVault, kind: 'RewardVault' as const, name: 'Main RewardVault' }] : []),
+        ...(c.VoucherSettlement ? [{ address: c.VoucherSettlement, kind: 'VoucherSettlement' as const, name: 'Main VoucherSettlement' }] : []),
+        ...(ctx.book.extraPools || []).map((x) => ({ address: x.address, kind: poolKind(x), name: x.name })),
       ];
       const all: string[] = [];
       for (const a of [...known.map((k) => k.address), ...native, ...erc20, ...points]) if (!all.some((x) => sameAddr(x, a))) all.push(a);
@@ -113,8 +113,8 @@ function FundingSources() {
     const reg = ctx.write('SourceRegistry');
     const verb = approved ? 'Approve' : 'Remove';
     return use.standard === undefined
-      ? ctx.send(`${verb} ${ctx.nameOf(address)} (points)`, reg, 'setPointsSinkApproved', [address, approved, lbl])
-      : ctx.send(`${verb} ${ctx.nameOf(address)} (${use.label})`, reg, 'setRewardSinkApproved', [use.standard, address, approved, lbl]);
+      ? ctx.send(`${verb} ${ctx.nameOf(address)} (points)`, reg, 'setPointsLedgerApproved', [address, approved, lbl])
+      : ctx.send(`${verb} ${ctx.nameOf(address)} (${use.label})`, reg, 'setRewardVaultApproved', [use.standard, address, approved, lbl]);
   };
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
@@ -166,8 +166,8 @@ function FundingSources() {
             />
             {poolSel === OTHER && <div className="mt-2"><AddressInput value={addr} onChange={setAddr} placeholder="0x… pool address" /></div>}
           </Field>
-          <Field label="2. Use as" hint={useAs === 'points' ? 'A points ledger — VoucherIncentive.' : 'A reward pool — RewardSink or VoucherIncentive.'}>
-            <Select value={useAs} onChange={(v) => setUseAs(v as 'reward' | 'points')} options={[{ label: 'Reward (pays tokens)', value: 'reward' }, { label: 'Points (sink)', value: 'points' }]} />
+          <Field label="2. Use as" hint={useAs === 'points' ? 'A points ledger — VoucherSettlement.' : 'A reward pool — RewardVault or VoucherSettlement.'}>
+            <Select value={useAs} onChange={(v) => setUseAs(v as 'reward' | 'points')} options={[{ label: 'Reward (pays tokens)', value: 'reward' }, { label: 'Points (ledger)', value: 'points' }]} />
           </Field>
           {useAs === 'reward' ? (
             <Field label="3. Token standard">
@@ -182,7 +182,7 @@ function FundingSources() {
         )}
         <div className="flex items-center gap-3">
           <button className={btnCls} disabled={busy || !isAddr(target) || alreadyOn} onClick={approveChosen}>{busy ? 'Sending…' : alreadyOn ? 'Already approved' : 'Approve'}</button>
-          {targetRow?.kind === 'RewardSink' && useAs === 'points' && <span className="text-xs text-yellow-300">⚠ A RewardSink isn&apos;t a points ledger — use a VoucherIncentive for Points.</span>}
+          {targetRow?.kind === 'RewardVault' && useAs === 'points' && <span className="text-xs text-yellow-300">⚠ A RewardVault isn&apos;t a points ledger — use a VoucherSettlement for Points.</span>}
         </div>
       </div>}
       <Collapsible title={`Pools (${rows.length})`} summary={`${rows.filter((r) => Object.values(r.on).some(Boolean)).length} approved for something · approve / remove per kind`}>

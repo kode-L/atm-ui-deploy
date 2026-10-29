@@ -9,9 +9,9 @@ type Ctx = ReturnType<typeof useVoucherV2>;
 
 /** Download this network's address book (+ transaction history) as JSON. */
 export function exportBook(ctx: Ctx) {
-  const { contracts, implementations, tokens, extraSinks, deployedAt } = ctx.book;
+  const { contracts, implementations, tokens, extraPools, deployedAt } = ctx.book;
   const network = NETWORKS[ctx.chainId]?.chainName || `chain ${ctx.chainId}`;
-  const data = { network, chainId: ctx.chainId, deployedAt, contracts, implementations, extraSinks, tokens, transactions: ctx.txLog.map(({ id, ...t }) => t) };
+  const data = { network, chainId: ctx.chainId, deployedAt, contracts, implementations, extraPools, tokens, transactions: ctx.txLog.map(({ id, ...t }) => t) };
   const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -30,7 +30,7 @@ export default function StartFresh({ compact }: { compact?: boolean }) {
   const ctx = useVoucherV2();
   const [done, setDone] = useState(false);
   const network = NETWORKS[ctx.chainId]?.chainName || `chain ${ctx.chainId}`;
-  const count = Object.keys(ctx.book.contracts).length + (ctx.book.extraSinks || []).length;
+  const count = Object.keys(ctx.book.contracts).length + (ctx.book.extraPools || []).length;
   if (!count && !ctx.txLog.length && !done) return null;
 
   const reset = () => {

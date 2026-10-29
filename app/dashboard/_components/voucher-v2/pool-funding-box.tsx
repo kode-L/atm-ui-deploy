@@ -28,7 +28,7 @@ export default function PoolFundingBox({ type, token, needed, onShort }: { type?
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const reward = type?.mode === VoucherMode.Reward;
-  const pool = type?.sink || ZERO;
+  const pool = type?.settlementTarget || ZERO;
   const isNative = sameAddr(token, ZERO);
   // External payouts hold nothing; points need no tokens
   const relevant = reward && !sameAddr(pool, ZERO) && type?.payoutMode !== PayoutMode.External;
@@ -36,9 +36,9 @@ export default function PoolFundingBox({ type, token, needed, onShort }: { type?
   const load = useCallback(async () => {
     if (!relevant || !ctx.reader || !type) return setInfo(null);
     try {
-      const sink = new ethers.Contract(pool, ARTIFACTS.RewardSink.abi, ctx.reader);
+      const vault = new ethers.Contract(pool, ARTIFACTS.RewardVault.abi, ctx.reader);
       const [held, reserved] = await Promise.all([
-        sink.availableBalance(type.id, type.tokenStandard, token, 0),
+        vault.availableBalance(type.id, type.tokenStandard, token, 0),
         ctx.read('VoucherNFT').reservedOf(pool, token, 0).catch(() => ethers.BigNumber.from(0)),
       ]);
       let decimals = 18;

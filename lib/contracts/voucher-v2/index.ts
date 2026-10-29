@@ -11,8 +11,8 @@ import RevocationVault from './RevocationVault.json';
 import AllowlistTransferGate from './AllowlistTransferGate.json';
 import SourceRegistry from './SourceRegistry.json';
 import VoucherNFTViews from './VoucherNFTViews.json';
-import RewardSink from './RewardSink.json';
-import VoucherIncentive from './VoucherIncentive.json';
+import RewardVault from './RewardVault.json';
+import VoucherSettlement from './VoucherSettlement.json';
 import VoucherTransfer from './VoucherTransfer.json';
 import ERC1967Proxy from './ERC1967Proxy.json';
 import manifest from './manifest.json';
@@ -29,8 +29,8 @@ export const ARTIFACTS = {
   AllowlistTransferGate,
   SourceRegistry,
   VoucherNFTViews,
-  RewardSink,
-  VoucherIncentive,
+  RewardVault,
+  VoucherSettlement,
   VoucherTransfer,
   ERC1967Proxy,
 } as Record<string, Artifact>;
@@ -42,8 +42,8 @@ export type ContractKey =
   | 'AllowlistTransferGate'
   | 'SourceRegistry'
   | 'VoucherNFTViews'
-  | 'RewardSink'
-  | 'VoucherIncentive'
+  | 'RewardVault'
+  | 'VoucherSettlement'
   | 'VoucherTransfer';
 
 export const ZERO = ethers.constants.AddressZero;
@@ -74,9 +74,9 @@ export interface Book {
   // implementation deployed but proxy tx not confirmed yet — retry reuses it
   pendingImpl: Partial<Record<ContractKey, string>>;
   tokens: Record<string, string>;
-  // extra RewardSink pools beyond the main one (contracts.RewardSink) — any number, each a proxy
-  // kind: which pool contract it is (older books have none = RewardSink)
-  extraSinks: { name: string; address: string; implementation: string; kind?: PoolKind }[];
+  // extra RewardVault pools beyond the main one (contracts.RewardVault) — any number, each a proxy
+  // kind: which pool contract it is (older books have none = RewardVault)
+  extraPools: { name: string; address: string; implementation: string; kind?: PoolKind }[];
   deployedAt: string | null;
   // lastChangeAt > lastExportAt means addresses exist only in this browser — nag to export
   lastChangeAt?: string;
@@ -84,10 +84,10 @@ export interface Book {
 }
 
 /** Pool contracts that can be deployed more than once. */
-export type PoolKind = 'RewardSink' | 'VoucherIncentive';
-export const poolKind = (x: { kind?: PoolKind }): PoolKind => x.kind || 'RewardSink';
+export type PoolKind = 'RewardVault' | 'VoucherSettlement';
+export const poolKind = (x: { kind?: PoolKind }): PoolKind => x.kind || 'RewardVault';
 
-export const emptyBook = (): Book => ({ contracts: {}, implementations: {}, pendingImpl: {}, tokens: {}, extraSinks: [], deployedAt: null });
+export const emptyBook = (): Book => ({ contracts: {}, implementations: {}, pendingImpl: {}, tokens: {}, extraPools: [], deployedAt: null });
 const bookKey = (chainId: number) => `dg_voucherV2Book:${chainId}`;
 
 // SourceRegistry was called FundingSourceRegistry before it also held payout destinations —
@@ -133,9 +133,9 @@ export function parseBookImport(text: string, chainId: number): Book {
     else book.tokens[k] = addr; // e.g. "MockERC20 (18dp)"
   }
   Object.assign(book.tokens, parsed.tokens || {});
-  if (Array.isArray(parsed.extraSinks)) {
-    book.extraSinks = parsed.extraSinks.filter((x: any) => x && ethers.utils.isAddress(x.address))
-      .map((x: any) => ({ name: String(x.name || ''), address: ethers.utils.getAddress(x.address), implementation: x.implementation || '', kind: x.kind === 'VoucherIncentive' ? 'VoucherIncentive' as const : 'RewardSink' as const }));
+  if (Array.isArray(parsed.extraPools)) {
+    book.extraPools = parsed.extraPools.filter((x: any) => x && ethers.utils.isAddress(x.address))
+      .map((x: any) => ({ name: String(x.name || ''), address: ethers.utils.getAddress(x.address), implementation: x.implementation || '', kind: x.kind === 'VoucherSettlement' ? 'VoucherSettlement' as const : 'RewardVault' as const }));
   }
   Object.assign(book.implementations, migrateKeys(parsed.implementations));
   book.deployedAt = parsed.deployedAt || null;
@@ -194,7 +194,7 @@ export function decodeVoucherError(e: any): string {
         NativeTransferFailed: 'the native coin payout could not be sent to the recipient',
         FeeOnTransferNotSupported: 'this token takes a fee on transfer — the pool does not support such tokens',
         NFTNotInInventory: "the pool doesn't hold that NFT",
-        SinkInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — use Top up in the pool box on the Mint / proposal form (or the Pools tab)",
+        RewardVaultInsufficient: "the pool doesn't have enough free (unreserved) tokens for this — use Top up in the pool box on the Mint / proposal form (or the Pools tab)",
         AmountReserved: "that amount is reserved for vouchers already minted — only the free balance can be withdrawn",
         ReservationsOutstanding: 'vouchers of this type still hold reserved tokens in the current pool — they must be claimed, revoked or expire first',
         NotReleasable: 'that voucher has no reservation to release, or has not expired yet',
@@ -227,7 +227,7 @@ export function decodeVoucherError(e: any): string {
 }
 
 const KNOWN_ROLES = [
-  // v0.54: one OPERATOR_ROLE (same hash) on VoucherNFT, SourceRegistry, AllowlistTransferGate, VoucherIncentive
+  // v0.54: one OPERATOR_ROLE (same hash) on VoucherNFT, SourceRegistry, AllowlistTransferGate, VoucherSettlement
   'OPERATOR_ROLE', 'REVOKE_ROLE', 'SETTLER_ROLE',
 ];
 function roleName(hash: string) {
@@ -256,7 +256,7 @@ export interface VoucherType {
   mintingPaused: boolean;
   claimPaused: boolean;
   payoutRecipient: string;
-  sink: string;
+  settlementTarget: string;
   fundingMode: number;
   pointsDirection: number;
   transferGate: string;
@@ -282,7 +282,7 @@ export async function loadVoucherTypes(nft: ethers.Contract): Promise<VoucherTyp
         mintingPaused: t.mintingPaused,
         claimPaused: t.claimPaused,
         payoutRecipient: t.payoutRecipient,
-        sink: t.sink,
+        settlementTarget: t.settlementTarget,
         fundingMode: Number(t.fundingMode),
         pointsDirection: Number(t.pointsDirection),
         transferGate: t.transferGate,

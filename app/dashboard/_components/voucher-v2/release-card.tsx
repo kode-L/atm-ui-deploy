@@ -71,14 +71,14 @@ export default function ReleaseExpiredCard() {
     const t = typeById.get(v.typeId);
     return fungible(t) ? `${fromUnits(v.faceValue, 18)} ${nameToken(v.token)}` : `${v.faceValue.toString()} × ${nameToken(v.token)}`;
   };
-  const poolOf = (v: Expired) => typeById.get(v.typeId)?.sink || ZERO;
+  const poolOf = (v: Expired) => typeById.get(v.typeId)?.settlementTarget || ZERO;
 
   // what releasing frees, per pool + token
   const totals = useMemo(() => {
     const m = new Map<string, { pool: string; token: string; amount: ethers.BigNumber; count: number; fungible: boolean }>();
     for (const v of found || []) {
       const t = typeById.get(v.typeId);
-      const pool = t?.sink || ZERO;
+      const pool = t?.settlementTarget || ZERO;
       const k = `${pool.toLowerCase()}|${v.token.toLowerCase()}`;
       const cur = m.get(k) || { pool, token: v.token, amount: ethers.BigNumber.from(0), count: 0, fungible: fungible(t) };
       cur.amount = cur.amount.add(v.faceValue);

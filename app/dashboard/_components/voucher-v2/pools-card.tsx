@@ -9,16 +9,16 @@ import { useVoucherV2 } from './context';
 import { useAdminOf } from './use-role';
 import { ContractTag, AddressInput, AddressOption, Field, btnDangerCls, btnSecondaryCls, inputCls } from './ui';
 
-// RewardSink / VoucherIncentive / SourceRegistry carry an informational on-chain `name`;
-// the two sinks also have an optional `accessControl` consulted before every real payout.
+// RewardVault / VoucherSettlement / SourceRegistry carry an informational on-chain `name`;
+// the two pool contracts also have an optional `accessControl` consulted before every real payout.
 const TARGETS: { key: ContractKey; accessControl: boolean; nameHint: string }[] = [
-  { key: 'RewardSink', accessControl: true, nameHint: 'e.g. "Main pool (Native + USDT)"' },
-  { key: 'VoucherIncentive', accessControl: true, nameHint: 'e.g. "Points + deferred rewards"' },
+  { key: 'RewardVault', accessControl: true, nameHint: 'e.g. "Main pool (Native + USDT)"' },
+  { key: 'VoucherSettlement', accessControl: true, nameHint: 'e.g. "Points + deferred rewards"' },
   { key: 'SourceRegistry', accessControl: false, nameHint: 'e.g. "Voucher V2 registry"' },
 ];
 
 interface State { name: string; acl: string }
-// one row per contract: the book's main contracts plus every extra RewardSink pool
+// one row per contract: the book's main contracts plus every extra RewardVault pool
 type Target = { id: string; key: ContractKey; address: string; title: string; accessControl: boolean; nameHint: string };
 
 export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}) {
@@ -34,11 +34,11 @@ export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}
 
   const all: Target[] = [
     ...TARGETS.filter((t) => ctx.book.contracts[t.key]).map((t) => ({ ...t, id: t.key, address: ctx.book.contracts[t.key] as string, title: t.key })),
-    ...(ctx.book.extraSinks || []).map((x) => ({ id: x.address, key: poolKind(x) as ContractKey, address: x.address, title: `${poolKind(x)} "${x.name}"`, accessControl: true, nameHint: 'e.g. "USDT payouts"' })),
+    ...(ctx.book.extraPools || []).map((x) => ({ id: x.address, key: poolKind(x) as ContractKey, address: x.address, title: `${poolKind(x)} "${x.name}"`, accessControl: true, nameHint: 'e.g. "USDT payouts"' })),
   ];
   const present = all.filter((t) => !only || (only === 'registry' ? t.key === 'SourceRegistry' : t.key !== 'SourceRegistry'));
   // setName / setAccessControl need DEFAULT_ADMIN_ROLE on that contract — same hasRole() on all of them
-  const adminOf = useAdminOf('RewardSink', present.map((t) => t.address));
+  const adminOf = useAdminOf('RewardVault', present.map((t) => t.address));
 
   const load = useCallback(async () => {
     if (!ctx.reader) return;
@@ -52,7 +52,7 @@ export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}
     }
     setState(out);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.book.contracts, ctx.book.extraSinks, ctx.reader, ctx.revision]);
+  }, [ctx.book.contracts, ctx.book.extraPools, ctx.reader, ctx.revision]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -97,7 +97,7 @@ export default function PoolsCard({ only }: { only?: 'pools' | 'registry' } = {}
 
   return (
     <Card title={only === 'registry' ? 'Registry name' : 'Pool names & access control'}>
-        <ContractTag contract={only === 'registry' ? 'SourceRegistry' : 'RewardSink / VoucherIncentive'} methods={only === 'registry' ? ['setName'] : ['setName', 'setAccessControl']} />
+        <ContractTag contract={only === 'registry' ? 'SourceRegistry' : 'RewardVault / VoucherSettlement'} methods={only === 'registry' ? ['setName'] : ['setName', 'setAccessControl']} />
       {only !== 'registry' && <p className="text-xs text-txt-secondary mb-3">
         <b>Name</b>: a label to tell pools apart. <b>Access control</b> (off by default): before each payout the pool asks the access control contract —
         frozen users are paid to their safe wallet, blacklisted users can&apos;t claim yet (the voucher stays claimable). Points are never checked.

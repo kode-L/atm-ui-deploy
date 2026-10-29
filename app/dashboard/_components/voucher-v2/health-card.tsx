@@ -50,12 +50,12 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
       for (const t of types) {
         const add = (level: Issue['level'], text: string, tab: string) => out.push({ level, text: text.charAt(0).toUpperCase() + text.slice(1), tab, typeId: t.id, type: typeLabel(t) });
         const reward = t.mode === VoucherMode.Reward;
-        const noSource = sameAddr(t.sink, ZERO);
+        const noSource = sameAddr(t.settlementTarget, ZERO);
 
         if (reward && noSource) add('bad', 'no funding source — it cannot pay out.', 'types');
         if (reg && !noSource) {
-          const ok = reward ? await reg.isRewardSinkApproved(t.tokenStandard, t.sink) : await reg.isPointsSinkApproved(t.sink);
-          if (!ok) add('bad', `its pool ${ctx.nameOf(t.sink)} is no longer approved in SourceRegistry.`, 'registry');
+          const ok = reward ? await reg.isRewardVaultApproved(t.tokenStandard, t.settlementTarget) : await reg.isPointsLedgerApproved(t.settlementTarget);
+          if (!ok) add('bad', `its pool ${ctx.nameOf(t.settlementTarget)} is no longer approved in SourceRegistry.`, 'registry');
         }
         if (reward && t.approvedTokens.length === 0) add('bad', 'no approved payout token — every mint reverts.', 'types');
 
@@ -63,16 +63,16 @@ export default function HealthCard({ onGo }: { onGo: (t: string) => void }) {
         // Reserved types need free tokens to mint; On-claim types need them when someone claims.
         if (reward && !noSource && t.approvedTokens.length && t.payoutMode !== 2 /* External holds nothing */) {
           const token = t.approvedTokens[0];
-          const sink = new ethers.Contract(t.sink, ARTIFACTS.RewardSink.abi, ctx.reader);
-          const held = await sink.availableBalance(t.id, t.tokenStandard, token, 0).catch(() => null);
-          const reserved = await nft.reservedOf(t.sink, token, 0).catch(() => null);
+          const vault = new ethers.Contract(t.settlementTarget, ARTIFACTS.RewardVault.abi, ctx.reader);
+          const held = await vault.availableBalance(t.id, t.tokenStandard, token, 0).catch(() => null);
+          const reserved = await nft.reservedOf(t.settlementTarget, token, 0).catch(() => null);
           if (held && reserved) {
             const free = held.sub(reserved);
             const what = sameAddr(token, ZERO) ? 'native coin' : ctx.nameOf(token);
             if (free.lte(0)) {
               add('warn', t.fundingMode === FundingMode.Reserved
-                ? `pool ${ctx.nameOf(t.sink)} has no free ${what}${reserved.gt(0) ? ' (all of it is reserved)' : ''} — new mints will fail until it's topped up.`
-                : `pool ${ctx.nameOf(t.sink)} has no free ${what} — claims will fail until it's topped up.`, 'funding');
+                ? `pool ${ctx.nameOf(t.settlementTarget)} has no free ${what}${reserved.gt(0) ? ' (all of it is reserved)' : ''} — new mints will fail until it's topped up.`
+                : `pool ${ctx.nameOf(t.settlementTarget)} has no free ${what} — claims will fail until it's topped up.`, 'funding');
             }
           }
         }

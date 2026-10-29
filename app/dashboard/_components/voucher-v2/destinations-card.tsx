@@ -18,7 +18,7 @@ export const DESTINATION_LISTS = [
   {
     key: ethers.utils.id('ROUTE_TARGET'),
     title: 'Route targets',
-    note: 'Pools a Routed type may send its payout to (VoucherIncentive moves the asset there; the user stays on record). E.g. the external Incentive pool. Not needed for Direct / External types.',
+    note: 'Pools a Routed type may send its payout to (VoucherSettlement moves the asset there; the user stays on record). E.g. the external Incentive pool. Not needed for Direct / External types.',
   },
 ] as const;
 
