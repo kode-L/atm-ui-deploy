@@ -7,10 +7,11 @@ import {
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import PoolFundingBox from './pool-funding-box';
+import { EditRow, MintRow, RecipientRows, blankRow, checkRows, chunk } from './mint-csv';
 import { AddressInput, Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 const SCAN_LIMIT = 2000; // vouchers read per browse scan (newest first)
-const MAX_BATCH = 50; // VoucherConstants.MAX_BATCH_SIZE
+const MAX_BATCH = 50; // VoucherConstants.MAX_MINT_PER_CALL
 
 interface Voucher {
   id: number;
@@ -29,11 +30,11 @@ const fungible = (t?: VoucherType) => !!t && t.mode === VoucherMode.Reward && t.
 const toDate = (d: string) => (d ? Math.floor(new Date(d).getTime() / 1000) : 0);
 const fmtDate = (s: number) => (s ? new Date(s * 1000).toLocaleString() : '—');
 // total value a mint form will reserve, in 18-dp fixed point (0 when it can't be parsed yet)
-const neededFor = (t: VoucherType | undefined, bulk: boolean, quantity: string, value: string, rows: string) => {
+const neededFor = (t: VoucherType | undefined, bulk: boolean, quantity: string, value: string, rows: MintRow[]) => {
   if (!fungible(t)) return ethers.BigNumber.from(0);
   const p = (v: string) => { try { return ethers.utils.parseUnits((v || '0').trim(), 18); } catch { return ethers.BigNumber.from(0); } };
   if (!bulk) return p(value).mul(Math.max(0, parseInt(quantity || '0', 10) || 0));
-  return rows.split('\n').map((l) => l.trim()).filter(Boolean).reduce((s, l) => s.add(p(l.split(/[,\s]+/)[1] || '0')), ethers.BigNumber.from(0));
+  return rows.reduce((s, r) => s.add(p(r.amount)), ethers.BigNumber.from(0));
 };
 
 
@@ -98,8 +99,11 @@ function MintPanel({ types }: { types: VoucherType[] }) {
   const [typeId, setTypeId] = useState(-1);
   const t = types.find((x) => x.id === typeId);
   const [bulk, setBulk] = useState(false);
-  const [f, setF] = useState({ to: ctx.account, quantity: '1', faceValue: '', token: '', tokenId: '0', start: '', expiry: '', rows: '' });
+  const [f, setF] = useState({ to: ctx.account, quantity: '1', faceValue: '', token: '', tokenId: '0', start: '', expiry: '' });
+  const [rows, setRows] = useState<EditRow[]>([blankRow()]);
   const [isMinter, setIsMinter] = useState<boolean | null>(null);
+  // vouchers this wallet may still mint of the type in its current cap window (getMinterCap)
+  const [capLeft, setCapLeft] = useState<ethers.BigNumber | null>(null);
   const [short, setShort] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -110,11 +114,19 @@ function MintPanel({ types }: { types: VoucherType[] }) {
     if (typeId < 0 || !ctx.reader) return setIsMinter(null);
     const nft = ctx.read('VoucherNFT');
     nft.typeMinterRole(typeId).then((r: string) => nft.hasRole(r, ctx.account)).then(setIsMinter).catch(() => setIsMinter(null));
+    nft.getMinterCap(typeId, ctx.account).then((cap: any) => {
+      const fresh = Date.now() / 1000 >= cap.windowStart.add(cap.windowDuration).toNumber();
+      setCapLeft(cap.limit.sub(fresh ? 0 : cap.usedInWindow));
+    }).catch(() => setCapLeft(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, ctx.reader, ctx.account, ctx.revision]);
 
   const reward = t?.mode === VoucherMode.Reward;
   const nft721 = reward && t?.tokenStandard === TokenStandard.ERC721;
+  // ERC721 and ERC1155 payouts name a specific token id per voucher
+  const needsId = reward && (t?.tokenStandard === TokenStandard.ERC721 || t?.tokenStandard === TokenStandard.ERC1155);
+  const parsed = useMemo(() => checkRows(rows, fungible(t), !!needsId), [rows, t, needsId]);
+  const overCap = capLeft !== null && capLeft.lt(bulk ? parsed.rows.length : parseInt(f.quantity, 10) || 0);
   const toFace = (v: string) => (fungible(t) ? toUnits(v, 18) : String(Math.max(0, parseInt(v || '0', 10) || 0)));
   const token = reward ? f.token || t?.approvedTokens[0] || ZERO : ZERO;
 
@@ -129,15 +141,31 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         const q = parseInt(f.quantity, 10);
         if (!(q >= 1 && q <= MAX_BATCH)) throw new Error(`Quantity must be 1–${MAX_BATCH}`);
         if (!f.faceValue) throw new Error('Enter a value');
-        const receipt = await ctx.send(`Mint ${q}× type ${t.id} → ${ctx.nameOf(f.to)}`, nft, 'mint', [t.id, f.to, q, toFace(f.faceValue), toDate(f.start), toDate(f.expiry), token, nft721 ? f.tokenId || '0' : 0]);
+        if (needsId && !/^\d+$/.test(f.tokenId)) throw new Error('Enter the NFT token id');
+        const receipt = await ctx.send(`Mint ${q}× type ${t.id} → ${ctx.nameOf(f.to)}`, nft, 'mint', [t.id, f.to, q, toFace(f.faceValue), toDate(f.start), toDate(f.expiry), token, needsId ? f.tokenId : 0]);
         setMsg({ ok: true, text: `Minted voucher #${eventArg(receipt, nft, 'VoucherMinted', 'voucherId').toString()}${q > 1 ? ` (+${q - 1} more)` : ''}` });
       } else {
-        const rows = f.rows.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => l.split(/[,\s]+/));
-        if (!rows.length || rows.length > MAX_BATCH) throw new Error(`Enter 1–${MAX_BATCH} lines of "address, amount"`);
-        const bad = rows.filter(([a, v]) => !isAddr(a || '') || !v);
-        if (bad.length) throw new Error(`Bad line(s): ${bad.map((r) => r.join(' ')).join('; ')}`);
-        await ctx.send(`Bulk mint ${rows.length} × type ${t.id}`, nft, 'mintBatch', [t.id, rows.map((r) => r[0]), rows.map((r) => toFace(r[1])), toDate(f.start), toDate(f.expiry), token, rows.map((r) => (nft721 ? r[2] || '0' : 0))]);
-        setMsg({ ok: true, text: `Minted ${rows.length} voucher(s)` });
+        const { rows: list, errors } = parsed;
+        if (errors.length) throw new Error(`Fix the recipient list first: ${errors.slice(0, 3).join('; ')}`);
+        if (!list.length) throw new Error('Add recipients, or upload a CSV');
+        // mintBatch takes at most MAX_BATCH recipients, so a longer list goes out as several transactions in order
+        const parts = chunk(list, MAX_BATCH);
+        const labels = parts.map((p, i) => `Bulk mint ${i + 1}/${parts.length}: ${p.length} × type ${t.id} (rows ${p[0].row}–${p[p.length - 1].row})`);
+        if (parts.length > 1) ctx.beginFlow(`Bulk mint ${list.length} vouchers of type ${t.id}`, labels);
+        let done = 0;
+        try {
+          for (const [i, p] of parts.entries()) {
+            await ctx.send(labels[i], nft, 'mintBatch', [t.id, p.map((r) => r.to), p.map((r) => toFace(r.amount)), toDate(f.start), toDate(f.expiry), token, p.map((r) => r.tokenId)]);
+            done += p.length;
+          }
+        } catch (e: any) {
+          if (!done) throw e;
+          // earlier batches are on-chain: keep only the lines not minted yet, so a retry doesn't mint twice
+          setRows(list.slice(done).map(({ to, amount, tokenId }) => ({ to, amount, tokenId })));
+          throw new Error(`Minted ${done} of ${list.length}, then stopped: ${e.message}. The list now holds only the ${list.length - done} recipients not minted yet.`);
+        }
+        setRows([blankRow()]);
+        setMsg({ ok: true, text: `Minted ${list.length} voucher(s) in ${parts.length} transaction(s)` });
       }
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
@@ -155,11 +183,12 @@ function MintPanel({ types }: { types: VoucherType[] }) {
           <Select value={typeId} onChange={setTypeId} options={types.map((x) => ({ label: `${typeLabel(x)}${x.approvalsRequired > 1 ? ' — mint via VoucherDAO' : ''}`, value: x.id }))} />
         </Field>
         <Field label="How many recipients">
-          <Select value={bulk ? 'bulk' : 'one'} onChange={(v) => setBulk(v === 'bulk')} options={[{ label: 'One recipient', value: 'one' }, { label: `Many (bulk, up to ${MAX_BATCH})`, value: 'bulk' }]} />
+          <Select value={bulk ? 'bulk' : 'one'} onChange={(v) => setBulk(v === 'bulk')} options={[{ label: 'One recipient', value: 'one' }, { label: 'Many (list or CSV)', value: 'bulk' }]} />
         </Field>
       </div>
       {t && t.approvalsRequired > 1 && <p className="text-xs text-yellow-300">This type needs {t.approvalsRequired} votes — mint it through a proposal on the VoucherDAO tab.</p>}
       {isMinter === false && t && t.approvalsRequired <= 1 && <p className="text-xs text-yellow-300">Your wallet isn&apos;t a minter of this type — add it under Minters (this tab).</p>}
+      {isMinter && overCap && <p className="text-xs text-yellow-300">Your minting cap for this type has only {capLeft!.toString()} voucher(s) left in the current window — raise it under Roles (setMinterCap) or mint fewer.</p>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {!bulk ? (
           <>
@@ -171,9 +200,10 @@ function MintPanel({ types }: { types: VoucherType[] }) {
           </>
         ) : (
           <div className="md:col-span-3">
-            <Field label="Recipients" hint={`One per line: address, amount${nft721 ? ', tokenId' : ''} (${fungible(t) ? 'token units' : 'whole number'}).`}>
-              <textarea className={`${inputCls} h-28`} value={f.rows} onChange={(e) => set('rows', e.target.value)} placeholder={'0xabc…, 10\n0xdef…, 25'} />
-            </Field>
+            <RecipientRows rows={rows} onChange={setRows} needsId={!!needsId} check={parsed} perTx="transaction"
+              amountLabel={fungible(t) ? 'Amount (tokens)' : t?.mode === VoucherMode.Points ? 'Points' : 'Quantity'}
+              total={fungible(t) ? `${fromUnits(neededFor(t, true, '', '', parsed.rows), 18)} ${sameAddr(token, ZERO) ? 'native coin' : ctx.nameOf(token)}` : nft721 ? undefined : `${parsed.rows.reduce((s, r) => s + Number(r.amount), 0)} ${t?.mode === VoucherMode.Points ? 'points' : 'items'}`}
+              onLoaded={(text) => setMsg({ ok: !/^(CSV|Failed)/.test(text), text })} />
           </div>
         )}
         {reward && (
@@ -181,12 +211,12 @@ function MintPanel({ types }: { types: VoucherType[] }) {
             <Select value={token} onChange={(v) => set('token', v)} options={(t?.approvedTokens.length ? t.approvedTokens : [ZERO]).map((a) => ({ label: sameAddr(a, ZERO) ? 'Native coin' : ctx.nameOf(a), value: a }))} />
           </Field>
         )}
-        {nft721 && !bulk && <Field label="NFT token id"><input className={inputCls} value={f.tokenId} onChange={(e) => set('tokenId', e.target.value)} /></Field>}
+        {needsId && !bulk && <Field label="NFT token id"><input className={inputCls} value={f.tokenId} onChange={(e) => set('tokenId', e.target.value)} /></Field>}
         <Field label="Claimable from (optional)"><input type="datetime-local" className={inputCls} value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
         <Field label="Expires (optional)"><input type="datetime-local" className={inputCls} value={f.expiry} onChange={(e) => set('expiry', e.target.value)} /></Field>
       </div>
-      {t && t.approvalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, f.rows)} onShort={setShort} />}
-      <button className={btnCls} disabled={busy || !t || t.approvalsRequired > 1 || isMinter === false || short} onClick={mint}>{busy ? 'Minting…' : bulk ? 'Mint all' : 'Mint'}</button>
+      {t && t.approvalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, parsed.rows)} onShort={setShort} />}
+      <button className={btnCls} disabled={busy || !t || t.approvalsRequired > 1 || isMinter === false || short || overCap || (bulk && (!parsed.rows.length || parsed.errors.length > 0))} onClick={mint}>{busy ? 'Minting…' : bulk ? `Mint all${parsed.rows.length ? ` (${parsed.rows.length})` : ''}` : 'Mint'}</button>
       {short && <span className="text-xs text-yellow-300 ml-3">Top up the pool first (above) — minting now would fail.</span>}
       {msg && <p className={`text-xs break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
     </div>

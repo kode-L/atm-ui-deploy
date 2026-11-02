@@ -3,10 +3,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import {
-  DEFAULT_ADMIN_ROLE, TokenStandard, VoucherMode, VoucherType, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits, typeLabel,
+  DEFAULT_ADMIN_ROLE, TokenStandard, eventArg, VoucherMode, VoucherType, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import PoolFundingBox from './pool-funding-box';
+import { EditRow, MintRow, RecipientRows, blankRow, checkRows, chunk } from './mint-csv';
 import { ContractTag, AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 // VoucherDAO: proposing counts as the first approval; at the type's quorum
@@ -37,11 +38,11 @@ interface Proposal {
 
 const fungible = (t?: VoucherType) => !!t && t.mode === VoucherMode.Reward && t.tokenStandard <= TokenStandard.ERC20;
 // what a proposal will reserve when it executes, in 18-dp fixed point
-const neededFor = (t: VoucherType | undefined, kind: string, quantity: string, value: string, rows: string) => {
+const neededFor = (t: VoucherType | undefined, kind: string, quantity: string, value: string, rows: MintRow[]) => {
   if (!fungible(t) || kind === 'revoke') return ethers.BigNumber.from(0);
   const p = (v: string) => { try { return ethers.utils.parseUnits((v || '0').trim(), 18); } catch { return ethers.BigNumber.from(0); } };
   if (kind === 'mint') return p(value).mul(Math.max(0, parseInt(quantity || '0', 10) || 0));
-  return rows.split('\n').map((l) => l.trim()).filter(Boolean).reduce((s, l) => s.add(p(l.split(/[,\s]+/)[1] || '0')), ethers.BigNumber.from(0));
+  return rows.reduce((s, r) => s.add(p(r.amount)), ethers.BigNumber.from(0));
 };
 const toFace = (t: VoucherType | undefined, v: string) => (fungible(t) ? toUnits(v, 18) : String(Math.max(0, parseInt(v || '0', 10) || 0)));
 const showFace = (t: VoucherType | undefined, v: ethers.BigNumberish) => (fungible(t) ? fromUnits(v, 18) : String(v));
@@ -65,12 +66,16 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
   const [kind, setKind] = useState<Kind>('mint');
-  const [form, setForm] = useState({ to: ctx.account, quantity: '1', faceValue: '', token: '', start: '', expiry: '', hours: '72', bulk: '', voucherId: '', reason: '' });
+  const [form, setForm] = useState({ to: ctx.account, quantity: '1', faceValue: '', token: '', tokenId: '0', start: '', expiry: '', hours: '72', voucherId: '', reason: '' });
+  const [bulkRows, setBulkRows] = useState<EditRow[]>([blankRow()]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
   const selected = types.find((t) => t.id === typeId);
+  // ERC721 and ERC1155 payouts name a specific token id per voucher
+  const needsId = selected?.mode === VoucherMode.Reward && (selected.tokenStandard === TokenStandard.ERC721 || selected.tokenStandard === TokenStandard.ERC1155);
+  const parsed = useMemo(() => checkRows(bulkRows, fungible(selected), !!needsId), [bulkRows, selected, needsId]);
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
   const load = useCallback(async () => {
@@ -147,15 +152,18 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, c.VoucherDAO, c.VoucherNFT, ctx.reader, ctx.account, ctx.revision]);
 
+  // the receipt once the tx confirmed, null on failure (errors are shown, not thrown)
   const run = async (label: string, method: string, args: any[], minGas?: number) => {
     setBusy(true);
     setMsg(null);
     try {
-      await ctx.send(label, ctx.write('VoucherDAO'), method, args, minGas ? { gasLimit: minGas } : {});
+      const receipt = await ctx.send(label, ctx.write('VoucherDAO'), method, args, minGas ? { gasLimit: minGas } : {});
       setMsg({ ok: true, text: label });
       setTimeout(load, 2500);
+      return receipt;
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
+      return null;
     } finally {
       setBusy(false);
     }
@@ -177,18 +185,36 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         const q = parseInt(form.quantity, 10);
         if (!(q >= 1 && q <= 50)) throw new Error('Quantity must be 1–50');
         if (!form.faceValue) throw new Error('Enter a face value');
+        if (needsId && !/^\d+$/.test(form.tokenId)) throw new Error('Enter the NFT token id');
         return run(`DAO: propose mint ${q}× type ${selected.id} → ${ctx.nameOf(form.to)}`, 'proposeMint',
-          [selected.id, form.to, q, toFace(selected, form.faceValue), toDate(form.start), toDate(form.expiry), token, 0, d],
+          [selected.id, form.to, q, toFace(selected, form.faceValue), toDate(form.start), toDate(form.expiry), token, needsId ? form.tokenId : 0, d],
           selected.approvalsRequired <= 1 ? execGas('mint', q) : undefined);
       }
       if (kind === 'bulk') {
-        const rows = form.bulk.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => l.split(/[,\s]+/));
-        if (!rows.length || rows.length > 50) throw new Error('Enter 1–50 lines of "address, amount"');
-        const bad = rows.filter(([a, v]) => !isAddr(a || '') || !v);
-        if (bad.length) throw new Error(`Bad line(s): ${bad.map((r) => r.join(' ')).join('; ')}`);
-        return run(`DAO: propose bulk mint (${rows.length}) type ${selected.id}`, 'proposeBulkMint',
-          [selected.id, rows.map((r) => r[0]), rows.map((r) => toFace(selected, r[1])), toDate(form.start), toDate(form.expiry), token, rows.map(() => 0), d],
-          selected.approvalsRequired <= 1 ? execGas('bulk', rows.length) : undefined);
+        const { rows, errors } = parsed;
+        if (errors.length) throw new Error(`Fix the recipient list first: ${errors.slice(0, 3).join('; ')}`);
+        if (!rows.length) throw new Error('Add recipients, or upload a CSV');
+        // proposeBulkMint takes at most MAX_PER_CALL recipients: a longer list becomes one proposal per batch
+        const parts = chunk(rows);
+        if (parts.length > 1) ctx.beginFlow(`Propose bulk mint of ${rows.length} (type ${selected.id}) as ${parts.length} proposals`);
+        const ids: string[] = []; // proposals created so far
+        for (const [i, p] of parts.entries()) {
+          const receipt = await run(`DAO: propose bulk mint ${parts.length > 1 ? `${i + 1}/${parts.length} ` : ''}(${p.length}) type ${selected.id}`, 'proposeBulkMint',
+            [selected.id, p.map((r) => r.to), p.map((r) => toFace(selected, r.amount)), toDate(form.start), toDate(form.expiry), token, p.map((r) => r.tokenId), d],
+            selected.approvalsRequired <= 1 ? execGas('bulk', p.length) : undefined);
+          if (!receipt) {
+            // earlier batches are already proposed: keep only the rest, so a retry doesn't propose them twice
+            if (i > 0) {
+              setBulkRows(parts.slice(i).flat().map(({ to, amount, tokenId }) => ({ to, amount, tokenId })));
+              setMsg({ ok: false, text: `Stopped at proposal ${i + 1} of ${parts.length}. Bulk mint ${ids.map((x) => `#${x}`).join(', ')} ${ids.length === 1 ? 'is' : 'are'} already open for the first ${i * p.length} recipients — the table now holds only the rest. To abandon the list instead, cancel ${ids.length === 1 ? 'that proposal' : 'those proposals'} below.` });
+            }
+            return;
+          }
+          try { ids.push(eventArg(receipt, ctx.read('VoucherDAO'), 'BulkMintProposed', 'proposalId').toString()); } catch { ids.push('?'); }
+        }
+        setBulkRows([blankRow()]);
+        if (parts.length > 1) setMsg({ ok: true, text: `Proposed ${rows.length} vouchers as ${parts.length} bulk-mint proposals (${ids.map((x) => `#${x}`).join(', ')})` });
+        return;
       }
       if (!/^\d+$/.test(form.voucherId)) throw new Error('Enter the voucher id to revoke');
       return run(`DAO: propose revoke voucher #${form.voucherId}`, 'proposeRevoke', [form.voucherId, form.reason.trim(), d],
@@ -272,13 +298,15 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
                 <Field label="Face value" hint={fungible(selected) ? 'In token units, e.g. 12.5 (stored with 18 decimals).' : 'Whole number (points).'}>
                   <input className={inputCls} value={form.faceValue} onChange={(e) => set('faceValue', e.target.value)} />
                 </Field>
+                {needsId && <Field label="NFT token id"><input className={inputCls} value={form.tokenId} onChange={(e) => set('tokenId', e.target.value)} /></Field>}
               </>
             )}
             {kind === 'bulk' && (
               <div className="md:col-span-3">
-                <Field label="Recipients" hint={`One per line: address, amount (${fungible(selected) ? 'token units' : 'points'}). Up to 50.`}>
-                  <textarea className={`${inputCls} h-28`} value={form.bulk} onChange={(e) => set('bulk', e.target.value)} placeholder={'0xabc…, 10\n0xdef…, 25'} />
-                </Field>
+                <RecipientRows rows={bulkRows} onChange={setBulkRows} needsId={!!needsId} check={parsed} perTx="proposal"
+                  amountLabel={fungible(selected) ? 'Amount (tokens)' : selected.mode === VoucherMode.Points ? 'Points' : 'Quantity'}
+                  total={fungible(selected) ? `${fromUnits(neededFor(selected, 'bulk', '', '', parsed.rows), 18)} ${ctx.nameOf(form.token || selected.approvedTokens[0] || ZERO)}` : undefined}
+                  onLoaded={(text) => setMsg({ ok: !/^(CSV|Failed)/.test(text), text })} />
               </div>
             )}
             {kind === 'revoke' && (
@@ -305,7 +333,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
           </div>
           {kind !== 'revoke' && (
             <div className="mt-3">
-              <PoolFundingBox type={selected} token={selected.mode === VoucherMode.Reward ? form.token || selected.approvedTokens[0] || ZERO : ZERO} needed={neededFor(selected, kind, form.quantity, form.faceValue, form.bulk)} />
+              <PoolFundingBox type={selected} token={selected.mode === VoucherMode.Reward ? form.token || selected.approvedTokens[0] || ZERO : ZERO} needed={neededFor(selected, kind, form.quantity, form.faceValue, parsed.rows)} />
             </div>
           )}
           <button className={`${btnCls} mt-4`} disabled={busy || !roles.operator} onClick={propose}>{busy ? 'Sending…' : 'Propose'}</button>
