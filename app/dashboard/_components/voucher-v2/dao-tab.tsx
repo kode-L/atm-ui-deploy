@@ -206,7 +206,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             // earlier batches are already proposed: keep only the rest, so a retry doesn't propose them twice
             if (i > 0) {
               setBulkRows(parts.slice(i).flat().map(({ to, amount, tokenId }) => ({ to, amount, tokenId })));
-              setMsg({ ok: false, text: `Stopped at proposal ${i + 1} of ${parts.length}. Bulk mint ${ids.map((x) => `#${x}`).join(', ')} ${ids.length === 1 ? 'is' : 'are'} already open for the first ${i * p.length} recipients — the table now holds only the rest. To abandon the list instead, cancel ${ids.length === 1 ? 'that proposal' : 'those proposals'} below.` });
+              setMsg({ ok: false, text: `Stopped at proposal ${i + 1} of ${parts.length}. Bulk mint ${ids.map((x) => `#${x}`).join(', ')} ${ids.length === 1 ? 'is' : 'are'} already open for the first ${parts.slice(0, i).flat().length} recipients — the table now holds only the rest. To abandon the list instead, cancel ${ids.length === 1 ? 'that proposal' : 'those proposals'} below.` });
             }
             return;
           }
