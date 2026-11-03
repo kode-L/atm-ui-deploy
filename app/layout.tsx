@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000'),
-  title: 'Daily PR Boost Manager',
-  description: 'Interact with Daily PR Boost Manager on BNB Smart Chain (Testnet or Mainnet)',
+  title: 'ATM Smart Contract Deployment',
+  description: 'Deploy and manage ATM smart contracts on BNB Smart Chain (Testnet or Mainnet)',
   icons: { icon: '/favicon.svg', shortcut: '/favicon.svg' },
   openGraph: { images: ['/og-image.png'] },
 };

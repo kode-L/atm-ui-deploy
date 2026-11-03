@@ -26,8 +26,8 @@ export default function DeploySection() {
   const [manualSm, setManualSm] = useState('');
 
   // TestToken form fields
-  const [tokenName, setTokenName] = useState('Daily PR Boost Token');
-  const [tokenSymbol, setTokenSymbol] = useState('DGT');
+  const [tokenName, setTokenName] = useState('ATM Test Token');
+  const [tokenSymbol, setTokenSymbol] = useState('ATMT');
   const [tokenDecimals, setTokenDecimals] = useState('18');
   const [tokenSupply, setTokenSupply] = useState('1000000');
 

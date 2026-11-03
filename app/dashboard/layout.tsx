@@ -18,7 +18,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="w-full max-w-md">
           <div className="flex items-center justify-center gap-3 mb-8">
             <Gamepad2 className="w-10 h-10 text-accent" />
-            <h1 className="text-3xl font-bold">Daily PR Boost <span className="text-accent">Manager</span></h1>
+            <h1 className="text-3xl font-bold">ATM Smart Contract <span className="text-accent">Deployment</span></h1>
           </div>
           <div className="bg-surface-secondary rounded-xl shadow-2xl shadow-black/40 p-8 text-center">
             <h2 className="text-xl font-semibold mb-2">Connect your wallet</h2>

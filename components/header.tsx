@@ -10,7 +10,7 @@ export default function Header() {
       <div className="max-w-[1200px] mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/dashboard" className="flex items-center gap-2 group">
           <Gamepad2 className="w-7 h-7 text-accent group-hover:scale-110 transition-transform" />
-          <span className="font-bold text-lg">Daily PR Boost <span className="text-accent">Manager</span></span>
+          <span className="font-bold text-lg">ATM Smart Contract <span className="text-accent">Deployment</span></span>
         </Link>
         <WalletButton />
       </div>
