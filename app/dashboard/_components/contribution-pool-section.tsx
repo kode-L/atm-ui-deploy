@@ -5,7 +5,9 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
+import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
 import { getExplorerAddressUrl } from '@/lib/contracts/config';
+import { utcInputToUnix, unixToUtcInput } from '@/lib/utc-time';
 import ContributionPoolArtifact from '@/lib/contracts/ContributionPool.json';
 import ContributionPoolProxyArtifact from '@/lib/contracts/ContributionPoolProxy.json';
 import {
@@ -99,13 +101,6 @@ const dangerBtn = 'shrink-0 px-3 bg-red-600/80 hover:bg-red-600 disabled:opacity
 const pagerBtn = 'text-xs text-accent disabled:opacity-30 hover:underline';
 const fmtAddr = (a: string) => a ? `${a.slice(0, 8)}...${a.slice(-6)}` : '—';
 const isZero = (a: string) => !a || a === ethers.constants.AddressZero;
-const fmtTs = (ts: number) => ts === 0 ? '—' : new Date(ts * 1000).toLocaleString();
-const toUnix = (dtLocal: string) => dtLocal ? Math.floor(new Date(dtLocal).getTime() / 1000) : 0;
-const toDtLocal = (ts: number) => {
-  if (!ts) return '';
-  const d = new Date(ts * 1000);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-};
 const fmtUnits = (v: BN, decimals: number) => {
   const s = ethers.utils.formatUnits(v, decimals);
   return s.endsWith('.0') ? s.slice(0, -2) : s;
@@ -647,8 +642,8 @@ export default function ContributionPoolSection() {
     target: parseAmount(target, 18),
     maxPerUser: parseAmount(maxPerUser, 18),
     minContribution: parseAmount(min, 18),
-    startTime: toUnix(start),
-    endTime: toUnix(end),
+    startTime: utcInputToUnix(start),
+    endTime: utcInputToUnix(end),
   });
 
   const handleCreatePool = async () => {
@@ -686,7 +681,7 @@ export default function ContributionPoolSection() {
     const p = poolDetail.pool;
     const s = (v: BN) => v.isZero() ? '' : fmtUnits(v, 18);
     setUpTarget(s(p.target)); setUpMaxPerUser(s(p.maxPerUser)); setUpMin(s(p.minContribution));
-    setUpStart(toDtLocal(p.startTime)); setUpEnd(toDtLocal(p.endTime));
+    setUpStart(unixToUtcInput(p.startTime)); setUpEnd(unixToUtcInput(p.endTime));
   };
 
   useEffect(() => { loadCurrentLimits(); }, [poolDetail?.pool.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1098,8 +1093,8 @@ export default function ContributionPoolSection() {
       <div><label className="text-xs text-txt-secondary">Max per user</label><input value={maxPerUser} onChange={e => setMaxPerUser(e.target.value)} placeholder="0 = no limit" className={`${inputCls} mt-1`} /></div>
       <div><label className="text-xs text-txt-secondary">Min contribution</label><input value={min} onChange={e => setMin(e.target.value)} placeholder="0 = no minimum" className={`${inputCls} mt-1`} /></div>
       <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div><label className="text-xs text-txt-secondary">Start (blank = now)</label><input value={start} onChange={e => setStart(e.target.value)} type="datetime-local" className={`${inputCls} mt-1`} /></div>
-        <div><label className="text-xs text-txt-secondary">End (blank = no end)</label><input value={end} onChange={e => setEnd(e.target.value)} type="datetime-local" className={`${inputCls} mt-1`} /></div>
+        <div><label className="text-xs text-txt-secondary">Start, UTC (blank = now)</label><UtcDateTimeInput value={start} onChange={setStart} className={`${inputCls} mt-1`} /></div>
+        <div><label className="text-xs text-txt-secondary">End, UTC (blank = no end)</label><UtcDateTimeInput value={end} onChange={setEnd} className={`${inputCls} mt-1`} /></div>
       </div>
     </div>
   );
@@ -1349,8 +1344,8 @@ export default function ContributionPoolSection() {
                   <div><p className="text-xs text-txt-secondary">Max per user</p><p>{limitStr(poolDetail.pool.maxPerUser)}</p></div>
                   <div><p className="text-xs text-txt-secondary">Min contribution</p><p>{limitStr(poolDetail.pool.minContribution)}</p></div>
                   <div><p className="text-xs text-txt-secondary">Contributors</p><p>{poolDetail.pool.activeContributors} active / {poolDetail.pool.contributorCount}</p></div>
-                  <div><p className="text-xs text-txt-secondary">Start</p><p className="text-xs">{fmtTs(poolDetail.pool.startTime)}</p></div>
-                  <div><p className="text-xs text-txt-secondary">End</p><p className="text-xs">{fmtTs(poolDetail.pool.endTime)}</p></div>
+                  <div><p className="text-xs text-txt-secondary">Start</p><p className="text-xs"><UtcTime ts={poolDetail.pool.startTime} /></p></div>
+                  <div><p className="text-xs text-txt-secondary">End</p><p className="text-xs"><UtcTime ts={poolDetail.pool.endTime} /></p></div>
                   <div className="col-span-2"><p className="text-xs text-txt-secondary">Ref</p><p className="font-mono text-xs break-all">{fmtRef(poolDetail.pool.ref)}</p></div>
                 </div>
                 <div className="overflow-x-auto">
@@ -1477,7 +1472,7 @@ export default function ContributionPoolSection() {
                   {history.map((h, i) => (
                     <tr key={historyOffset + i} className="border-b border-white/5">
                       <td className="py-1.5 pr-3 font-mono text-txt-secondary">{historyOffset + i + 1}</td>
-                      <td className="py-1.5 pr-3">{fmtTs(h.timestamp)}</td>
+                      <td className="py-1.5 pr-3"><UtcTime ts={h.timestamp} /></td>
                       <td className="py-1.5 pr-3 font-mono"><button onClick={() => setSelectedPoolId(String(h.poolId))} className="text-accent hover:underline">#{h.poolId}</button></td>
                       <td className="py-1.5 pr-3">{symOf(h.token)}</td>
                       <td className="py-1.5 pr-3 font-mono text-green-400">{fmtUnits(h.amount, decOf(h.token))}</td>

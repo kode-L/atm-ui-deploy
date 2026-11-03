@@ -5,7 +5,9 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
+import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
 import { getExplorerAddressUrl } from '@/lib/contracts/config';
+import { utcInputToUnix } from '@/lib/utc-time';
 import ATMVoucherArtifact from '@/lib/contracts/ATMVoucher.json';
 import ATMVoucherProxyArtifact from '@/lib/contracts/ATMVoucherProxy.json';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
@@ -37,8 +39,6 @@ const inputCls = 'w-full bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-m
 const btnCls = 'bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-lg text-sm transition-colors';
 const fmtAddr = (a: string) => a ? `${a.slice(0, 8)}...${a.slice(-6)}` : '—';
 const isZero = (a: string) => !a || a === ethers.constants.AddressZero;
-const fmtTs = (ts: number) => ts === 0 ? 'Never' : new Date(ts * 1000).toLocaleString();
-const toUnix = (dtLocal: string) => dtLocal ? Math.floor(new Date(dtLocal).getTime() / 1000) : 0;
 const blankMintRow = (): MintBatchRow => ({ to: '', faceValue: '' });
 
 // Two placeholder rows so a re-upload without edits still parses cleanly — real
@@ -323,8 +323,8 @@ export default function ATMVoucherSection() {
       setTxStatus({ status: 'error', error: 'Face value must be a number (negative for a debit voucher)' });
       return;
     }
-    const startDate = toUnix(mintStartDate);
-    const expiryDate = mintNeverExpires ? 0 : toUnix(mintExpiryDate);
+    const startDate = utcInputToUnix(mintStartDate);
+    const expiryDate = mintNeverExpires ? 0 : utcInputToUnix(mintExpiryDate);
     setTxStatus({ status: 'pending', message: 'Minting voucher...' });
     try {
       const tx = await atm.mint(mintTo.trim(), faceValueBn, voucherType, startDate, expiryDate, redemptionDays, mintTransferable, mintUri.trim());
@@ -386,8 +386,8 @@ export default function ATMVoucherSection() {
     for (let i = 0; i < to.length; i++) {
       if (!ethers.utils.isAddress(to[i])) { setTxStatus({ status: 'error', error: `Invalid address in row ${i + 1}` }); return; }
     }
-    const startDate = toUnix(batchStartDate);
-    const expiryDate = batchNeverExpires ? 0 : toUnix(batchExpiryDate);
+    const startDate = utcInputToUnix(batchStartDate);
+    const expiryDate = batchNeverExpires ? 0 : utcInputToUnix(batchExpiryDate);
     setTxStatus({ status: 'pending', message: `Minting ${to.length} voucher(s)...` });
     try {
       const tx = await atm.mintBatch(to, faceValues, voucherType, startDate, expiryDate, redemptionDays, batchTransferable, batchUri.trim());
@@ -786,8 +786,8 @@ export default function ATMVoucherSection() {
               <td className="py-1.5 pr-3 font-mono">#{r.tokenId}</td>
               <td className="py-1.5 pr-3">{r.voucherType}</td>
               <td className={`py-1.5 pr-3 font-mono ${r.faceValue.startsWith('-') ? 'text-red-400' : 'text-green-400'}`}>{r.faceValue}</td>
-              <td className="py-1.5 pr-3">{fmtTs(r.startDate)}</td>
-              <td className="py-1.5 pr-3">{fmtTs(r.expiryDate)}</td>
+              <td className="py-1.5 pr-3"><UtcTime empty="Never" ts={r.startDate} /></td>
+              <td className="py-1.5 pr-3"><UtcTime empty="Never" ts={r.expiryDate} /></td>
               <td className="py-1.5 pr-3">{r.redemptionDays}</td>
               <td className="py-1.5 pr-3">
                 {r.redeemed ? <span className="text-txt-secondary">Redeemed</span> : r.redeemableFlag ? <span className="text-green-400">Live</span> : <span className="text-red-400">Blocked</span>}
@@ -930,17 +930,17 @@ export default function ATMVoucherSection() {
               </select>
               <input value={mintRedemptionDays} onChange={e => setMintRedemptionDays(e.target.value)} placeholder="Redemption days (0 = instant)" type="number" min={0} className={inputCls} />
               <div>
-                <label className="text-xs text-txt-secondary">Start Date</label>
-                <input value={mintStartDate} onChange={e => setMintStartDate(e.target.value)} type="datetime-local" className={`${inputCls} mt-1`} />
+                <label className="text-xs text-txt-secondary">Start Date (UTC)</label>
+                <UtcDateTimeInput value={mintStartDate} onChange={setMintStartDate} className={`${inputCls} mt-1`} />
               </div>
               <div>
                 <label className="text-xs text-txt-secondary flex items-center gap-2">
-                  Expiry Date
+                  Expiry Date (UTC)
                   <span className="flex items-center gap-1 ml-auto">
                     <input type="checkbox" checked={mintNeverExpires} onChange={e => setMintNeverExpires(e.target.checked)} className="w-3.5 h-3.5 accent-accent" /> Never
                   </span>
                 </label>
-                <input value={mintExpiryDate} onChange={e => setMintExpiryDate(e.target.value)} type="datetime-local" disabled={mintNeverExpires} className={`${inputCls} mt-1 disabled:opacity-40`} />
+                <UtcDateTimeInput value={mintExpiryDate} onChange={setMintExpiryDate} disabled={mintNeverExpires} className={`${inputCls} mt-1 disabled:opacity-40`} />
               </div>
               <input value={mintUri} onChange={e => setMintUri(e.target.value)} placeholder="Per-token URI (optional — falls back to type default)" className={inputCls} />
               <label className="flex items-center gap-2 text-sm">
@@ -986,17 +986,17 @@ export default function ATMVoucherSection() {
               </select>
               <input value={batchRedemptionDays} onChange={e => setBatchRedemptionDays(e.target.value)} placeholder="Redemption days (0 = instant)" type="number" min={0} className={inputCls} />
               <div>
-                <label className="text-xs text-txt-secondary">Start Date</label>
-                <input value={batchStartDate} onChange={e => setBatchStartDate(e.target.value)} type="datetime-local" className={`${inputCls} mt-1`} />
+                <label className="text-xs text-txt-secondary">Start Date (UTC)</label>
+                <UtcDateTimeInput value={batchStartDate} onChange={setBatchStartDate} className={`${inputCls} mt-1`} />
               </div>
               <div>
                 <label className="text-xs text-txt-secondary flex items-center gap-2">
-                  Expiry Date
+                  Expiry Date (UTC)
                   <span className="flex items-center gap-1 ml-auto">
                     <input type="checkbox" checked={batchNeverExpires} onChange={e => setBatchNeverExpires(e.target.checked)} className="w-3.5 h-3.5 accent-accent" /> Never
                   </span>
                 </label>
-                <input value={batchExpiryDate} onChange={e => setBatchExpiryDate(e.target.value)} type="datetime-local" disabled={batchNeverExpires} className={`${inputCls} mt-1 disabled:opacity-40`} />
+                <UtcDateTimeInput value={batchExpiryDate} onChange={setBatchExpiryDate} disabled={batchNeverExpires} className={`${inputCls} mt-1 disabled:opacity-40`} />
               </div>
               <input value={batchUri} onChange={e => setBatchUri(e.target.value)} placeholder="Shared URI (optional)" className={inputCls} />
               <label className="flex items-center gap-2 text-sm">
@@ -1033,8 +1033,8 @@ export default function ATMVoucherSection() {
                   <div><p className="text-xs text-txt-secondary">Owner</p><p className="font-mono text-xs break-all">{tokenDetail.owner}</p></div>
                   <div><p className="text-xs text-txt-secondary">Type</p><p>{tokenDetail.row.voucherType}</p></div>
                   <div><p className="text-xs text-txt-secondary">Face Value</p><p className={tokenDetail.row.faceValue.startsWith('-') ? 'text-red-400' : 'text-green-400'}>{tokenDetail.row.faceValue}</p></div>
-                  <div><p className="text-xs text-txt-secondary">Start</p><p>{fmtTs(tokenDetail.row.startDate)}</p></div>
-                  <div><p className="text-xs text-txt-secondary">Expiry</p><p>{fmtTs(tokenDetail.row.expiryDate)}</p></div>
+                  <div><p className="text-xs text-txt-secondary">Start</p><p><UtcTime empty="Never" ts={tokenDetail.row.startDate} /></p></div>
+                  <div><p className="text-xs text-txt-secondary">Expiry</p><p><UtcTime empty="Never" ts={tokenDetail.row.expiryDate} /></p></div>
                   <div><p className="text-xs text-txt-secondary">Redemption Days</p><p>{tokenDetail.row.redemptionDays}</p></div>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap pt-1">

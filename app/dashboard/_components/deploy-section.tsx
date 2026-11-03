@@ -13,18 +13,8 @@ import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import GameHubProxyArtifact from '@/lib/contracts/GameHubProxy.json';
 import { DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_ADDRESS_MAINNET, BSC_MAINNET, NETWORKS, getExplorerAddressUrl } from '@/lib/contracts/config';
 
-// Session Start Offset is stored on-chain as seconds since 00:00 UTC; these convert
-// to/from an <input type="time"> value so operators can pick a UTC clock time directly.
-const secondsToUtcTime = (secs: number) => {
-  const s = ((secs % 86400) + 86400) % 86400;
-  const h = Math.floor(s / 3600).toString().padStart(2, '0');
-  const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
-  return `${h}:${m}`;
-};
-const utcTimeToSeconds = (time: string) => {
-  const [h, m] = time.split(':').map(Number);
-  return String((h || 0) * 3600 + (m || 0) * 60);
-};
+// Session Start Offset is stored on-chain as seconds since 00:00 UTC (see lib/utc-time).
+import { secondsToUtcTime, utcTimeToSeconds, fmtLocalTimeOfDay } from '@/lib/utc-time';
 
 export default function DeploySection() {
   const { provider, signer, isConnected, address, tokenAddress, hubAddress, sessionManagerAddress, setTokenAddress, resetTokenAddress, setHubAddress, resetHubAddress, setSessionManagerAddress, chainId, netChainId } = useWeb3();
@@ -480,7 +470,7 @@ export default function DeploySection() {
                 <input type="number" value={hubStartOffset} onChange={e => setHubStartOffset(e.target.value)} min="0" max="86399" placeholder="0" className="flex-1 bg-surface rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
                 <input type="time" value={secondsToUtcTime(parseInt(hubStartOffset) || 0)} onChange={e => setHubStartOffset(utcTimeToSeconds(e.target.value))} className="bg-surface rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
               </div>
-              <p className="text-[10px] text-txt-secondary/70 mt-1">Pick a UTC clock time (e.g. 18:00 = 6:00 PM UTC) or type raw seconds directly — both stay in sync.</p>
+              <p className="text-[10px] text-txt-secondary/70 mt-1">Pick a UTC clock time (e.g. 18:00 = 6:00 PM UTC) or type raw seconds directly — both stay in sync. Your local time: {fmtLocalTimeOfDay(parseInt(hubStartOffset) || 0)}.</p>
             </div>
             <button
               onClick={deployHub}

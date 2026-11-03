@@ -11,18 +11,8 @@ import SessionManagerArtifact from '@/lib/contracts/DailySessionManager.json';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import TestTokenArtifact from '@/lib/contracts/TestToken.json';
 
-// Session Start Offset is stored on-chain as seconds since 00:00 UTC; these convert
-// to/from an <input type="time"> value so operators can pick a UTC clock time directly.
-const secondsToUtcTime = (secs: number) => {
-  const s = ((secs % 86400) + 86400) % 86400;
-  const h = Math.floor(s / 3600).toString().padStart(2, '0');
-  const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
-  return `${h}:${m}`;
-};
-const utcTimeToSeconds = (time: string) => {
-  const [h, m] = time.split(':').map(Number);
-  return String((h || 0) * 3600 + (m || 0) * 60);
-};
+// Session Start Offset is stored on-chain as seconds since 00:00 UTC (see lib/utc-time).
+import { secondsToUtcTime, utcTimeToSeconds, fmtLocalTimeOfDay } from '@/lib/utc-time';
 
 interface ViewedRewardType {
   id: number;
@@ -1881,7 +1871,7 @@ export default function AdminSection() {
                 <input type="number" value={newOffset} onChange={e => setNewOffset(e.target.value)} min="0" max="86399" className="flex-1 bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent" />
                 <input type="time" value={secondsToUtcTime(parseInt(newOffset) || 0)} onChange={e => setNewOffset(utcTimeToSeconds(e.target.value))} className="bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent" />
               </div>
-              <p className="text-[10px] text-txt-secondary/70">Pick a UTC clock time (e.g. 18:00 = 6:00 PM UTC) or type raw seconds directly — both stay in sync.</p>
+              <p className="text-[10px] text-txt-secondary/70">Pick a UTC clock time (e.g. 18:00 = 6:00 PM UTC) or type raw seconds directly — both stay in sync. Your local time: {fmtLocalTimeOfDay(parseInt(newOffset) || 0)}.</p>
               <button onClick={setOffset} disabled={!isConnected} className={`w-full ${btnCls}`}>Update Offset</button>
             </div>
             {/* Grace Period */}
