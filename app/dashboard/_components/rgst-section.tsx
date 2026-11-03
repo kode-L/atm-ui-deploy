@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
@@ -61,7 +62,6 @@ const ghostBtn = 'shrink-0 px-3 bg-surface-tertiary border border-white/10 round
 const fmtAddr = (a: string) => a ? `${a.slice(0, 8)}...${a.slice(-6)}` : '—';
 const isZero = (a: string) => !a || a === ethers.constants.AddressZero;
 const sameAddr = (a: string, b: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
-const fmtTs = (ts: number) => ts === 0 ? '—' : new Date(ts * 1000).toLocaleString();
 const fmtDuration = (secs: number) => {
   if (secs <= 0) return '0m';
   const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60);
@@ -141,8 +141,8 @@ export default function RgstSection() {
   const Unlock = ({ ts }: { ts: number }) => ts === 0
     ? <span className="text-txt-secondary">—</span>
     : now >= ts
-      ? <span className="text-green-400">Ready (since {fmtTs(ts)})</span>
-      : <span className="text-yellow-400">in {fmtDuration(ts - now)} ({fmtTs(ts)})</span>;
+      ? <span className="text-green-400">Ready (since <UtcTime inline ts={ts} />)</span>
+      : <span className="text-yellow-400">in {fmtDuration(ts - now)} (<UtcTime inline ts={ts} />)</span>;
 
   // Sends a tx, tracks it in TxStatus, and returns the receipt (null on failure).
   const runTx = async (

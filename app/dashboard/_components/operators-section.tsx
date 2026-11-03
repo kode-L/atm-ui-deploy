@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
+import { fmtUtc } from '@/lib/utc-time';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -249,7 +251,7 @@ export default function OperatorsSection() {
         rulesMap[op.address] = await fetchRulesForOperator(opInstanceContract, op.address, rts);
       }
       setOperatorRules(rulesMap);
-      setLastFetched(new Date().toLocaleTimeString());
+      setLastFetched(fmtUtc(Math.floor(Date.now() / 1000)));
     } catch (e: any) {
       console.error('Fetch operators error:', e);
       setError(e?.message || 'Failed to fetch operators');
@@ -384,7 +386,6 @@ export default function OperatorsSection() {
 
   const fmtBps = (bps: number) => `${(bps / 100).toFixed(2)}%`;
   const fmtAddr = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
-  const fmtDate = (ts: number) => ts ? new Date(ts * 1000).toLocaleDateString() : '\u2014';
   const inputCls = 'w-full bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent';
   const btnCls = 'bg-accent hover:bg-accent-dark disabled:opacity-40 text-black font-semibold py-2 rounded-lg text-sm transition-colors';
 
@@ -645,7 +646,7 @@ export default function OperatorsSection() {
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-txt-secondary flex-wrap">
                   <span className="font-mono">{fmtAddr(op.address)}</span>
-                  <span>Registered: {fmtDate(op.registeredAt)}</span>
+                  <span>Registered: <UtcTime inline ts={op.registeredAt} /></span>
                   <span>Reward Rules: <span className="text-accent">{allowedCount}/{rewardTypes.length}</span></span>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { utcInputToUnix, fmtUtc, fmtLocal } from '@/lib/utc-time';
+import { utcInputToUnix, fmtUtc, fmtLocal, fmtUtcTime, fmtLocalTime } from '@/lib/utc-time';
 
 // datetime-local input whose value is UTC, with the matching local time shown underneath
 export function UtcDateTimeInput({ value, onChange, disabled, className }: {
@@ -20,13 +20,17 @@ export function UtcDateTimeInput({ value, onChange, disabled, className }: {
   );
 }
 
-// Unix timestamp shown in UTC with the local time underneath; 0 shows `empty`
-export function UtcTime({ ts, empty = '—' }: { ts: number; empty?: string }) {
+// Unix timestamp shown in UTC with the local time underneath (`inline`: after it, for use inside a
+// sentence; `time`: clock time only); 0 shows `empty`
+export function UtcTime({ ts, empty = '—', inline, time }: { ts: number; empty?: string; inline?: boolean; time?: boolean }) {
   if (!ts) return <>{empty}</>;
+  const utc = time ? fmtUtcTime(ts) : fmtUtc(ts);
+  const local = time ? fmtLocalTime(ts) : fmtLocal(ts);
+  if (inline) return <>{utc} <span className="text-txt-secondary/70">({local})</span></>;
   return (
     <span className="inline-flex flex-col">
-      <span>{fmtUtc(ts)}</span>
-      <span className="text-[10px] text-txt-secondary/70">{fmtLocal(ts)}</span>
+      <span>{utc}</span>
+      <span className="text-[10px] text-txt-secondary/70">{local}</span>
     </span>
   );
 }

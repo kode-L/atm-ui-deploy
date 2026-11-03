@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -1018,7 +1019,7 @@ export default function MatchesSection() {
               <span>Game window has ended for day {dayFinalizedKey}. Match creation is disabled.</span>
             </div>
             <div className="mt-1.5 text-[10px] text-red-400/70">
-              Window was {new Date(dayTiming.gameWindowStart * 1000).toLocaleTimeString()} – {new Date(dayTiming.gameWindowEnd * 1000).toLocaleTimeString()}.
+              Window was <UtcTime inline time ts={dayTiming.gameWindowStart} /> – <UtcTime inline time ts={dayTiming.gameWindowEnd} />.
               {dayTiming.isGracePeriodOpen ? ' Grace period still open for settling matches.' : ' Grace period also expired.'}
               {' '}If using short durations for testing, adjust Session Duration in the Admin tab.
             </div>
@@ -1230,7 +1231,7 @@ export default function MatchesSection() {
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Grace period expired — settling is no longer possible for day {dayFinalizedKey}.
             </div>
             <div className="mt-1 text-[10px] text-red-400/70">
-              Deadline was {new Date(dayTiming.finalizationDeadline * 1000).toLocaleTimeString()}. Adjust Session Duration or Grace Period in Admin tab for future sessions.
+              Deadline was <UtcTime inline time ts={dayTiming.finalizationDeadline} />. Adjust Session Duration or Grace Period in Admin tab for future sessions.
             </div>
           </div>
         )}

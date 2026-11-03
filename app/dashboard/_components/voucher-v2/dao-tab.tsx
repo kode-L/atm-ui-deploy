@@ -1,5 +1,7 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
+import { utcInputToUnix } from '@/lib/utc-time';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import {
@@ -46,8 +48,6 @@ const neededFor = (t: VoucherType | undefined, kind: string, quantity: string, v
 };
 const toFace = (t: VoucherType | undefined, v: string) => (fungible(t) ? toUnits(v, 18) : String(Math.max(0, parseInt(v || '0', 10) || 0)));
 const showFace = (t: VoucherType | undefined, v: ethers.BigNumberish) => (fungible(t) ? fromUnits(v, 18) : String(v));
-const toDate = (d: string) => (d ? Math.floor(new Date(d).getTime() / 1000) : 0);
-const fmtTime = (s: number) => (s ? new Date(s * 1000).toLocaleString() : '—');
 
 export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const ctx = useVoucherV2();
@@ -187,7 +187,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         if (!form.faceValue) throw new Error('Enter a face value');
         if (needsId && !/^\d+$/.test(form.tokenId)) throw new Error('Enter the NFT token id');
         return run(`DAO: propose mint ${q}× type ${selected.id} → ${ctx.nameOf(form.to)}`, 'proposeMint',
-          [selected.id, form.to, q, toFace(selected, form.faceValue), toDate(form.start), toDate(form.expiry), token, needsId ? form.tokenId : 0, d],
+          [selected.id, form.to, q, toFace(selected, form.faceValue), utcInputToUnix(form.start), utcInputToUnix(form.expiry), token, needsId ? form.tokenId : 0, d],
           selected.approvalsRequired <= 1 ? execGas('mint', q) : undefined);
       }
       if (kind === 'bulk') {
@@ -200,7 +200,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         const ids: string[] = []; // proposals created so far
         for (const [i, p] of parts.entries()) {
           const receipt = await run(`DAO: propose bulk mint ${parts.length > 1 ? `${i + 1}/${parts.length} ` : ''}(${p.length}) type ${selected.id}`, 'proposeBulkMint',
-            [selected.id, p.map((r) => r.to), p.map((r) => toFace(selected, r.amount)), toDate(form.start), toDate(form.expiry), token, p.map((r) => r.tokenId), d],
+            [selected.id, p.map((r) => r.to), p.map((r) => toFace(selected, r.amount)), utcInputToUnix(form.start), utcInputToUnix(form.expiry), token, p.map((r) => r.tokenId), d],
             selected.approvalsRequired <= 1 ? execGas('bulk', p.length) : undefined);
           if (!receipt) {
             // earlier batches are already proposed: keep only the rest, so a retry doesn't propose them twice
@@ -323,8 +323,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             )}
             {kind !== 'revoke' && (
               <>
-                <Field label="Claimable from (optional)"><input type="datetime-local" className={inputCls} value={form.start} onChange={(e) => set('start', e.target.value)} /></Field>
-                <Field label="Voucher expiry (optional)"><input type="datetime-local" className={inputCls} value={form.expiry} onChange={(e) => set('expiry', e.target.value)} /></Field>
+                <Field label="Claimable from, UTC (optional)"><UtcDateTimeInput className={inputCls} value={form.start} onChange={(v) => set('start', v)} /></Field>
+                <Field label="Voucher expiry, UTC (optional)"><UtcDateTimeInput className={inputCls} value={form.expiry} onChange={(v) => set('expiry', v)} /></Field>
               </>
             )}
             <Field label="Voting window (hours)" hint="How long operators have to vote: 1 to 720 hours (30 days).">
@@ -366,7 +366,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
                 </div>
                 <div>{p.summary}</div>
                 <div className="text-txt-secondary">
-                  Approvals <b className="text-txt-primary">{p.approvals} / {q || '?'}</b> · proposer {ctx.nameOf(p.proposer)} · voting ends {fmtTime(p.expiresAt)}
+                  Approvals <b className="text-txt-primary">{p.approvals} / {q || '?'}</b> · proposer {ctx.nameOf(p.proposer)} · voting ends <UtcTime inline ts={p.expiresAt} />
                   {p.iApproved && ' · you approved'}
                 </div>
                 {open && (

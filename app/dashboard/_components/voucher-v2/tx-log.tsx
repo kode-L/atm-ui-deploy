@@ -1,5 +1,7 @@
 'use client';
 import React, { useState } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
+import { fmtUtc, isoToUnix } from '@/lib/utc-time';
 import { Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import Card from '@/components/card';
 import { NETWORKS, getExplorerAddressUrl, getExplorerTxUrl } from '@/lib/contracts/config';
@@ -8,8 +10,8 @@ import { TxLogEntry, useVoucherV2 } from './context';
 import { Badge, Collapsible, btnDangerCls, btnSecondaryCls } from './ui';
 
 const fmtTime = (iso: string) => {
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+  const ts = isoToUnix(iso);
+  return ts ? fmtUtc(ts) : iso;
 };
 
 /** Every tx sent from the Voucher V2 tabs, with its hash and contract address — kept per chain in localStorage. */
@@ -92,7 +94,7 @@ export default function TxLogCard() {
           const addr = addressOf(t);
           return (
             <div key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs border-b border-white/5 pb-1.5">
-              <span className="text-txt-secondary">{fmtTime(t.at)}</span>
+              <span className="text-txt-secondary"><UtcTime inline ts={isoToUnix(t.at)} empty={t.at} /></span>
               {t.status === 'pending' && <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-300" />}
               {t.status === 'success' && <Badge tone="good">ok</Badge>}
               {t.status === 'error' && <Badge tone="bad">failed</Badge>}

@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { TokenStandard, VoucherMode, VoucherType, ZERO, fromUnits, loadVoucherTypes, sameAddr, typeLabel } from '@/lib/contracts/voucher-v2';
@@ -144,7 +145,7 @@ export default function ReleaseExpiredCard() {
                       <td className="py-1.5 pr-3 font-mono break-all" title={v.owner}>
                         {sameAddr(v.owner, ZERO) ? '—' : ethers.utils.getAddress(v.owner)}{sameAddr(v.owner, ctx.account) ? ' (you)' : ''}
                       </td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap">{new Date(v.expiryDate * 1000).toLocaleString()}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap"><UtcTime ts={v.expiryDate} /></td>
                     </tr>
                   );
                 })}

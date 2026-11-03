@@ -20,6 +20,17 @@ export const fmtLocal = (ts: number) =>
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
   });
 
+// Unix seconds -> "23:59 UTC" / browser-local "05:29 AM GMT+5:30"
+export const fmtUtcTime = (ts: number) => `${new Date(ts * 1000).toISOString().slice(11, 16)} UTC`;
+export const fmtLocalTime = (ts: number) =>
+  new Date(ts * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+
+// ISO string (e.g. a stored "2026-11-03T15:23:51.000Z") -> Unix seconds (invalid -> 0)
+export const isoToUnix = (iso: string) => {
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000);
+};
+
 // Seconds since 00:00 UTC <-> <input type="time"> value ("HH:mm", UTC)
 export const secondsToUtcTime = (secs: number) => {
   const s = ((secs % 86400) + 86400) % 86400;

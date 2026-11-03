@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
+import { fmtUtc, fmtUtcTime, fmtLocal, fmtLocalTime } from '@/lib/utc-time';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -133,8 +135,6 @@ export default function SessionExplorer() {
   };
 
   // Format timestamp
-  const fmtTime = (ts: number) => new Date(ts * 1000).toLocaleTimeString();
-  const fmtDateTime = (ts: number) => new Date(ts * 1000).toLocaleString();
 
   // Truncate address
   const truncAddr = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—';
@@ -537,7 +537,8 @@ export default function SessionExplorer() {
             </div>
             <div className="bg-surface-tertiary rounded-lg px-3 py-2">
               <div className="text-[10px] text-txt-secondary">Window</div>
-              <div className="text-[11px] font-mono text-txt-primary">{fmtDateTime(session.startTime)} — {fmtTime(session.endTime)}</div>
+              <div className="text-[11px] font-mono text-txt-primary">{fmtUtc(session.startTime)} — {fmtUtcTime(session.endTime)}</div>
+              <div className="text-[10px] text-txt-secondary/70">{fmtLocal(session.startTime)} — {fmtLocalTime(session.endTime)}</div>
             </div>
             <div className="bg-surface-tertiary rounded-lg px-3 py-2">
               <div className="text-[10px] text-txt-secondary">Total Collected</div>
@@ -546,7 +547,7 @@ export default function SessionExplorer() {
             {dayTiming && (
               <div className="bg-surface-tertiary rounded-lg px-3 py-2">
                 <div className="text-[10px] text-txt-secondary">Grace Deadline</div>
-                <div className="text-[11px] font-mono text-txt-primary">{fmtTime(dayTiming.finalizationDeadline)}</div>
+                <div className="text-[11px] font-mono text-txt-primary"><UtcTime time ts={dayTiming.finalizationDeadline} /></div>
               </div>
             )}
           </div>

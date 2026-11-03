@@ -1,5 +1,7 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
+import { utcInputToUnix } from '@/lib/utc-time';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import {
@@ -27,8 +29,6 @@ interface Voucher {
 }
 
 const fungible = (t?: VoucherType) => !!t && t.mode === VoucherMode.Reward && t.tokenStandard <= TokenStandard.ERC20;
-const toDate = (d: string) => (d ? Math.floor(new Date(d).getTime() / 1000) : 0);
-const fmtDate = (s: number) => (s ? new Date(s * 1000).toLocaleString() : '—');
 // total value a mint form will reserve, in 18-dp fixed point (0 when it can't be parsed yet)
 const neededFor = (t: VoucherType | undefined, bulk: boolean, quantity: string, value: string, rows: MintRow[]) => {
   if (!fungible(t)) return ethers.BigNumber.from(0);
@@ -142,7 +142,7 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         if (!(q >= 1 && q <= MAX_BATCH)) throw new Error(`Quantity must be 1–${MAX_BATCH}`);
         if (!f.faceValue) throw new Error('Enter a value');
         if (needsId && !/^\d+$/.test(f.tokenId)) throw new Error('Enter the NFT token id');
-        const receipt = await ctx.send(`Mint ${q}× type ${t.id} → ${ctx.nameOf(f.to)}`, nft, 'mint', [t.id, f.to, q, toFace(f.faceValue), toDate(f.start), toDate(f.expiry), token, needsId ? f.tokenId : 0]);
+        const receipt = await ctx.send(`Mint ${q}× type ${t.id} → ${ctx.nameOf(f.to)}`, nft, 'mint', [t.id, f.to, q, toFace(f.faceValue), utcInputToUnix(f.start), utcInputToUnix(f.expiry), token, needsId ? f.tokenId : 0]);
         setMsg({ ok: true, text: `Minted voucher #${eventArg(receipt, nft, 'VoucherMinted', 'voucherId').toString()}${q > 1 ? ` (+${q - 1} more)` : ''}` });
       } else {
         const { rows: list, errors } = parsed;
@@ -155,7 +155,7 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         let done = 0;
         try {
           for (const [i, p] of parts.entries()) {
-            await ctx.send(labels[i], nft, 'mintBatch', [t.id, p.map((r) => r.to), p.map((r) => toFace(r.amount)), toDate(f.start), toDate(f.expiry), token, p.map((r) => r.tokenId)]);
+            await ctx.send(labels[i], nft, 'mintBatch', [t.id, p.map((r) => r.to), p.map((r) => toFace(r.amount)), utcInputToUnix(f.start), utcInputToUnix(f.expiry), token, p.map((r) => r.tokenId)]);
             done += p.length;
           }
         } catch (e: any) {
@@ -212,8 +212,8 @@ function MintPanel({ types }: { types: VoucherType[] }) {
           </Field>
         )}
         {needsId && !bulk && <Field label="NFT token id"><input className={inputCls} value={f.tokenId} onChange={(e) => set('tokenId', e.target.value)} /></Field>}
-        <Field label="Claimable from (optional)"><input type="datetime-local" className={inputCls} value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
-        <Field label="Expires (optional)"><input type="datetime-local" className={inputCls} value={f.expiry} onChange={(e) => set('expiry', e.target.value)} /></Field>
+        <Field label="Claimable from, UTC (optional)"><UtcDateTimeInput className={inputCls} value={f.start} onChange={(v) => set('start', v)} /></Field>
+        <Field label="Expires, UTC (optional)"><UtcDateTimeInput className={inputCls} value={f.expiry} onChange={(v) => set('expiry', v)} /></Field>
       </div>
       {t && t.approvalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, parsed.rows)} onShort={setShort} />}
       <button className={btnCls} disabled={busy || !t || t.approvalsRequired > 1 || isMinter === false || short || overCap || (bulk && (!parsed.rows.length || parsed.errors.length > 0))} onClick={mint}>{busy ? 'Minting…' : bulk ? `Mint all${parsed.rows.length ? ` (${parsed.rows.length})` : ''}` : 'Mint'}</button>
@@ -356,8 +356,8 @@ function ListPanel({ types, mine, readVoucher, showValue, statusOf }: {
                   <td className="py-2 pr-3">{t ? typeLabel(t) : `#${v.typeId}`}</td>
                   <td className="py-2 pr-3 whitespace-nowrap">{showValue(v)}{v.reserved && <div className="text-[10px] text-txt-secondary">reserved in pool</div>}</td>
                   {!mine && <td className="py-2 pr-3 font-mono">{ctx.nameOf(v.owner)}</td>}
-                  <td className="py-2 pr-3 whitespace-nowrap">{v.startDate ? fmtDate(v.startDate) : 'now'}</td>
-                  <td className="py-2 pr-3 whitespace-nowrap">{v.expiryDate ? fmtDate(v.expiryDate) : 'never'}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap"><UtcTime ts={v.startDate} empty="now" /></td>
+                  <td className="py-2 pr-3 whitespace-nowrap"><UtcTime ts={v.expiryDate} empty="never" /></td>
                   <td className="py-2 pr-3"><Badge tone={st.tone}>{st.text}</Badge></td>
                   <td className="py-2 text-right">
                     {canClaim && <button className={btnCls} disabled={busyId !== null} onClick={() => claim(v)}>{busyId === v.id ? 'Claiming…' : 'Claim'}</button>}

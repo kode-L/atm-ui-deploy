@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -665,7 +666,6 @@ export default function SplitterSection() {
   const deployTotal = deployRows.reduce((a, r) => a + (parseInt(r.shareBps) || 0), 0);
   const editTotal = editRows.reduce((a, r) => a + (parseInt(r.shareBps) || 0), 0);
   const newTierTotal = newTierRows.reduce((a, r) => a + (parseInt(r.shareBps) || 0), 0);
-  const formatDate = (ts: number) => { try { return new Date(ts * 1000).toLocaleString(); } catch { return String(ts); } };
 
   const viewedSplitter = splitters.find(s => s.address.toLowerCase() === viewAddr.toLowerCase());
   // Only the admin can deploy/load splitters here — a pure operator's splitter is
@@ -1041,7 +1041,7 @@ export default function SplitterSection() {
                       <div className="flex items-center gap-2">
                         <span className="bg-purple-600/30 text-purple-300 text-[10px] font-bold px-2 py-0.5 rounded">Change #{ch.changeId}</span>
                         <span className="bg-yellow-600/30 text-yellow-300 text-[10px] font-bold px-2 py-0.5 rounded">Tier {ch.tier}</span>
-                        <span className="text-[11px] text-txt-secondary">{formatDate(ch.timestamp)}</span>
+                        <span className="text-[11px] text-txt-secondary"><UtcTime ts={ch.timestamp} /></span>
                       </div>
                       <a href={getExplorerTxUrl(chainId, ch.txHash)} target="_blank" rel="noopener noreferrer"
                         className="text-blue-400 hover:text-blue-300 text-[10px] flex items-center gap-0.5"><ExternalLink className="w-3 h-3" /> Tx</a>

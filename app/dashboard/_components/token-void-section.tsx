@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -332,7 +333,6 @@ export default function TokenVoidSection() {
     }
   };
 
-  const formatDate = (ts: number) => { try { return new Date(ts * 1000).toLocaleString(); } catch { return String(ts); } };
   const typeName = (id: number) => burnTypes.find(t => t.id === id)?.name || `#${id}`;
   const inputCls = 'w-full mt-1 bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent';
   const btnCls = 'bg-accent hover:bg-accent-dark disabled:opacity-40 text-black font-semibold py-2 rounded-lg text-sm transition-colors';
@@ -563,7 +563,7 @@ export default function TokenVoidSection() {
                         <td className="py-1.5 px-2 text-txt-primary">{typeName(r.burnTypeId)}</td>
                         <td className="py-1.5 px-2 font-mono">{r.burner.slice(0, 8)}...{r.burner.slice(-4)}</td>
                         <td className="py-1.5 px-2 text-right text-red-400 font-bold">{parseFloat(r.amount).toFixed(4)}</td>
-                        <td className="py-1.5 px-2 text-txt-secondary">{formatDate(r.timestamp)}</td>
+                        <td className="py-1.5 px-2 text-txt-secondary"><UtcTime ts={r.timestamp} /></td>
                       </tr>
                     ))}
                   </tbody>

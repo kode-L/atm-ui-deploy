@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
+import { UtcTime } from '@/components/utc-datetime';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -326,7 +327,6 @@ export default function HubSection() {
   };
 
   const fmtAddr = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
-  const fmtDate = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString() : '—');
   const fmtDuration = (s: number) => (s % 3600 === 0 ? `${s / 3600}h` : s % 60 === 0 ? `${s / 60}m` : `${s}s`);
   const inputCls = 'w-full mt-0.5 bg-surface rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent';
 
@@ -557,7 +557,7 @@ export default function HubSection() {
                           <ExternalLink className="w-3 h-3 hover:text-accent" />
                         </a>
                       </span>
-                      <span>Registered: {fmtDate(op.registeredAt)}</span>
+                      <span>Registered: <UtcTime inline ts={op.registeredAt} /></span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

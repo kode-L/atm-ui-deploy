@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
+import { fmtUtc, isoToUnix } from '@/lib/utc-time';
 import { ethers } from 'ethers';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from 'lucide-react';
 import Card from '@/components/card';
@@ -22,7 +23,7 @@ const ICON: Record<Level, React.ReactNode> = {
 // How much headroom over the measured gas to ask for: covers the 25% gas-limit buffer, wallet
 // gas-price bumps, and a few retries/voucher types on top.
 const GAS_SAFETY = 3;
-const fmtDate = (iso: string) => new Date(iso).toLocaleString();
+const fmtDate = (iso: string) => fmtUtc(isoToUnix(iso));
 
 /** Live pre-flight checks — the things that most often turn into a failed or wrong deployment. */
 export function PreflightCard({ onExport, onGo }: { onExport: () => void; onGo: (t: string) => void }) {
