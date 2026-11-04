@@ -21,16 +21,17 @@ export function UtcDateTimeInput({ value, onChange, disabled, className }: {
 }
 
 // Unix timestamp shown in UTC with the local time underneath (`inline`: after it, for use inside a
-// sentence; `time`: clock time only); 0 shows `empty`
-export function UtcTime({ ts, empty = '—', inline, time }: { ts: number; empty?: string; inline?: boolean; time?: boolean }) {
+// sentence; `time`: clock time only; `localFirst`: local time on top, UTC underneath); 0 shows `empty`
+export function UtcTime({ ts, empty = '—', inline, time, localFirst }: { ts: number; empty?: string; inline?: boolean; time?: boolean; localFirst?: boolean }) {
   if (!ts) return <>{empty}</>;
   const utc = time ? fmtUtcTime(ts) : fmtUtc(ts);
   const local = time ? fmtLocalTime(ts) : fmtLocal(ts);
-  if (inline) return <>{utc} <span className="text-txt-secondary/70">({local})</span></>;
+  const [main, sub] = localFirst ? [local, utc] : [utc, local];
+  if (inline) return <>{main} <span className="text-txt-secondary/70">({sub})</span></>;
   return (
     <span className="inline-flex flex-col">
-      <span>{utc}</span>
-      <span className="text-[10px] text-txt-secondary/70">{local}</span>
+      <span>{main}</span>
+      <span className="text-[10px] text-txt-secondary/70">{sub}</span>
     </span>
   );
 }

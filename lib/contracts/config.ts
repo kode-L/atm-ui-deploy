@@ -155,3 +155,7 @@ export const ROLES = {
   SESSION_OPERATOR: '0x31df88ddf9a414f836ac658da56c3aeddd70c989e9b49be4778df156cdf36f46',
   PLATFORM_UPDATER: '0xb58d5b41fc8d502d82b6e13b07ad5a883760eca56d27dd0d61794831de8c2bab',
 };
+
+// Etherscan v2 key for the Link tab's on-chain index (Factory event logs by date range). One key
+// covers every chain id. Bundled into client JS like every NEXT_PUBLIC_ var — see .env.example.
+export const ETHERSCAN_API_KEY = process.env.NEXT_PUBLIC_ETHERSCAN_API_KEY || '';

@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useWeb3 } from '@/lib/contracts/use-web3';
-import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp, Layers } from 'lucide-react';
+import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp, Layers, Link2 } from 'lucide-react';
 import DeploySection from './_components/deploy-section';
 import HubSection from './_components/hub-section';
 import TokenSection from './_components/token-section';
@@ -19,6 +19,7 @@ import ATMVoucherSection from './_components/atm-voucher-section';
 import VoucherV2Section from './_components/voucher-v2-section';
 import ContributionPoolSection from './_components/contribution-pool-section';
 import RgstSection from './_components/rgst-section';
+import LinkSection from './_components/link-section';
 
 // adminOnly tabs manage platform-wide infra (deploy/upgrade contracts, register
 // operators, create reward types) — every write call they make is
@@ -52,6 +53,9 @@ const TABS = [
   // Standalone rebasing token with its own owner/minter/rebaser/receiver roles and a timelocked
   // proxy admin, enforced on-chain and reflected in the tab's own UI — not gated by GameHub walletRole.
   { id: 'rgst', label: 'RGST Token', icon: <TrendingUp className="w-4 h-4" />, adminOnly: false },
+  // ATM Link (Factory/Link): bulk connect / approve / disconnect for the connected wallet as
+  // userA/userB — permission is per-link msg.sender, not GameHub walletRole.
+  { id: 'link', label: 'Link', icon: <Link2 className="w-4 h-4" />, adminOnly: false },
 ] as const;
 
 const OPERATOR_DEFAULT_TAB = 'sessions';
@@ -167,6 +171,7 @@ export default function DashboardPage() {
         {activeTab === 'voucher-v2' && <VoucherV2Section />}
         {activeTab === 'contribution-pool' && <ContributionPoolSection />}
         {activeTab === 'rgst' && <RgstSection />}
+        {activeTab === 'link' && <LinkSection />}
       </div>
     </div>
   );
