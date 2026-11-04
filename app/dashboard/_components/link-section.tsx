@@ -430,7 +430,11 @@ type Mode = 'approve' | 'disconnect' | 'accept';
 // kind (accept mode): what this row does — connect → agree(), reject → reject(), cancel / disconnect → close()
 type RowKind = 'connect' | 'disconnect' | 'reject' | 'cancel';
 interface Loaded { address: string; link: LinkState; ok: boolean; why: string; effect?: string; kind?: RowKind; from?: string }
-const KIND_LABEL: Record<RowKind, string> = { connect: 'Connect request', disconnect: 'Disconnect request', reject: 'Reject request', cancel: 'Cancel my request' };
+// Bulk Accept action chips — each says the exact call it sends. Accept/reject act on the same rows (incoming connect requests).
+const KIND_LABEL: Record<RowKind, string> = { connect: 'Accept connect requests', reject: 'Reject connect requests', disconnect: 'Agree to disconnect', cancel: 'Cancel my requests' };
+const KIND_CALL: Record<RowKind, string> = { connect: 'agree()', reject: 'reject()', disconnect: 'close()', cancel: 'close()' };
+const KIND_ROW: Record<RowKind, string> = { connect: 'Accept connect', reject: 'Reject connect', disconnect: 'Agree disconnect', cancel: 'Cancel my request' };
+const KIND_ORDER: RowKind[] = ['connect', 'reject', 'disconnect', 'cancel'];
 const KIND_NOTE: Record<RowKind, string> = { connect: 'connected', disconnect: 'closed', reject: 'rejected', cancel: 'cancelled' };
 
 /** Share returned on an early mutual close, as Link._liquidation computes it right now (85–99%). */
@@ -449,9 +453,16 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
   const [adding, setAdding] = useState(false);
   const [onlyActionable, setOnlyActionable] = useState(true);
   // accept mode: answer incoming requests 'yes' (accept) or close/reject everything pending
-  const [acceptAction, setAcceptAction] = useState<'accept' | 'close'>('accept');
+
   // Filters: request types switched off (accept mode) and a counterparty / link / token search (all modes).
-  const [kindOff, setKindOff] = useState<Set<RowKind>>(new Set());
+  // Bulk Accept: action chips that are on. Default = say yes to what's waiting on you; reject/cancel are opt-in.
+  const [kindOn, setKindOn] = useState<Set<RowKind>>(new Set<RowKind>(['connect', 'disconnect']));
+  const toggleKind = (k: RowKind) => setKindOn((s) => {
+    const n = new Set(s);
+    if (n.has(k)) n.delete(k);
+    else { n.add(k); if (k === 'connect') n.delete('reject'); if (k === 'reject') n.delete('connect'); } // same rows: one or the other
+    return n;
+  });
   const [search, setSearch] = useState('');
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [decimals, setDecimals] = useState<Record<string, number>>({});
@@ -463,39 +474,24 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
 
   const loaded: Loaded[] = useMemo(() => {
     const me = address.toLowerCase();
-    if (mode === 'accept' && acceptAction === 'close') {
-      // Every Connections → Pending item, each with the call that closes it from this wallet's side.
+    if (mode === 'accept') {
+      // Connections → Pending items this wallet can act on, each tagged with the action its chip sends.
+      const connectKind: RowKind = kindOn.has('reject') ? 'reject' : 'connect';
       return index.mine
         .map((r) => ({ r, v: connectionView(r, address) }))
-        .filter(({ v }) => v.tab === 'pending')
+        .filter(({ v }) => v.state === 'pendingIncoming' || v.state === 'pendingOutgoing' || v.state === 'cancellationRequestIncoming')
         .sort((a, b) => b.r.lastActivityBlock - a.r.lastActivityBlock)
         .map(({ r, v }): Loaded => {
           const link = toLinkState(r);
           const base = { address: r.address, link, from: v.counterparty };
-          if (v.state === 'pendingIncoming') return { ...base, ok: true, why: '', kind: 'reject', effect: `reject · refunds ${short(v.counterparty)}` };
-          if (v.state === 'pendingOutgoing') return { ...base, ok: true, why: '', kind: 'cancel', effect: 'cancel · refunds you' };
-          if (v.state === 'cancellationRequestIncoming') {
-            const c = disconnectCheck(link, address);
-            return { ...base, ok: c.ok, why: c.why, kind: 'disconnect', effect: c.ok ? `closes now · ~${earlyReturnPct(r)}% returned` : undefined };
-          }
-          return { ...base, ok: false, why: 'your disconnect request — waiting for the other side', kind: 'disconnect' };
-        });
-    }
-    if (mode === 'accept') {
-      // Exactly the Connections → Pending items that wait on this wallet.
-      return index.mine
-        .map((r) => ({ r, v: connectionView(r, address) }))
-        .filter(({ v }) => v.state === 'pendingIncoming' || v.state === 'cancellationRequestIncoming')
-        .sort((a, b) => b.r.lastActivityBlock - a.r.lastActivityBlock)
-        .map(({ r, v }): Loaded => {
-          const link = toLinkState(r);
           if (v.state === 'pendingIncoming') {
+            if (connectKind === 'reject') return { ...base, ok: true, why: '', kind: 'reject', effect: `refunds ${short(v.counterparty)}` };
             const c = approveCheck(link, address);
-            return { address: r.address, link, ok: c.ok, why: c.why, kind: 'connect', from: v.counterparty, effect: 'accept connection' };
+            return { ...base, ok: c.ok, why: c.why, kind: 'connect', effect: 'you deposit your share' };
           }
+          if (v.state === 'pendingOutgoing') return { ...base, ok: true, why: '', kind: 'cancel', effect: 'refunds you' };
           const c = disconnectCheck(link, address);
-          return { address: r.address, link, ok: c.ok, why: c.why, kind: 'disconnect', from: v.counterparty,
-            effect: c.ok ? `closes now · ~${earlyReturnPct(r)}% returned` : undefined };
+          return { ...base, ok: c.ok, why: c.why, kind: 'disconnect', effect: c.ok ? `closes now · ~${earlyReturnPct(r)}% returned` : undefined };
         });
     }
     return index.mine
@@ -506,7 +502,7 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
         if (mode === 'approve') { const c = approveCheck(link, address); return { address: r.address, link, ok: c.ok, why: c.why }; }
         const c = disconnectCheck(link, address); return { address: r.address, link, ok: c.ok, why: c.why, effect: c.effect };
       });
-  }, [index.mine, mode, address, acceptAction]);
+  }, [index.mine, mode, address, kindOn]);
 
   // decimals for every token in the list (native = 18)
   const tokenKey = Array.from(new Set(loaded.map((l) => l.link.token.toLowerCase()))).sort().join(',');
@@ -522,12 +518,12 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
   }, [provider, tokenKey]);
 
   const q = search.trim().toLowerCase();
-  const passes = (l: Loaded) => (!l.kind || !kindOff.has(l.kind)) && (!q || l.address.toLowerCase().includes(q)
+  const passes = (l: Loaded) => (!l.kind || kindOn.has(l.kind)) && (!q || l.address.toLowerCase().includes(q)
     || l.link.userA.toLowerCase().includes(q) || l.link.userB.toLowerCase().includes(q) || l.link.symbol.toLowerCase() === q);
   // Only rows that pass the filters are shown AND sent — what you see is what runs.
   const shown = (onlyActionable || mode === 'accept' ? loaded.filter((l) => l.ok || runs[l.address]) : loaded).filter(passes);
   const eligible = loaded.filter((l) => l.ok && passes(l));
-  const pager = usePager(shown, `${mode}|${acceptAction}|${q}|${Array.from(kindOff).join(',')}|${onlyActionable}|${address}|${netChainId}`);
+  const pager = usePager(shown, `${mode}|${q}|${Array.from(kindOn).join(',')}|${onlyActionable}|${address}|${netChainId}`);
   const chosen = eligible.filter((l) => !deselected.has(l.address) && runs[l.address]?.state !== 'done');
   const dOf = (t: string) => decimals[t.toLowerCase()] ?? 18;
 
@@ -559,7 +555,7 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
   // Plain-language list of the calls a run will send, shown above the button and in the confirm dialog.
   const plan = useMemo(() => {
     const call = (l: Loaded) => l.kind === 'reject' ? 'reject()' : (mode === 'approve' || l.kind === 'connect') ? 'agree()' : 'close()';
-    const what = (l: Loaded) => l.kind ? KIND_LABEL[l.kind].toLowerCase() : mode === 'approve' ? 'accept connection' : (l.effect || 'close');
+    const what = (l: Loaded) => l.kind ? KIND_ROW[l.kind].toLowerCase() : mode === 'approve' ? 'accept connection' : (l.effect || 'close');
     const groups = new Map<string, number>();
     chosen.forEach((l) => { const k = `${call(l)} — ${what(l)}`; groups.set(k, (groups.get(k) || 0) + 1); });
     const parts = Array.from(groups.entries()).map(([k, n]) => `${n} × ${k}`);
@@ -613,10 +609,8 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
   return (
     <div className="space-y-4">
       <p className="text-sm text-txt-secondary">
-        {mode === 'accept' && acceptAction === 'close'
-          ? <>Close every item in <b>Connections → Pending</b> from your side: <b>incoming connect requests</b> are rejected (<code>Link.reject()</code>, refunds the creator), <b>your own unaccepted requests</b> are cancelled (<code>Link.close()</code>, refunds you), <b>incoming disconnect requests</b> are agreed (<code>Link.close()</code>, ends the link now). Your own disconnect requests wait on the other side.</>
-          : mode === 'accept'
-          ? <>Every request waiting on <b>your</b> wallet (the Connections → Pending list): <b>connect requests</b> are accepted with <code>Link.agree()</code> (deposits your share), <b>disconnect requests</b> with <code>Link.close()</code> (ends the link now; before expiry the contract keeps a 1–15% early fee).</>
+        {mode === 'accept'
+          ? <>Everything in <b>Connections → Pending</b> you can act on. Pick the actions with the chips — each sends one call per link: accept a connect request (<code>agree()</code>, deposits your share) <i>or</i> reject it (<code>reject()</code>, refunds the creator); agree to a disconnect (<code>close()</code>, ends the link now — before expiry the contract keeps a 1–15% fee); cancel your own unaccepted requests (<code>close()</code>, refunds you).</>
           : mode === 'approve'
           ? <>You are <b>userB</b>. Each selected link calls <code>Link.agree()</code> and deposits your share (amountB). Listed: every indexed link where your wallet is userB.</>
           : <>You are <b>userA or userB</b>. Each selected link calls <code>Link.close()</code>. A connected, unexpired link only closes once <b>both</b> sides call close — the first call records a request. Pledged links must be depledged first.</>}
@@ -626,25 +620,18 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
       {!address && <p className="text-xs text-yellow-300">Connect a wallet — the list is the links of the connected wallet.</p>}
 
       <div className="flex flex-wrap items-center gap-4 text-xs">
-        {mode === 'accept' && (
-          <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1">
-            {(['accept', 'close'] as const).map((a) => (
-              <button key={a} disabled={running} onClick={() => { setAcceptAction(a); setDeselected(new Set()); setKindOff(new Set()); setRuns({}); }}
-                className={`px-3 py-1 rounded-md text-xs font-medium ${acceptAction === a ? (a === 'accept' ? 'bg-accent text-black' : 'bg-red-500 text-white') : 'text-txt-secondary hover:text-txt-primary'}`}>
-                {a === 'accept' ? 'Accept incoming' : 'Close / reject pending'}
-              </button>
-            ))}
-          </div>
-        )}
         {mode === 'accept' ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-txt-secondary">Show &amp; send:</span>
-            {(Object.keys(KIND_LABEL) as RowKind[]).filter((k) => loaded.some((l) => l.kind === k)).map((k) => {
-              const on = !kindOff.has(k);
+            {KIND_ORDER.map((k) => {
+              const group = (l: Loaded) => (k === 'connect' || k === 'reject') ? (l.kind === 'connect' || l.kind === 'reject') : l.kind === k;
+              const n = loaded.filter(group).length;
+              if (!n) return null;
+              const on = kindOn.has(k);
+              const danger = k !== 'connect';
               return (
-                <button key={k} disabled={running} onClick={() => setKindOff((s) => { const n = new Set(s); on ? n.add(k) : n.delete(k); return n; })}
-                  className={`px-2.5 py-1 rounded-full border text-xs ${on ? 'border-accent text-accent bg-accent/10' : 'border-white/15 text-txt-secondary line-through'}`}>
-                  {on ? '✓ ' : ''}{KIND_LABEL[k]} ({loaded.filter((l) => l.kind === k).length})
+                <button key={k} disabled={running} onClick={() => toggleKind(k)}
+                  className={`px-2.5 py-1 rounded-full border text-xs ${on ? (danger ? 'border-red-400 text-red-200 bg-red-500/10' : 'border-accent text-accent bg-accent/10') : 'border-white/15 text-txt-secondary'}`}>
+                  {on ? '✓ ' : ''}{KIND_LABEL[k]} ({n}) <span className="opacity-60 font-mono">{KIND_CALL[k]}</span>
                 </button>
               );
             })}
@@ -684,7 +671,7 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
                     <td className="py-1 pr-2"><input type="checkbox" disabled={!l.ok || running} checked={l.ok && !deselected.has(l.address)} onChange={() => toggle(l.address)} /></td>
                     {mode === 'accept' && (
                       <td className="pr-2 whitespace-nowrap">
-                        {l.kind && <Badge tone={l.kind === 'connect' ? 'warn' : l.kind === 'cancel' ? 'muted' : 'bad'}>{KIND_LABEL[l.kind]}</Badge>}
+                        {l.kind && <Badge tone={l.kind === 'connect' ? 'good' : l.kind === 'cancel' ? 'muted' : 'bad'}>{KIND_ROW[l.kind]}</Badge>}
                       </td>
                     )}
                     <td className="pr-2 font-mono"><a className="text-accent" target="_blank" rel="noopener noreferrer" href={getExplorerAddressUrl(netChainId, l.address)}>{short(l.address)}</a></td>
@@ -717,10 +704,10 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <button className={mode === 'disconnect' || (mode === 'accept' && acceptAction === 'close') ? btnDangerCls : btnCls} disabled={running || !signer || !chosen.length} onClick={execute}>
+        <button className={mode === 'disconnect' || (mode === 'accept' && chosen.some((l) => l.kind !== 'connect')) ? btnDangerCls : btnCls} disabled={running || !signer || !chosen.length} onClick={execute}>
           <span className="flex items-center gap-2">
             {mode === 'disconnect' ? <Link2Off className="w-4 h-4" /> : <CheckCheck className="w-4 h-4" />}
-            {mode === 'accept' ? `${acceptAction === 'close' ? 'Close / reject' : 'Accept'} ${chosen.length} request${chosen.length === 1 ? '' : 's'}` : <>{mode === 'approve' ? 'Approve' : 'Disconnect'} {chosen.length} link{chosen.length === 1 ? '' : 's'}</>}
+            {mode === 'accept' ? `Send ${chosen.length} transaction${chosen.length === 1 ? '' : 's'}` : <>{mode === 'approve' ? 'Approve' : 'Disconnect'} {chosen.length} link{chosen.length === 1 ? '' : 's'}</>}
           </span>
         </button>
         {running && <button className={btnDangerCls} onClick={stop}><span className="flex items-center gap-2"><Square className="w-3.5 h-3.5" /> Stop after current</span></button>}
