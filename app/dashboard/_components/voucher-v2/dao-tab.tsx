@@ -1,5 +1,5 @@
 'use client';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
 import { utcInputToUnix } from '@/lib/utc-time';
 import { ethers } from 'ethers';
@@ -9,6 +9,8 @@ import {
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import PoolFundingBox from './pool-funding-box';
+import BulkTracker, { BulkFocus } from './bulk-tracker';
+import { StoredUpload, deleteUpload, newUploadId, saveUpload } from './upload-store';
 import { EditRow, MintRow, RecipientRows, blankRow, checkRows, chunk } from './mint-csv';
 import { ContractTag, AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
@@ -71,6 +73,10 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  // bulk uploads (saved in IndexedDB, shown by BulkTracker under the Bulk mint form)
+  const [bulkFocus, setBulkFocus] = useState<BulkFocus | null>(null);
+  const [uploadsVersion, setUploadsVersion] = useState(0);
+  const lastError = useRef('');
 
   const selected = types.find((t) => t.id === typeId);
   // ERC721 and ERC1155 payouts name a specific token id per voucher
@@ -162,6 +168,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       setTimeout(load, 2500);
       return receipt;
     } catch (e: any) {
+      lastError.current = e.message;
       setMsg({ ok: false, text: e.message });
       return null;
     } finally {
@@ -196,6 +203,18 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         if (!rows.length) throw new Error('Add recipients, or upload a CSV');
         // proposeBulkMint takes at most MAX_PER_CALL recipients: a longer list becomes one proposal per batch
         const parts = chunk(rows);
+        // saved once in this browser, so the upload can be checked later — also when the wallet
+        // (e.g. a Safe) never returns the transactions; unknown proposal ids are matched on-chain
+        let off = 0;
+        const upload: StoredUpload = {
+          id: newUploadId(), chainId: ctx.chainId, dao: c.VoucherDAO!.toLowerCase(), typeId: selected.id, token,
+          startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry), createdAt: Math.floor(Date.now() / 1000),
+          name: `Upload of ${rows.length} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+          rows: rows.map((r) => ({ to: r.to, face: toFace(selected, r.amount), tokenId: r.tokenId || '0' })),
+          batches: parts.map((p) => { const b = { start: off, end: off + p.length, proposalId: null as number | null }; off = b.end; return b; }),
+        };
+        await saveUpload(upload);
+        setUploadsVersion((v) => v + 1);
         if (parts.length > 1) ctx.beginFlow(`Propose bulk mint of ${rows.length} (type ${selected.id}) as ${parts.length} proposals`);
         const ids: string[] = []; // proposals created so far
         for (const [i, p] of parts.entries()) {
@@ -203,6 +222,9 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             [selected.id, p.map((r) => r.to), p.map((r) => toFace(selected, r.amount)), utcInputToUnix(form.start), utcInputToUnix(form.expiry), token, p.map((r) => r.tokenId), d],
             selected.approvalsRequired <= 1 ? execGas('bulk', p.length) : undefined);
           if (!receipt) {
+            // nothing reached the wallet (e.g. the estimate reverted): don't keep an empty upload.
+            // A timeout may still land later (Safe), so that one is kept and matched on-chain.
+            if (i === 0 && !/Not confirmed|explorer/i.test(lastError.current)) { await deleteUpload(upload.id); setUploadsVersion((v) => v + 1); }
             // earlier batches are already proposed: keep only the rest, so a retry doesn't propose them twice
             if (i > 0) {
               setBulkRows(parts.slice(i).flat().map(({ to, amount, tokenId }) => ({ to, amount, tokenId })));
@@ -210,9 +232,15 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             }
             return;
           }
-          try { ids.push(eventArg(receipt, ctx.read('VoucherDAO'), 'BulkMintProposed', 'proposalId').toString()); } catch { ids.push('?'); }
+          try {
+            const pid = eventArg(receipt, ctx.read('VoucherDAO'), 'BulkMintProposed', 'proposalId').toString();
+            ids.push(pid);
+            upload.batches[i].proposalId = Number(pid);
+            await saveUpload(upload);
+          } catch { ids.push('?'); }
         }
         setBulkRows([blankRow()]);
+        setUploadsVersion((v) => v + 1);
         if (parts.length > 1) setMsg({ ok: true, text: `Proposed ${rows.length} vouchers as ${parts.length} bulk-mint proposals (${ids.map((x) => `#${x}`).join(', ')})` });
         return;
       }
@@ -341,6 +369,13 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         </Card>
       )}
 
+      {selected && kind === 'bulk' && (
+        <div id="bulk-uploads" className="scroll-mt-4"><BulkTracker type={selected} focus={bulkFocus} version={uploadsVersion} params={() => ({
+          token: selected.mode === VoucherMode.Reward ? form.token || selected.approvedTokens[0] || ZERO : ZERO,
+          startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry), duration: duration(),
+        })} /></div>
+      )}
+
       <Card title="Proposals">
         <ContractTag contract="VoucherDAO" methods={['approve*', 'execute*', 'cancel*']} />
         <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -368,6 +403,13 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
                 <div className="text-txt-secondary">
                   Approvals <b className="text-txt-primary">{p.approvals} / {q || '?'}</b> · proposer {ctx.nameOf(p.proposer)} · voting ends <UtcTime inline ts={p.expiresAt} />
                   {p.iApproved && ' · you approved'}
+                  {p.kind === 'bulk' && (
+                    <> · <button className={linkBtnCls} onClick={() => {
+                      setKind('bulk');
+                      setBulkFocus({ id: p.id, nonce: Date.now() });
+                      setTimeout(() => document.getElementById('bulk-uploads')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    }}>Check on-chain</button></>
+                  )}
                 </div>
                 {open && (
                   <div className="flex flex-wrap gap-2 pt-1">
