@@ -6,12 +6,20 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
-import { getExplorerAddressUrl, NETWORKS } from '@/lib/contracts/config';
+import { getExplorerAddressUrl, NETWORKS, ETHERSCAN_API_KEY } from '@/lib/contracts/config';
 import RGSTArtifact from '@/lib/contracts/RGST.json';
 import RGSTProxyArtifact from '@/lib/contracts/RGSTProxy.json';
+// Exact compiler input (standard JSON) that produced RGST.json / RGSTProxy.json — regenerate it
+// from the contracts repo's build-info whenever those artifacts are updated.
+import RGSTVerify from '@/lib/contracts/RGST.verify.json';
+import { isVerified, getCreationTxHash, constructorArgsFromCreation, verifySource, linkProxy } from '@/lib/contracts/etherscan-verify';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import {
   Rocket, ExternalLink, Copy, Check, RefreshCw, TrendingUp, ArrowUpCircle, ShieldCheck, KeyRound,
-  Send, Coins, Timer, FileCode2, Download, Settings2, Search,
+  Send, Coins, Timer, FileCode2, Download, Settings2, Search, BadgeCheck,
 } from 'lucide-react';
 
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
@@ -180,6 +188,7 @@ export default function RgstSection() {
   const [initName, setInitName] = useState('RGST');
   const [initSymbol, setInitSymbol] = useState('RGST');
   const [initSupply, setInitSupply] = useState('0');
+  const [initOwner, setInitOwner] = useState(''); // empty = connected wallet
   const [manualLoad, setManualLoad] = useState('');
 
   const deployImplementation = async (onDeployed: (a: string) => void, label: string) => {
@@ -197,22 +206,29 @@ export default function RgstSection() {
     }
   };
 
-  // RGSTProxy's constructor sets the deployer as proxy admin and delegatecalls
-  // initialize(name, symbol, totalSupply) in the same tx, so the deployer also becomes token
-  // owner, minter, rebaser and receiver, and receives the initial supply.
+  // RGSTProxy's constructor makes `owner` the proxy admin and delegatecalls
+  // initialize(name, symbol, totalSupply, owner) in the same tx, so `owner` also becomes token
+  // owner, minter, rebaser and receiver, and receives the initial supply. The deploying wallet
+  // keeps nothing.
   const deployProxy = async () => {
     if (!signer || !address) return;
     if (!ethers.utils.isAddress(implAddress.trim())) return fail('Invalid implementation address');
     if (!initName.trim() || !initSymbol.trim()) return fail('Name and symbol are required');
     if (!/^\d+$/.test(initSupply.trim())) return fail('Initial supply must be a whole number of tokens (0 or more)');
+    const owner = (initOwner.trim() || address);
+    if (!ethers.utils.isAddress(owner) || isZero(owner)) return fail('Invalid owner address');
+    // every power goes to this address at once, so a typo would lose control of the token
+    if (!sameAddr(owner, address) && !window.confirm(`Owner ${owner} will get proxy admin, every token role and the initial supply. Your wallet keeps nothing. Continue?`)) return;
     setTxStatus({ status: 'pending', message: 'Deploying RGST proxy + initializing...' });
     try {
       const factory = new ethers.ContractFactory(PROXY_ABI, RGSTProxyArtifact.bytecode, signer);
-      const proxy = await factory.deploy(implAddress.trim(), initName.trim(), initSymbol.trim(), ethers.BigNumber.from(initSupply.trim()));
+      const proxy = await factory.deploy(implAddress.trim(), initName.trim(), initSymbol.trim(), ethers.BigNumber.from(initSupply.trim()), owner);
       setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: proxy.deployTransaction?.hash });
       await proxy.deployed();
       setRgstAddress(proxy.address);
-      setTxStatus({ status: 'success', hash: proxy.deployTransaction?.hash, message: `RGST deployed at ${proxy.address}. You are proxy admin, token owner, minter, rebaser and receiver — hand roles over below (each change waits for the timelock).` });
+      setTxStatus({ status: 'success', hash: proxy.deployTransaction?.hash, message: sameAddr(owner, address)
+        ? `RGST deployed at ${proxy.address}. You are proxy admin, token owner, minter, rebaser and receiver — hand roles over below (each change waits for the timelock).`
+        : `RGST deployed at ${proxy.address}. ${owner} is proxy admin, token owner, minter, rebaser and receiver, and holds the initial supply.` });
     } catch (e: any) {
       fail(decodeRgstError(e));
     }
@@ -538,6 +554,55 @@ export default function RgstSection() {
     proxyDelaySeconds: overview.proxyDelay,
   }, null, 2), [overview, rgstAddress, chainId]);
 
+  // ── Verify on explorer (Etherscan V2 API) ──
+  // Uses NEXT_PUBLIC_ETHERSCAN_API_KEY when set (the field is then an optional override);
+  // otherwise the admin must type a key, which is kept only in memory.
+  const [verifyKey, setVerifyKey] = useState('');
+  const [verifyLog, setVerifyLog] = useState<string[]>([]);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyConfirmOpen, setVerifyConfirmOpen] = useState(false);
+  const log =(line: string) => setVerifyLog(l => [...l, line]);
+
+  const verifyOnExplorer = async () => {
+    const apiKey = verifyKey.trim() || ETHERSCAN_API_KEY;
+    if (!apiKey) return fail('Enter an Etherscan API key');
+    if (!provider || !rgstAddress || !overview || isZero(overview.logic)) return fail('Load the RGST proxy first');
+    const implementation = overview.logic;
+    setVerifying(true);
+    setVerifyLog([]);
+    const common = { chainId, apiKey, compilerVersion: RGSTVerify.compilerVersion, input: RGSTVerify.input };
+    try {
+      // 1. implementation (no constructor args)
+      if (await isVerified(chainId, apiKey, implementation)) {
+        log(`Implementation ${fmtAddr(implementation)}: already verified`);
+      } else {
+        const tx = await provider.getTransaction(await getCreationTxHash(chainId, apiKey, implementation));
+        constructorArgsFromCreation(tx.data, RGSTArtifact.bytecode); // checks it is this build
+        log(`Implementation ${fmtAddr(implementation)}: submitted...`);
+        log(`Implementation: ${await verifySource({ ...common, address: implementation, contractName: RGSTVerify.contracts.implementation, onStatus: m => log(`  ${m}`) })}`);
+      }
+
+      // 2. proxy — constructor args (impl, name, symbol, totalSupply, owner) are read back from its creation tx
+      if (await isVerified(chainId, apiKey, rgstAddress)) {
+        log(`Proxy ${fmtAddr(rgstAddress)}: already verified`);
+      } else {
+        const tx = await provider.getTransaction(await getCreationTxHash(chainId, apiKey, rgstAddress));
+        const constructorArgs = constructorArgsFromCreation(tx.data, RGSTProxyArtifact.bytecode);
+        log(`Proxy ${fmtAddr(rgstAddress)}: submitted...`);
+        log(`Proxy: ${await verifySource({ ...common, address: rgstAddress, contractName: RGSTVerify.contracts.proxy, constructorArgs, onStatus: m => log(`  ${m}`) })}`);
+      }
+
+      // 3. link proxy → implementation so the explorer shows "Read/Write as Proxy"
+      log(`Linking proxy to implementation...`);
+      log(await linkProxy({ chainId, apiKey, proxy: rgstAddress, implementation, onStatus: m => log(`  ${m}`) }));
+      log('Done.');
+    } catch (e: any) {
+      log(`Error: ${e?.message ?? String(e)}`);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const symbol = overview?.symbol ?? 'RGST';
 
   return (
@@ -559,7 +624,7 @@ export default function RgstSection() {
           </div>
           <div className="bg-surface-tertiary rounded-lg p-4">
             <h4 className="font-medium mb-2">2. Proxy + initialize</h4>
-            <p className="text-xs text-txt-secondary mb-3">Deploys <code className="text-accent">RGSTProxy</code>, which calls <code className="text-accent">initialize(name, symbol, totalSupply)</code> in the same tx. Your wallet becomes proxy admin, owner, minter, rebaser and receiver.</p>
+            <p className="text-xs text-txt-secondary mb-3">Deploys <code className="text-accent">RGSTProxy</code>, which calls <code className="text-accent">initialize(name, symbol, totalSupply, owner)</code> in the same tx. The owner becomes proxy admin, token owner, minter, rebaser and receiver, and receives the initial supply.</p>
             <input value={implAddress} onChange={e => setImplAddress(e.target.value)} placeholder="Implementation address (step 1, or paste one)" className={`${inputCls} mb-2`} />
             <div className="grid grid-cols-2 gap-2 mb-2">
               <div>
@@ -571,7 +636,9 @@ export default function RgstSection() {
                 <input value={initSymbol} onChange={e => setInitSymbol(e.target.value)} className={`${inputCls} mt-1`} />
               </div>
             </div>
-            <label className="text-xs text-txt-secondary">Initial supply in whole tokens, minted to you (0 = start empty, mint later)</label>
+            <label className="text-xs text-txt-secondary">Owner — gets every role and the initial supply (empty = your wallet; use the multisig)</label>
+            <input value={initOwner} onChange={e => setInitOwner(e.target.value)} placeholder={address || '0x... owner address'} className={`${inputCls} mt-1 mb-2`} />
+            <label className="text-xs text-txt-secondary">Initial supply in whole tokens, minted to the owner (0 = start empty, mint later)</label>
             <input value={initSupply} onChange={e => setInitSupply(e.target.value)} type="number" min={0} step={1} className={`${inputCls} mt-1 mb-3`} />
             <button onClick={deployProxy} disabled={!isConnected || !implAddress} className={`w-full ${btnCls}`}>Deploy Proxy</button>
             {rgstAddress && <AddrBadge addr={rgstAddress} label="proxy" />}
@@ -615,6 +682,51 @@ export default function RgstSection() {
           <summary className="text-xs text-txt-secondary cursor-pointer">Raw JSON</summary>
           <pre className="mt-2 text-[11px] font-mono max-h-80 overflow-auto whitespace-pre">{ABI_JSON}</pre>
         </details>
+      </Card>
+
+      {/* ── Verify on explorer ── */}
+      <Card title="Verify Source Code" icon={<BadgeCheck className="w-5 h-5 text-accent" />}>
+        <p className="text-xs text-txt-secondary mb-3">
+          Publishes the source of the implementation ({overview ? <AddrLink addr={overview.logic} /> : '—'}) and the proxy on {NETWORKS[chainId]?.chainName ?? `chain ${chainId}`}&apos;s explorer, then links them so &quot;Read/Write as Proxy&quot; works.
+          Uses the Etherscan V2 API (compiler {RGSTVerify.compilerVersion}). Constructor arguments are read from the deploy transaction. Already-verified contracts are skipped. Any connected wallet can do this — it sends no transaction.
+        </p>
+        {!overview && (
+          <div className="bg-yellow-900/20 border border-yellow-700/40 rounded-lg p-3 mb-3">
+            <p className="text-yellow-300 text-xs">{rgstAddress ? 'Loading the RGST proxy...' : 'Deploy or load an RGST proxy above to enable verification.'}</p>
+          </div>
+        )}
+        <label className="text-xs text-txt-secondary">Etherscan API key{ETHERSCAN_API_KEY ? ' (optional)' : ''}</label>
+        <div className="flex gap-2 mt-1 mb-3">
+          <input value={verifyKey} onChange={e => setVerifyKey(e.target.value)} type="text" autoComplete="off" spellCheck={false} placeholder="Etherscan API key" className={inputCls} />
+          <button onClick={() => setVerifyConfirmOpen(true)} disabled={verifying || (!verifyKey.trim() && !ETHERSCAN_API_KEY) || !overview} className={`${smallBtn} py-2`}>
+            {verifying ? 'Verifying...' : 'Verify'}
+          </button>
+        </div>
+        <AlertDialog open={verifyConfirmOpen} onOpenChange={setVerifyConfirmOpen}>
+          <AlertDialogContent className="bg-surface-secondary border border-white/10 text-txt-primary">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Publish RGST source code?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="text-sm text-txt-secondary space-y-2">
+                  <p>This publishes the full source code on <span className="text-txt-primary">{NETWORKS[chainId]?.chainName ?? `chain ${chainId}`}</span>&apos;s explorer, where anyone can read it. Verification can&apos;t be undone.</p>
+                  <div className="bg-surface-tertiary rounded-lg p-3 text-xs font-mono space-y-1 break-all">
+                    <p>Implementation: {overview?.logic ?? '—'}</p>
+                    <p>Proxy: {rgstAddress}</p>
+                    <p>Compiler: {RGSTVerify.compilerVersion}</p>
+                  </div>
+                  <p>No transaction is sent and no gas is used.</p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-surface-tertiary border border-white/10 text-txt-secondary hover:text-txt-primary">Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={verifyOnExplorer} className="bg-accent hover:bg-accent-dark text-black font-semibold">Verify &amp; publish</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        {verifyLog.length > 0 && (
+          <pre className="bg-surface-tertiary rounded-lg p-3 text-[11px] font-mono max-h-60 overflow-auto whitespace-pre-wrap">{verifyLog.join('\n')}</pre>
+        )}
       </Card>
 
       {!rgstAddress ? (
