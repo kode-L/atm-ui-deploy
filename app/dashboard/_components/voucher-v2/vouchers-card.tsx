@@ -75,8 +75,6 @@ export default function VouchersCard() {
     return { tone: 'warn' as const, text: 'Claimable' };
   };
 
- };
-
   if (!c.VoucherNFT) return null;
 
   return (
