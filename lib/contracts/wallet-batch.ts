@@ -40,11 +40,13 @@ export async function getBatchSupport(signer: ethers.Signer, address: string, ch
   };
 }
 
-export async function sendBatch(signer: ethers.Signer, from: string, chainId: number, calls: BatchCall[]): Promise<string> {
+// atomicRequired: the wallet must run every call in one atomic tx (all succeed or none do) or refuse
+// the batch. Only ask for it when getBatchSupport() reported `atomic`.
+export async function sendBatch(signer: ethers.Signer, from: string, chainId: number, calls: BatchCall[], atomicRequired = false): Promise<string> {
   const rpc = rpcOf(signer);
   const c = calls.map((x) => ({ to: x.to, data: x.data, value: ethers.utils.hexValue(x.value || 0) }));
   try {
-    const r = await rpc.send('wallet_sendCalls', [{ version: '2.0.0', from, chainId: hex(chainId), atomicRequired: false, calls: c }]);
+    const r = await rpc.send('wallet_sendCalls', [{ version: '2.0.0', from, chainId: hex(chainId), atomicRequired, calls: c }]);
     return typeof r === 'string' ? r : r?.id;
   } catch (e: any) {
     // Rejections are final; anything else may be a v1-only wallet refusing the v2 shape.

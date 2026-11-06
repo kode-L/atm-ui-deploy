@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import Header from '@/components/header';
+import BuildInfo from '@/components/build-info';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import { Gamepad2, Wallet, Loader2 } from 'lucide-react';
 
@@ -43,6 +44,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <Header />
       <main className="max-w-[1200px] mx-auto px-4 py-6">{children}</main>
+      <BuildInfo />
     </div>
   );
 }

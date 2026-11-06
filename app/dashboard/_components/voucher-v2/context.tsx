@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
+import { sendBatch, waitForBatch, type BatchCall, type BatchResult } from '@/lib/contracts/wallet-batch';
 import {
   ARTIFACTS, Book, ContractKey, PoolKind, ZERO, emptyBook, poolKind, loadBook, saveBook, decodeVoucherError, sameAddr, shortAddr,
 } from '@/lib/contracts/voucher-v2';
@@ -61,6 +62,9 @@ interface VoucherV2Ctx {
   write: (key: ContractKey, address?: string) => ethers.Contract;
   send: (label: string, contract: ethers.Contract, method: string, args: any[], overrides?: ethers.PayableOverrides) => Promise<ethers.ContractReceipt>;
   sendValue: (label: string, to: string, value: string) => Promise<ethers.providers.TransactionReceipt>;
+  // several calls in one wallet request (EIP-5792 wallet_sendCalls), logged as one entry; atomic = all or none.
+  // Resolves only when every call succeeded; otherwise throws (per-call receipts are in the error's `result`).
+  sendCalls: (label: string, calls: BatchCall[], atomic: boolean) => Promise<BatchResult>;
   // impl: use this implementation instead of the pending/new one (pasted or from step 1)
   deployProxy: (key: ContractKey, initArgs: any[], impl?: string) => Promise<string>;
   // step 1 on its own: deploy the implementation and park it in pendingImpl for the proxy step
@@ -356,7 +360,8 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
         patch({ status: 'error', error });
         flowPatch(fid, fstep, { status: 'error', error });
       }
-      throw new Error(error);
+      // keep extra detail callers may need (e.g. sendCalls' per-call receipts)
+      throw Object.assign(new Error(error), e?.result ? { result: e.result } : {});
     }
   }, [updateLog, flowStart, flowPatch]);
 
@@ -393,6 +398,17 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
       onHash(sent.hash);
       return waitMined(sent.hash, sent.wait);
     }, { to }), [track, signer, waitMined, walletRequest]);
+
+  const sendCalls = useCallback((label: string, calls: BatchCall[], atomic: boolean) =>
+    track(label, async (onHash) => {
+      if (!signer) throw new Error('Connect a wallet first');
+      const id = await sendBatch(signer, address, chainId, calls, atomic);
+      const res = await waitForBatch(signer, id);
+      if (res.receipts[0]?.transactionHash) onHash(res.receipts[0].transactionHash);
+      const allOk = res.ok && res.receipts.every((r) => r.status);
+      if (!allOk) throw Object.assign(new Error(res.message === 'confirmed' ? 'some calls in the batch reverted' : res.message), { result: res });
+      return res;
+    }, { to: calls[0]?.to }), [track, signer, address, chainId]);
 
   const deployRaw = useCallback((key: string, args: any[], label: string) =>
     track(label, async (onHash, step) => {
@@ -518,6 +534,7 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     write,
     send,
     sendValue,
+    sendCalls,
     deployProxy,
     deployImpl,
     setPendingImpl,
@@ -536,7 +553,7 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     recheckTx,
     stepAction,
     confirmedByChain,
-  }), [address, chainId, signer, reader, book, setAddress, setToken, replaceBook, markExported, read, write, send, sendValue, deployProxy, deployImpl, setPendingImpl, deployPlain, deployExtraPool, deployExtraPoolImpl, nameOf, txLog, updateLog, revision, typeId, flow, beginFlow, closeFlow, recheckTx, stepAction, confirmedByChain]);
+  }), [address, chainId, signer, reader, book, setAddress, setToken, replaceBook, markExported, read, write, send, sendValue, sendCalls, deployProxy, deployImpl, setPendingImpl, deployPlain, deployExtraPool, deployExtraPoolImpl, nameOf, txLog, updateLog, revision, typeId, flow, beginFlow, closeFlow, recheckTx, stepAction, confirmedByChain]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
