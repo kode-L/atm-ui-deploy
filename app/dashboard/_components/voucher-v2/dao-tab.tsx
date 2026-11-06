@@ -1,17 +1,21 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
-import { utcInputToUnix } from '@/lib/utc-time';
+import { fmtLocal, utcInputToUnix } from '@/lib/utc-time';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import {
   DEFAULT_ADMIN_ROLE, TokenStandard, eventArg, VoucherMode, VoucherType, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits, typeLabel,
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import { NETWORKS } from '@/lib/contracts/config';
+import { BulkMatch, findNewBulkProposal, raceWithChain } from './chain-watch';
+import { ConfirmRow, useConfirmDialog } from './confirm-dialog';
+import { isQueuingWallet } from './safe-api';
 import PoolFundingBox from './pool-funding-box';
 import BulkTracker, { BulkFocus } from './bulk-tracker';
-import { StoredUpload, deleteUpload, newUploadId, saveUpload } from './upload-store';
-import { EditRow, MintRow, RecipientRows, blankRow, checkRows, chunk } from './mint-csv';
+import { StoredUpload, deleteUpload, listUploads, newUploadId, removeRows, saveUpload } from './upload-store';
+import { EditRow, MAX_PER_CALL, MintRow, RecipientRows, blankRow, checkRows, chunk } from './mint-csv';
 import { ContractTag, AddressInput, Badge, Field, NavButtons, Select, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 // VoucherDAO: proposing counts as the first approval; at the type's quorum
@@ -24,7 +28,10 @@ const MAX_SHOWN = 50; // newest proposals per kind
 // try/catch, so a plain estimate can settle on a limit where the mint/revoke silently fails and
 // the proposal is left at quorum. ~200k gas per minted voucher (VoucherConstants note) + margin.
 // Unused gas is refunded, so the floor costs nothing extra.
-const execGas = (kind: Kind, vouchers: number) => (kind === 'revoke' ? 600_000 : 300_000 + 250_000 * Math.max(1, vouchers));
+// gas floor when a call mints at once (quorum 1 / last approval). Measured on BSC testnet 2026-11-06:
+// Reserved tLUCA ~350k + 254k/row (50 rows = 13.0M), points ~236k/row. 400k + 300k/row covers both
+// with ~18% headroom; a Safe gets only this floor (no estimate), an EOA gets max(estimate x1.25, floor).
+const execGas = (kind: Kind, vouchers: number) => (kind === 'revoke' ? 600_000 : 400_000 + 300_000 * Math.max(1, vouchers));
 
 interface Proposal {
   kind: Kind;
@@ -53,6 +60,7 @@ const showFace = (t: VoucherType | undefined, v: ethers.BigNumberish) => (fungib
 
 export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const ctx = useVoucherV2();
+  const { ask, dialog } = useConfirmDialog(ctx.nameOf);
   const c = ctx.book.contracts;
   // only types governed by the DAO (quorum > 1) belong here; follow the shared selection when it is one
   const [types, setTypes] = useState<VoucherType[]>([]);
@@ -77,6 +85,14 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
   const [bulkFocus, setBulkFocus] = useState<BulkFocus | null>(null);
   const [uploadsVersion, setUploadsVersion] = useState(0);
   const lastError = useRef('');
+  // saved upload files for the "Load a saved file" dropdown; `linked` = the batch now in the rows
+  const [saved, setSaved] = useState<StoredUpload[]>([]);
+  const [linked, setLinked] = useState<{ uploadId: string; idx: number; sig: string } | null>(null);
+  // a Safe / smart account only queues txs and returns its own hash, which never lands on-chain:
+  // waiting for that receipt hangs, so for such a wallet we send without waiting (see run)
+  const [contractWallet, setContractWallet] = useState(false);
+  const [kick, setKick] = useState<{ uploadId: string; n: number } | null>(null); // tell the tracker to follow an upload
+  const [csvName, setCsvName] = useState<string | null>(null); // CSV the bulk rows came from (Upload CSV), saved as the upload's name
 
   const selected = types.find((t) => t.id === typeId);
   // ERC721 and ERC1155 payouts name a specific token id per voucher
@@ -135,7 +151,21 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       setProposals(out);
       setNow(Math.floor(Date.now() / 1000));
     } catch (e: any) {
-      setMsg({ ok: false, text: `Could not read VoucherDAO: ${e.message}` });
+      // an empty reply ("0x") usually means no contract at that address on this network
+      // (e.g. testnet addresses while connected to mainnet): say so instead of the raw revert
+      const net = NETWORKS[ctx.chainId]?.chainName || `chain ${ctx.chainId}`;
+      const empty = await Promise.all((['VoucherDAO', 'VoucherNFT'] as const).map(async (k) => {
+        const at = c[k];
+        const code = at && ctx.reader ? await ctx.reader.getCode(at).catch(() => null) : null;
+        return code === '0x' ? `${k} ${at}` : null;
+      }));
+      const missing = empty.filter(Boolean);
+      setMsg({
+        ok: false,
+        text: missing.length
+          ? `No contract on ${net} at ${missing.join(' and ')}. These addresses belong to another network (e.g. testnet) — switch the wallet to the network they were deployed on, or set this network's addresses on the Overview tab.`
+          : `Could not read VoucherDAO: ${e.message}`,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.VoucherNFT, c.VoucherDAO, ctx.reader, ctx.account, ctx.revision]);
@@ -158,12 +188,79 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, c.VoucherDAO, c.VoucherNFT, ctx.reader, ctx.account, ctx.revision]);
 
-  // the receipt once the tx confirmed, null on failure (errors are shown, not thrown)
-  const run = async (label: string, method: string, args: any[], minGas?: number) => {
+  useEffect(() => {
+    if (!ctx.reader || !ctx.account) return;
+    isQueuingWallet(ctx.reader, ctx.account).then(setContractWallet).catch(() => setContractWallet(false));
+  }, [ctx.reader, ctx.account]);
+
+  useEffect(() => {
+    if (!c.VoucherDAO || typeId < 0) return;
+    listUploads(ctx.chainId, c.VoucherDAO).then((list) => setSaved(list.filter((u) => u.typeId === typeId))).catch(() => setSaved([]));
+  }, [c.VoucherDAO, ctx.chainId, typeId, uploadsVersion]);
+
+  // identifies a batch by its content, not its position (Remove shifts positions)
+  const sigOf = (u: StoredUpload, i: number) => {
+    const b = u.batches[i];
+    return b ? `${b.file ?? ''}|${b.end - b.start}|${u.rows[b.start]?.to}|${u.rows[b.end - 1]?.to}` : '';
+  };
+  // fill the Bulk mint form with one saved file (batch): its rows, payout token and dates
+  const loadSaved = (key: string) => {
+    if (!key) { setLinked(null); return; }
+    const [uploadId, i] = key.split('#');
+    const u = saved.find((x) => x.id === uploadId);
+    const b = u?.batches[Number(i)];
+    if (!u || !b || !selected) return;
+    setBulkRows(u.rows.slice(b.start, b.end).map((r) => ({ to: r.to, amount: fungible(selected) ? fromUnits(r.face, 18) : r.face, tokenId: needsId ? r.tokenId : '' })));
+    setLinked({ uploadId, idx: Number(i), sig: sigOf(u, Number(i)) });
+    setCsvName(null);
+    setMsg({ ok: true, text: `Loaded ${b.file ?? `batch ${Number(i) + 1}`} (${b.end - b.start} rows) from "${u.name}"` });
+  };
+  useEffect(() => {
+    if (!linked) return;
+    const u = saved.find((x) => x.id === linked.uploadId);
+    const b = u?.batches[linked.idx];
+    if (!u || !b || b.proposalId !== null || b.submittedAt) { setLinked(null); return; }
+    if (sigOf(u, linked.idx) !== linked.sig) {
+      // the same file moved (a batch before it was removed): follow it, else unlink
+      const at = u.batches.findIndex((_, k) => sigOf(u, k) === linked.sig);
+      setLinked(at >= 0 ? { ...linked, idx: at } : null);
+    }
+  }, [saved, linked]);
+  const pendingFiles = saved.flatMap((u) => u.batches.map((b, i) => ({ u, b, i })).filter(({ b }) => b.proposalId === null && !b.submittedAt));
+
+  // the receipt once the tx confirmed, { safeTxHash } when a contract wallet (Safe) queued it, null on failure
+  // (errors are shown, not thrown)
+  // match: for a bulk propose, also watch the chain (from 3s, every 3s) and stop waiting on the
+  // wallet as soon as that exact proposal is there
+  const run = async (label: string, method: string, args: any[], minGas?: number, match?: BulkMatch): Promise<ethers.ContractReceipt | { safeTxHash: string } | { proposalId: number } | null> => {
     setBusy(true);
     setMsg(null);
     try {
-      const receipt = await ctx.send(label, ctx.write('VoucherDAO'), method, args, minGas ? { gasLimit: minGas } : {});
+      if (contractWallet) {
+        const dao = ctx.write('VoucherDAO');
+        const tx = await dao.populateTransaction[method](...args, minGas ? { gasLimit: minGas } : {});
+        const signer = dao.signer as ethers.providers.JsonRpcSigner;
+        const safeTxHash = typeof signer.sendUncheckedTransaction === 'function' ? await signer.sendUncheckedTransaction(tx) : (await signer.sendTransaction(tx)).hash;
+        setMsg({ ok: true, text: `${label} — sent to the Safe. Sign & execute it there; this page shows it once it's on-chain.` });
+        setTimeout(load, 2500);
+        return { safeTxHash };
+      }
+      const sending = ctx.send(label, ctx.write('VoucherDAO'), method, args, minGas ? { gasLimit: minGas } : {});
+      if (match) {
+        const d = ctx.read('VoucherDAO');
+        const fromId = (await d.nextBulkProposalId()).toNumber();
+        const raced = await raceWithChain(sending, () => findNewBulkProposal(d, fromId, match));
+        if (raced.via === 'chain') {
+          ctx.confirmedByChain(label, `seen on-chain as proposal #${raced.proposalId}`);
+          setMsg({ ok: true, text: `${label} — on-chain as proposal #${raced.proposalId}` });
+          setTimeout(load, 1000);
+          return { proposalId: raced.proposalId };
+        }
+        setMsg({ ok: true, text: label });
+        setTimeout(load, 2500);
+        return raced.value;
+      }
+      const receipt = await sending;
       setMsg({ ok: true, text: label });
       setTimeout(load, 2500);
       return receipt;
@@ -187,31 +284,132 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       if (!selected) throw new Error('Pick a voucher type');
       const d = duration();
       const token = selected.mode === VoucherMode.Reward ? form.token || selected.approvedTokens[0] || ZERO : ZERO;
+      // review dialog with everything that will be sent (empty dates are 0 on-chain: claimable at
+      // once, never expires) and the full wallet list to cross-check
+      const confirmSend = (what: string, rows: ConfirmRow[], proposals: number, allowRemove = false) => {
+        const utcOf = (v: string) => { const ts = utcInputToUnix(v); return ts ? `${new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC${new Date(ts * 1000).getTimezoneOffset() !== 0 ? ` · your local time: ${fmtLocal(ts)}` : ' (same as your local time)'}` : ''; };
+        const tokenName = selected.mode === VoucherMode.Reward ? (sameAddr(token, ZERO) ? 'native coin' : ctx.nameOf(token)) : '';
+        const total = fungible(selected)
+          ? `${fromUnits(rows.reduce((t, r) => { try { return t.add(ethers.utils.parseUnits(r.amount.split(' ')[0] || '0', 18).mul(r.amount.includes('×') ? Number(r.amount.split('×')[1]) || 1 : 1)); } catch { return t; } }, ethers.BigNumber.from(0)), 18)} ${tokenName}`
+          : undefined;
+        return ask({
+          title: `Propose ${what}`,
+          intro: contractWallet ? 'Connected wallet is a Safe: this is queued there for the owners to sign and execute.' : 'Your wallet will ask you to confirm after this.',
+          fields: [
+            { label: 'Page', value: `Voucher V2 → VoucherDAO → ${kind === 'bulk' ? 'Bulk mint' : 'Mint'}` },
+            { label: 'Network', value: NETWORKS[ctx.chainId]?.chainName || `chain ${ctx.chainId}` },
+            { label: 'Contract (VoucherDAO)', value: <span className="font-mono text-xs">{c.VoucherDAO}</span> },
+            { label: 'Voucher type', value: `${typeLabel(selected)} · needs ${selected.approvalsRequired} approval${selected.approvalsRequired === 1 ? '' : 's'}` },
+            ...(tokenName ? [{ label: 'Payout token', value: tokenName }] : []),
+            { label: 'Claimable from', value: utcOf(form.start) || 'immediately' },
+            { label: 'Expires', value: utcOf(form.expiry) || 'never', warn: !utcOf(form.expiry) },
+            { label: 'Voting window', value: `${Math.round(d / 3600)} hours` },
+            { label: 'Proposals', value: `${proposals} (max ${MAX_PER_CALL} wallets each)` },
+            { label: 'Sent from', value: <span className="font-mono text-xs">{ctx.account}{contractWallet ? ' (Safe)' : ''}</span> },
+            ...(total ? [{ label: 'Total', value: total }] : []),
+          ],
+          rows,
+          amountLabel: fungible(selected) ? `Amount (${tokenName})` : selected.mode === VoucherMode.Points ? 'Points' : 'Amount',
+          allowRemove,
+          totalUnit: fungible(selected) ? tokenName : undefined,
+          total,
+          warnings: [
+            ...(!utcOf(form.expiry) ? ['No expiry set — these vouchers never expire.'] : []),
+            ...(selected.approvalsRequired <= 1 ? ['This type needs 1 approval: the vouchers are minted as soon as the proposal lands on-chain.'] : []),
+          ],
+          confirmLabel: contractWallet ? 'Confirm & send to Safe' : 'Confirm & send',
+        });
+      };
       if (kind === 'mint') {
         if (!isAddr(form.to)) throw new Error('Recipient is not a valid address');
         const q = parseInt(form.quantity, 10);
         if (!(q >= 1 && q <= 50)) throw new Error('Quantity must be 1–50');
         if (!form.faceValue) throw new Error('Enter a face value');
         if (needsId && !/^\d+$/.test(form.tokenId)) throw new Error('Enter the NFT token id');
+        if (!(await confirmSend(`mint of ${q}× ${form.faceValue} to ${ctx.nameOf(form.to)}`, [{ to: form.to, amount: q > 1 ? `${form.faceValue} × ${q}` : form.faceValue }], 1))) return;
         return run(`DAO: propose mint ${q}× type ${selected.id} → ${ctx.nameOf(form.to)}`, 'proposeMint',
           [selected.id, form.to, q, toFace(selected, form.faceValue), utcInputToUnix(form.start), utcInputToUnix(form.expiry), token, needsId ? form.tokenId : 0, d],
           selected.approvalsRequired <= 1 ? execGas('mint', q) : undefined);
       }
       if (kind === 'bulk') {
-        const { rows, errors } = parsed;
+        const { rows: reviewed, errors } = parsed;
         if (errors.length) throw new Error(`Fix the recipient list first: ${errors.slice(0, 3).join('; ')}`);
-        if (!rows.length) throw new Error('Add recipients, or upload a CSV');
+        if (!reviewed.length) throw new Error('Add recipients, or upload a CSV');
+        // rows loaded from a saved file and unchanged: the proposal is recorded on that batch, no new upload
+        let lu = linked ? saved.find((x) => x.id === linked.uploadId) : undefined;
+        let li = linked ? linked.idx : -1;
+        let lb = lu?.batches[li];
+        const linkedOk = !!(lu && lb && lb.proposalId === null && !lb.submittedAt && reviewed.length === lb.end - lb.start
+          && reviewed.every((r, k) => sameAddr(r.to, lu!.rows[lb!.start + k].to) && toFace(selected, r.amount) === lu!.rows[lb!.start + k].face));
+        const src = (linkedOk ? lb?.file : undefined) ?? csvName ?? undefined;
+        const res = await confirmSend(`bulk mint of ${reviewed.length} vouchers${src ? ` (${src})` : ''}`, reviewed.map((r) => ({ to: r.to, amount: r.amount, group: src })), Math.ceil(reviewed.length / MAX_PER_CALL), reviewed.length > 1);
+        if (!res) return;
+        // wallets removed in the review: drop them from the form and from the saved file's batch
+        const dropped = new Set(res.removed);
+        const rows = reviewed.filter((_, k) => !dropped.has(k));
+        if (dropped.size) {
+          const formIdx = new Set(reviewed.filter((_, k) => dropped.has(k)).map((r) => r.row - 1));
+          setBulkRows((prev) => prev.filter((_, i) => !formIdx.has(i)));
+          if (linkedOk && lu && lb) {
+            const { upload, batchMap } = removeRows(lu, res.removed.map((k) => lb!.start + k));
+            await saveUpload(upload);
+            setUploadsVersion((v) => v + 1);
+            lu = upload;
+            li = batchMap[li];
+            lb = li >= 0 ? upload.batches[li] : undefined;
+            if (lb) setLinked({ uploadId: upload.id, idx: li, sig: sigOf(upload, li) });
+          }
+        }
         // proposeBulkMint takes at most MAX_PER_CALL recipients: a longer list becomes one proposal per batch
         const parts = chunk(rows);
+        if (linkedOk && lu && lb && parts.length === 1) {
+          const receipt = await run(`DAO: propose bulk mint ${lb.file ?? `batch ${li + 1}`} (${rows.length}) type ${selected.id}`, 'proposeBulkMint',
+            [selected.id, rows.map((r) => r.to), rows.map((r) => toFace(selected, r.amount)), utcInputToUnix(form.start), utcInputToUnix(form.expiry), token, rows.map((r) => r.tokenId), d],
+            selected.approvalsRequired <= 1 ? execGas('bulk', rows.length) : undefined,
+            { typeId: selected.id, recipients: rows.map((r) => r.to), faces: rows.map((r) => toFace(selected, r.amount)), startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry), token });
+          if (!receipt) return;
+          const next: StoredUpload = { ...lu, batches: lu.batches.map((x) => ({ ...x })) };
+          const nb = next.batches[li];
+          nb.fromTs = Math.floor(Date.now() / 1000) - 60;
+          Object.assign(nb, { token, startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry) });
+          if ('proposalId' in receipt) nb.proposalId = receipt.proposalId; // seen on-chain before the wallet answered
+          else if ('safeTxHash' in receipt) {
+            nb.submittedAt = Math.floor(Date.now() / 1000);
+            nb.safeTxHash = receipt.safeTxHash;
+            nb.safe = ctx.account;
+          } else { nb.proposeTx = receipt.transactionHash; try { nb.proposalId = Number(eventArg(receipt, ctx.read('VoucherDAO'), 'BulkMintProposed', 'proposalId').toString()); } catch { /* matched on-chain later */ } }
+          await saveUpload(next);
+          setUploadsVersion((v) => v + 1);
+          setKick({ uploadId: next.id, n: Date.now() });
+          // load the next file of the same upload, so the admin can just press Propose again
+          const ni = next.batches.findIndex((x, k) => k !== li && x.proposalId === null && !x.submittedAt);
+          const done = `${lb.file ?? `Batch ${li + 1}`} ${'safeTxHash' in receipt ? 'sent to the Safe' : `proposed${nb.proposalId !== null ? ` as #${nb.proposalId}` : ''}`}.`;
+          if (ni >= 0) {
+            const b2 = next.batches[ni];
+            setBulkRows(next.rows.slice(b2.start, b2.end).map((r) => ({ to: r.to, amount: fungible(selected) ? fromUnits(r.face, 18) : r.face, tokenId: needsId ? r.tokenId : '' })));
+            setLinked({ uploadId: next.id, idx: ni, sig: sigOf(next, ni) });
+            setMsg({ ok: true, text: `${done} Loaded the next file: ${b2.file ?? `batch ${ni + 1}`} (${b2.end - b2.start} rows) — check it and press Propose.` });
+          } else {
+            setBulkRows([blankRow()]);
+            setLinked(null);
+            setMsg({ ok: true, text: `${done} That was the last file of "${next.name}".` });
+          }
+          return;
+        }
         // saved once in this browser, so the upload can be checked later — also when the wallet
         // (e.g. a Safe) never returns the transactions; unknown proposal ids are matched on-chain
         let off = 0;
         const upload: StoredUpload = {
           id: newUploadId(), chainId: ctx.chainId, dao: c.VoucherDAO!.toLowerCase(), typeId: selected.id, token,
           startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry), createdAt: Math.floor(Date.now() / 1000),
-          name: `Upload of ${rows.length} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+          name: `${csvName ?? `Upload of ${rows.length}`} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+          ...(csvName ? { source: csvName } : {}),
           rows: rows.map((r) => ({ to: r.to, face: toFace(selected, r.amount), tokenId: r.tokenId || '0' })),
-          batches: parts.map((p) => { const b = { start: off, end: off + p.length, proposalId: null as number | null }; off = b.end; return b; }),
+          batches: parts.map((p, k) => {
+            const b = { start: off, end: off + p.length, proposalId: null as number | null, ...(csvName ? { file: parts.length > 1 ? `${csvName} (${k + 1}/${parts.length})` : csvName } : {}) };
+            off = b.end;
+            return b;
+          }),
         };
         await saveUpload(upload);
         setUploadsVersion((v) => v + 1);
@@ -220,7 +418,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
         for (const [i, p] of parts.entries()) {
           const receipt = await run(`DAO: propose bulk mint ${parts.length > 1 ? `${i + 1}/${parts.length} ` : ''}(${p.length}) type ${selected.id}`, 'proposeBulkMint',
             [selected.id, p.map((r) => r.to), p.map((r) => toFace(selected, r.amount)), utcInputToUnix(form.start), utcInputToUnix(form.expiry), token, p.map((r) => r.tokenId), d],
-            selected.approvalsRequired <= 1 ? execGas('bulk', p.length) : undefined);
+            selected.approvalsRequired <= 1 ? execGas('bulk', p.length) : undefined,
+            { typeId: selected.id, recipients: p.map((r) => r.to), faces: p.map((r) => toFace(selected, r.amount)), startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry), token });
           if (!receipt) {
             // nothing reached the wallet (e.g. the estimate reverted): don't keep an empty upload.
             // A timeout may still land later (Safe), so that one is kept and matched on-chain.
@@ -232,16 +431,36 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             }
             return;
           }
+          upload.batches[i].fromTs = Math.floor(Date.now() / 1000) - 60;
+          Object.assign(upload.batches[i], { token, startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry) });
+          if ('proposalId' in receipt) {
+            upload.batches[i].proposalId = receipt.proposalId;
+            ids.push(String(receipt.proposalId));
+            await saveUpload(upload);
+            continue;
+          }
+          if ('safeTxHash' in receipt) {
+            upload.batches[i].submittedAt = Math.floor(Date.now() / 1000);
+            upload.batches[i].safeTxHash = receipt.safeTxHash;
+            upload.batches[i].safe = ctx.account;
+            ids.push('?');
+            await saveUpload(upload);
+            continue;
+          }
           try {
             const pid = eventArg(receipt, ctx.read('VoucherDAO'), 'BulkMintProposed', 'proposalId').toString();
             ids.push(pid);
             upload.batches[i].proposalId = Number(pid);
+            upload.batches[i].proposeTx = receipt.transactionHash;
             await saveUpload(upload);
           } catch { ids.push('?'); }
         }
         setBulkRows([blankRow()]);
+        setCsvName(null);
         setUploadsVersion((v) => v + 1);
-        if (parts.length > 1) setMsg({ ok: true, text: `Proposed ${rows.length} vouchers as ${parts.length} bulk-mint proposals (${ids.map((x) => `#${x}`).join(', ')})` });
+        setKick({ uploadId: upload.id, n: Date.now() });
+        if (contractWallet) setMsg({ ok: true, text: `Sent ${parts.length} bulk-mint proposal${parts.length === 1 ? '' : 's'} to the Safe. Sign & execute there; follow them under Bulk uploads below.` });
+        else if (parts.length > 1) setMsg({ ok: true, text: `Proposed ${rows.length} vouchers as ${parts.length} bulk-mint proposals (${ids.map((x) => `#${x}`).join(', ')})` });
         return;
       }
       if (!/^\d+$/.test(form.voucherId)) throw new Error('Enter the voucher id to revoke');
@@ -285,6 +504,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
+      {dialog}
       <Card title="VoucherDAO — governed mints and revokes">
         <p className="text-xs text-txt-secondary mb-3">
           Each type sets how many approvals its proposals need. Proposing counts as approval #1; at that number the mint or revoke <b>runs automatically</b>
@@ -331,10 +551,39 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             )}
             {kind === 'bulk' && (
               <div className="md:col-span-3">
-                <RecipientRows rows={bulkRows} onChange={setBulkRows} needsId={!!needsId} check={parsed} perTx="proposal"
+                <div className="mb-3">
+                  <Field label="Load a saved file" hint={pendingFiles.length
+                    ? 'Every imported file with its status. Picking one fills the rows only — token and dates stay as set in this form. After Propose the next file loads.'
+                    : saved.length ? 'Every file of these uploads is proposed — see the status of each below.' : 'Import a .zip or CSV files under Bulk uploads (below) — its files then show up here.'}>
+                    {/* native select: grouped per upload, proposed / complete files shown but disabled */}
+                    <select className={inputCls} value={linked ? `${linked.uploadId}#${linked.idx}` : ''} onChange={(e) => loadSaved(e.target.value)}>
+                      <option value="">{pendingFiles.length ? `— pick a file (${pendingFiles.length} not proposed) —` : '— no files left to propose —'}</option>
+                      {saved.map((u) => {
+                        const done = u.batches.filter((b) => b.completedAt).length;
+                        return (
+                          <optgroup key={u.id} label={`${u.name} — ${done}/${u.batches.length} complete`}>
+                            {u.batches.map((b, i) => {
+                              const status = b.completedAt ? '✓ complete'
+                                : b.proposalId !== null ? `proposed #${b.proposalId}`
+                                : b.submittedAt ? 'sent to Safe'
+                                : 'not proposed';
+                              const free = b.proposalId === null && !b.submittedAt;
+                              return (
+                                <option key={i} value={`${u.id}#${i}`} disabled={!free}>
+                                  {`${free ? '○' : b.completedAt ? '✓' : '…'} ${b.file ?? `batch ${i + 1}`} · ${b.end - b.start} rows · ${status}`}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </Field>
+                </div>
+                <RecipientRows rows={bulkRows} onChange={(r) => { setBulkRows(r); setLinked(null); }} needsId={!!needsId} check={parsed} perTx="proposal"
                   amountLabel={fungible(selected) ? 'Amount (tokens)' : selected.mode === VoucherMode.Points ? 'Points' : 'Quantity'}
                   total={fungible(selected) ? `${fromUnits(neededFor(selected, 'bulk', '', '', parsed.rows), 18)} ${ctx.nameOf(form.token || selected.approvedTokens[0] || ZERO)}` : undefined}
-                  onLoaded={(text) => setMsg({ ok: !/^(CSV|Failed)/.test(text), text })} />
+                  onLoaded={(text, fileName) => { setMsg({ ok: !/^(CSV|Failed)/.test(text), text }); if (fileName) setCsvName(fileName); }} />
               </div>
             )}
             {kind === 'revoke' && (
@@ -351,8 +600,8 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
             )}
             {kind !== 'revoke' && (
               <>
-                <Field label="Claimable from, UTC (optional)"><UtcDateTimeInput className={inputCls} value={form.start} onChange={(v) => set('start', v)} /></Field>
-                <Field label="Voucher expiry, UTC (optional)"><UtcDateTimeInput className={inputCls} value={form.expiry} onChange={(v) => set('expiry', v)} /></Field>
+                <Field label="Claimable from — your local time (optional)" hint="Empty = claimable right away."><UtcDateTimeInput className={inputCls} value={form.start} onChange={(v) => set('start', v)} /></Field>
+                <Field label="Voucher expiry — your local time (optional)" hint={'Empty = never expires (the type\'s redemption days are informational only).'}><UtcDateTimeInput className={inputCls} value={form.expiry} onChange={(v) => set('expiry', v)} /></Field>
               </>
             )}
             <Field label="Voting window (hours)" hint="How long operators have to vote: 1 to 720 hours (30 days).">
@@ -370,7 +619,7 @@ export default function DaoTab({ onGo }: { onGo: (t: string) => void }) {
       )}
 
       {selected && kind === 'bulk' && (
-        <div id="bulk-uploads" className="scroll-mt-4"><BulkTracker type={selected} focus={bulkFocus} version={uploadsVersion} params={() => ({
+        <div id="bulk-uploads" className="scroll-mt-4"><BulkTracker type={selected} focus={bulkFocus} version={uploadsVersion} onChange={() => setUploadsVersion((v) => v + 1)} kick={kick} params={() => ({
           token: selected.mode === VoucherMode.Reward ? form.token || selected.approvedTokens[0] || ZERO : ZERO,
           startDate: utcInputToUnix(form.start), expiryDate: utcInputToUnix(form.expiry), duration: duration(),
         })} /></div>

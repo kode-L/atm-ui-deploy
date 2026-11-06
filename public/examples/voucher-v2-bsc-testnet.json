@@ -1,0 +1,35 @@
+{
+  "network": "BSC Testnet",
+  "chainId": 97,
+  "deployedAt": "2026-10-29T12:01:30.671Z",
+  "note": "v0.58 all-conditions set (voucher repo deployments/bscTestnet.all-conditions.json). RewardVault + VoucherSettlement use the real ATM ACL 0xc9bAD31CD3C1b14cf994CB8abfe79F03ea3979b8.",
+  "contracts": {
+    "VoucherNFT": "0xA1010B445db17C3d754B048dd40Cae4471290170",
+    "VoucherDAO": "0x93aAbdcab0006164995822e4DaC689363746EF45",
+    "VoucherNFTViews": "0x79651BfFc770ebc00C356632c2556A41cC1E0F5B",
+    "SourceRegistry": "0x64BE35A20A40e783AB79B0F452577A53dB375644",
+    "RevocationVault": "0x2947E7E7bf2CEAf0E777A76001eC9C6C1b936f51",
+    "AllowlistTransferGate": "0xF4762e6267eAEDC2b596f01dC458894cE30dBcc7",
+    "RewardVault": "0x2A7035cd1dAB7479b4cc8B024AA2266E95fB4a37",
+    "VoucherSettlement": "0xec5bad08480e8E2108D0a42a53c24f370c538CDf",
+    "VoucherTransfer": "0x3cEe9A72B239Ab8372479A9a460880847cf9f83E"
+  },
+  "implementations": {
+    "VoucherNFT": "0x9f529674903000B356c6bbE5852A163629069eB5",
+    "VoucherDAO": "0x701fBB03220ef89e21Bb416c219022Ee6ed562D7",
+    "SourceRegistry": "0x55C5e7806E0ab9C7B78a9Cf733a145199e726C18",
+    "RevocationVault": "0x48317F3b9d99a9BfEC1996b8625304B235fE6b60",
+    "AllowlistTransferGate": "0x97589DAc3B4B624420Ab18197E43aac07497465C",
+    "RewardVault": "0xAB514FF689EE17f8EB970582F41a32AcB259961f",
+    "VoucherSettlement": "0x6adb3d412dBdb2A1D35A61Fe7573A0d583Fd1249",
+    "VoucherTransfer": "0x5285343cEDAf9d81d51255FbC36601215200fC0A"
+  },
+  "extraPools": [],
+  "tokens": {
+    "tLUCA": "0xD7a1cA21D73ff98Cc64A81153eD8eF89C2a1EfEF",
+    "MockERC20 (18dp)": "0x5681D418C1ef47B4Fe25ffBD0d17A2718F043563",
+    "MockERC20 (6dp)": "0xd7578b377269F29BF8C9c679C9633C7c09c20Ccc",
+    "MockERC721": "0x724946588eb2bb159da64437C5a289079302E616",
+    "MockERC1155": "0x45c5a94BbD595ce9362a087B6b89bc6540939AED"
+  }
+}

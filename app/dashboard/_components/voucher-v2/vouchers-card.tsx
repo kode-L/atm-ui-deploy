@@ -9,7 +9,9 @@ import {
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import PoolFundingBox from './pool-funding-box';
-import { EditRow, MintRow, RecipientRows, blankRow, checkRows, chunk } from './mint-csv';
+import { EditRow, MintRow, RecipientRows, blankRow, checkRows } from './mint-csv';
+import DirectBulkUploads, { DirectParams, makeDirectUpload, runDirectUpload } from './direct-bulk';
+import { saveUpload } from './upload-store';
 import { AddressInput, Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 const SCAN_LIMIT = 2000; // vouchers read per browse scan (newest first)
@@ -129,6 +131,8 @@ function MintPanel({ types }: { types: VoucherType[] }) {
   const overCap = capLeft !== null && capLeft.lt(bulk ? parsed.rows.length : parseInt(f.quantity, 10) || 0);
   const toFace = (v: string) => (fungible(t) ? toUnits(v, 18) : String(Math.max(0, parseInt(v || '0', 10) || 0)));
   const token = reward ? f.token || t?.approvedTokens[0] || ZERO : ZERO;
+  const [uploadsVersion, setUploadsVersion] = useState(0);
+  const directParams = (): DirectParams => ({ token, startDate: utcInputToUnix(f.start), expiryDate: utcInputToUnix(f.expiry) });
 
   const mint = async () => {
     if (!t) return;
@@ -148,24 +152,20 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         const { rows: list, errors } = parsed;
         if (errors.length) throw new Error(`Fix the recipient list first: ${errors.slice(0, 3).join('; ')}`);
         if (!list.length) throw new Error('Add recipients, or upload a CSV');
-        // mintBatch takes at most MAX_BATCH recipients, so a longer list goes out as several transactions in order
-        const parts = chunk(list, MAX_BATCH);
-        const labels = parts.map((p, i) => `Bulk mint ${i + 1}/${parts.length}: ${p.length} × type ${t.id} (rows ${p[0].row}–${p[p.length - 1].row})`);
-        if (parts.length > 1) ctx.beginFlow(`Bulk mint ${list.length} vouchers of type ${t.id}`, labels);
-        let done = 0;
-        try {
-          for (const [i, p] of parts.entries()) {
-            await ctx.send(labels[i], nft, 'mintBatch', [t.id, p.map((r) => r.to), p.map((r) => toFace(r.amount)), utcInputToUnix(f.start), utcInputToUnix(f.expiry), token, p.map((r) => r.tokenId)]);
-            done += p.length;
-          }
-        } catch (e: any) {
-          if (!done) throw e;
-          // earlier batches are on-chain: keep only the lines not minted yet, so a retry doesn't mint twice
-          setRows(list.slice(done).map(({ to, amount, tokenId }) => ({ to, amount, tokenId })));
-          throw new Error(`Minted ${done} of ${list.length}, then stopped: ${e.message}. The list now holds only the ${list.length - done} recipients not minted yet.`);
-        }
+        // saved as a bulk upload first (Bulk uploads, below): each mintBatch-sized batch is tracked,
+        // so a list that stops halfway resumes from there instead of minting twice
+        const u = makeDirectUpload(ctx, t, `List ${new Date().toLocaleString()}`, list.map((r) => ({ to: r.to, face: toFace(r.amount), tokenId: r.tokenId || '0' })), directParams());
+        await saveUpload(u);
         setRows([blankRow()]);
-        setMsg({ ok: true, text: `Minted ${list.length} voucher(s) in ${parts.length} transaction(s)` });
+        setUploadsVersion((v) => v + 1);
+        try {
+          await runDirectUpload(ctx, u);
+        } catch (e: any) {
+          throw new Error(`${e.message} The list is saved under Bulk uploads (below) — Mint remaining continues from where it stopped.`);
+        } finally {
+          setUploadsVersion((v) => v + 1);
+        }
+        setMsg({ ok: true, text: `Minted ${list.length} voucher(s) in ${u.batches.length} transaction(s). Results are under Bulk uploads (below).` });
       }
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
@@ -212,13 +212,16 @@ function MintPanel({ types }: { types: VoucherType[] }) {
           </Field>
         )}
         {needsId && !bulk && <Field label="NFT token id"><input className={inputCls} value={f.tokenId} onChange={(e) => set('tokenId', e.target.value)} /></Field>}
-        <Field label="Claimable from, UTC (optional)"><UtcDateTimeInput className={inputCls} value={f.start} onChange={(v) => set('start', v)} /></Field>
-        <Field label="Expires, UTC (optional)"><UtcDateTimeInput className={inputCls} value={f.expiry} onChange={(v) => set('expiry', v)} /></Field>
+        <Field label="Claimable from — your local time (optional)"><UtcDateTimeInput className={inputCls} value={f.start} onChange={(v) => set('start', v)} /></Field>
+        <Field label="Expires — your local time (optional)"><UtcDateTimeInput className={inputCls} value={f.expiry} onChange={(v) => set('expiry', v)} /></Field>
       </div>
       {t && t.approvalsRequired <= 1 && <PoolFundingBox type={t} token={token} needed={neededFor(t, bulk, f.quantity, f.faceValue, parsed.rows)} onShort={setShort} />}
       <button className={btnCls} disabled={busy || !t || t.approvalsRequired > 1 || isMinter === false || short || overCap || (bulk && (!parsed.rows.length || parsed.errors.length > 0))} onClick={mint}>{busy ? 'Minting…' : bulk ? `Mint all${parsed.rows.length ? ` (${parsed.rows.length})` : ''}` : 'Mint'}</button>
       {short && <span className="text-xs text-yellow-300 ml-3">Top up the pool first (above) — minting now would fail.</span>}
       {msg && <p className={`text-xs break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
+      {bulk && t && t.approvalsRequired <= 1 && (
+        <DirectBulkUploads type={t} params={directParams} version={uploadsVersion} onChange={() => setUploadsVersion((v) => v + 1)} />
+      )}
     </div>
   );
 }

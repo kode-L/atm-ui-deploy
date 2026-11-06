@@ -85,6 +85,9 @@ interface VoucherV2Ctx {
   recheckTx: (id: number) => Promise<void>;
   // for a step whose wallet popup never answered: look for it on-chain, or ask the wallet again
   stepAction: (key: string, action: 'find' | 'retry') => void;
+  // the chain already shows the effect of the tx sent under `label` (before the wallet reported it):
+  // mark it done in the log and progress panel; a later wallet timeout won't turn it into an error
+  confirmedByChain: (label: string, note?: string) => void;
   // the voucher type being worked on, shared by the Types / Roles / DAO tabs (-1 = none picked)
   typeId: number;
   setTypeId: (id: number) => void;
@@ -136,6 +139,9 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     putFlow({ ...f, steps });
   }, [putFlow]);
   const txId = useRef(0);
+  // txs in flight by label (for confirmedByChain), and the ones the chain already confirmed
+  const inFlight = useRef(new Map<string, { id: number; fid: number; i: number }>());
+  const chainSettled = useRef(new Set<number>());
   const chainRef = useRef(chainId);
   // every log change is written straight to this chain's storage key (idempotent, so safe in an updater)
   const updateLog = useCallback((fn: (log: TxLogEntry[]) => TxLogEntry[]) => {
@@ -333,20 +339,36 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
       if (p.hash) flowPatch(fid, fstep, { hash: p.hash });
     };
     updateLog((log) => [{ id, label, status: 'pending' as const, to: meta.to, at: new Date().toISOString() }, ...log].slice(0, TX_LOG_MAX));
+    inFlight.current.set(label, { id, fid, i: fstep });
     try {
       const result = await run((hash) => patch({ hash }), stepRef);
+      inFlight.current.delete(label);
       lastConfirmedAt.current = Date.now();
       patch({ status: 'success', ...(meta.deployedFrom ? { deployed: meta.deployedFrom(result) } : {}) });
       flowPatch(fid, fstep, { status: 'done' });
       setRevision((r) => r + 1);
       return result;
     } catch (e: any) {
+      inFlight.current.delete(label);
       const error = decodeVoucherError(e);
-      patch({ status: 'error', error });
-      flowPatch(fid, fstep, { status: 'error', error });
+      // already confirmed from the chain (e.g. the wallet timed out later): keep it as done
+      if (!chainSettled.current.has(id)) {
+        patch({ status: 'error', error });
+        flowPatch(fid, fstep, { status: 'error', error });
+      }
       throw new Error(error);
     }
   }, [updateLog, flowStart, flowPatch]);
+
+  const confirmedByChain = useCallback((label: string, note?: string) => {
+    const t = inFlight.current.get(label);
+    if (!t) return;
+    inFlight.current.delete(label);
+    chainSettled.current.add(t.id);
+    updateLog((log) => log.map((e) => (e.id === t.id ? { ...e, status: 'success' as const, ...(note ? { error: undefined, label: `${e.label} — ${note}` } : {}) } : e)));
+    flowPatch(t.fid, t.i, { status: 'done' });
+    setRevision((r) => r + 1);
+  }, [updateLog, flowPatch]);
 
   // Estimate first so a revert shows its decoded reason instead of costing a failed tx,
   // then send with a 25% buffer (same idea as lib/contracts/gas.ts).
@@ -513,7 +535,8 @@ export function VoucherV2Provider({ children }: { children: React.ReactNode }) {
     closeFlow,
     recheckTx,
     stepAction,
-  }), [address, chainId, signer, reader, book, setAddress, setToken, replaceBook, markExported, read, write, send, sendValue, deployProxy, deployImpl, setPendingImpl, deployPlain, deployExtraPool, deployExtraPoolImpl, nameOf, txLog, updateLog, revision, typeId, flow, beginFlow, closeFlow, recheckTx, stepAction]);
+    confirmedByChain,
+  }), [address, chainId, signer, reader, book, setAddress, setToken, replaceBook, markExported, read, write, send, sendValue, deployProxy, deployImpl, setPendingImpl, deployPlain, deployExtraPool, deployExtraPoolImpl, nameOf, txLog, updateLog, revision, typeId, flow, beginFlow, closeFlow, recheckTx, stepAction, confirmedByChain]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

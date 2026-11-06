@@ -1870,6 +1870,7 @@ export default function AdminSection() {
               <div className="flex gap-2 mt-1">
                 <input type="number" value={newOffset} onChange={e => setNewOffset(e.target.value)} min="0" max="86399" className="flex-1 bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent" />
                 <input type="time" value={secondsToUtcTime(parseInt(newOffset) || 0)} onChange={e => setNewOffset(utcTimeToSeconds(e.target.value))} className="bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent" />
+                <span className="shrink-0 self-center text-xs font-semibold text-accent" title="This time is in UTC">UTC</span>
               </div>
               <p className="text-[10px] text-txt-secondary/70">Pick a UTC clock time (e.g. 18:00 = 6:00 PM UTC) or type raw seconds directly — both stay in sync. Your local time: {fmtLocalTimeOfDay(parseInt(newOffset) || 0)}.</p>
               <button onClick={setOffset} disabled={!isConnected} className={`w-full ${btnCls}`}>Update Offset</button>

@@ -67,7 +67,7 @@ export function RecipientRows({ rows, onChange, needsId, amountLabel, check, tot
   check: ReturnType<typeof checkRows>;
   total?: string; // e.g. "37.5 tLUCA"
   perTx: string; // "transaction" | "proposal"
-  onLoaded: (text: string) => void;
+  onLoaded: (text: string, fileName?: string) => void; // fileName: the CSV the rows came from
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState(0);
@@ -94,7 +94,7 @@ export function RecipientRows({ rows, onChange, needsId, amountLabel, check, tot
       if (!loaded.length) return onLoaded('CSV: no data rows found.');
       onChange(loaded);
       setPage(0);
-      onLoaded(`Loaded ${loaded.length} recipient(s) from ${file.name} — review below before minting.`);
+      onLoaded(`Loaded ${loaded.length} recipient(s) from ${file.name} — review below before minting.`, file.name);
     };
     reader.onerror = () => onLoaded('Failed to read CSV file.');
     reader.readAsText(file);

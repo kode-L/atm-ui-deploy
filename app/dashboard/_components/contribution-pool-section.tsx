@@ -1093,8 +1093,8 @@ export default function ContributionPoolSection() {
       <div><label className="text-xs text-txt-secondary">Max per user</label><input value={maxPerUser} onChange={e => setMaxPerUser(e.target.value)} placeholder="0 = no limit" className={`${inputCls} mt-1`} /></div>
       <div><label className="text-xs text-txt-secondary">Min contribution</label><input value={min} onChange={e => setMin(e.target.value)} placeholder="0 = no minimum" className={`${inputCls} mt-1`} /></div>
       <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div><label className="text-xs text-txt-secondary">Start, UTC (blank = now)</label><UtcDateTimeInput value={start} onChange={setStart} className={`${inputCls} mt-1`} /></div>
-        <div><label className="text-xs text-txt-secondary">End, UTC (blank = no end)</label><UtcDateTimeInput value={end} onChange={setEnd} className={`${inputCls} mt-1`} /></div>
+        <div><label className="text-xs text-txt-secondary">Start, your local time (blank = now)</label><UtcDateTimeInput value={start} onChange={setStart} className={`${inputCls} mt-1`} /></div>
+        <div><label className="text-xs text-txt-secondary">End, your local time (blank = no end)</label><UtcDateTimeInput value={end} onChange={setEnd} className={`${inputCls} mt-1`} /></div>
       </div>
     </div>
   );

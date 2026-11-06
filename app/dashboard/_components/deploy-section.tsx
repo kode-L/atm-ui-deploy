@@ -469,6 +469,7 @@ export default function DeploySection() {
               <div className="flex gap-2 mt-0.5">
                 <input type="number" value={hubStartOffset} onChange={e => setHubStartOffset(e.target.value)} min="0" max="86399" placeholder="0" className="flex-1 bg-surface rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
                 <input type="time" value={secondsToUtcTime(parseInt(hubStartOffset) || 0)} onChange={e => setHubStartOffset(utcTimeToSeconds(e.target.value))} className="bg-surface rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+                <span className="shrink-0 self-center text-xs font-semibold text-accent" title="This time is in UTC">UTC</span>
               </div>
               <p className="text-[10px] text-txt-secondary/70 mt-1">Pick a UTC clock time (e.g. 18:00 = 6:00 PM UTC) or type raw seconds directly — both stay in sync. Your local time: {fmtLocalTimeOfDay(parseInt(hubStartOffset) || 0)}.</p>
             </div>

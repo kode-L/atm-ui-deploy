@@ -21,6 +21,7 @@ import { EditTypeCard, NftAdminCard, VaultCard } from './voucher-v2/nft-manage-c
 import ExtraPoolsCard from './voucher-v2/extra-pools-card';
 import AllowlistsCard, { RegistryAccessCard } from './voucher-v2/allowlists-card';
 import PoolsCard from './voucher-v2/pools-card';
+import { TestSetsBar } from './voucher-v2/shared-set';
 
 // Step-by-step deploy + configuration of the on-chain voucher system from the voucher repo
 // (VoucherNFT, VoucherDAO, pools, registry). Separate from the "ATM Vouchers"
@@ -144,6 +145,7 @@ function VoucherV2Inner() {
         </Card>
       ) : (
         <>
+          <TestSetsBar />
           {tab === 'overview' && <OverviewTab onGo={go} />}
           {tab === 'deploy' && <DeployTab onGo={go} />}
           {tab === 'nft' && (

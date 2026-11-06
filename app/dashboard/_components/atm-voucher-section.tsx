@@ -930,12 +930,12 @@ export default function ATMVoucherSection() {
               </select>
               <input value={mintRedemptionDays} onChange={e => setMintRedemptionDays(e.target.value)} placeholder="Redemption days (0 = instant)" type="number" min={0} className={inputCls} />
               <div>
-                <label className="text-xs text-txt-secondary">Start Date (UTC)</label>
+                <label className="text-xs text-txt-secondary">Start Date (your local time)</label>
                 <UtcDateTimeInput value={mintStartDate} onChange={setMintStartDate} className={`${inputCls} mt-1`} />
               </div>
               <div>
                 <label className="text-xs text-txt-secondary flex items-center gap-2">
-                  Expiry Date (UTC)
+                  Expiry Date (your local time)
                   <span className="flex items-center gap-1 ml-auto">
                     <input type="checkbox" checked={mintNeverExpires} onChange={e => setMintNeverExpires(e.target.checked)} className="w-3.5 h-3.5 accent-accent" /> Never
                   </span>
@@ -986,12 +986,12 @@ export default function ATMVoucherSection() {
               </select>
               <input value={batchRedemptionDays} onChange={e => setBatchRedemptionDays(e.target.value)} placeholder="Redemption days (0 = instant)" type="number" min={0} className={inputCls} />
               <div>
-                <label className="text-xs text-txt-secondary">Start Date (UTC)</label>
+                <label className="text-xs text-txt-secondary">Start Date (your local time)</label>
                 <UtcDateTimeInput value={batchStartDate} onChange={setBatchStartDate} className={`${inputCls} mt-1`} />
               </div>
               <div>
                 <label className="text-xs text-txt-secondary flex items-center gap-2">
-                  Expiry Date (UTC)
+                  Expiry Date (your local time)
                   <span className="flex items-center gap-1 ml-auto">
                     <input type="checkbox" checked={batchNeverExpires} onChange={e => setBatchNeverExpires(e.target.checked)} className="w-3.5 h-3.5 accent-accent" /> Never
                   </span>

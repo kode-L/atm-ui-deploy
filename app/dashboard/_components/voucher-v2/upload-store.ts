@@ -10,12 +10,25 @@ export interface StoredBatch {
   proposalId: number | null;
   file?: string; // batch file it came from (zip / CSV import)
   submittedAt?: number; // sent from a contract wallet (Safe): queued there, proposal id not known yet
+  safeTxHash?: string; // the Safe's own hash for the propose tx (followed via the Safe API on mainnet)
+  safe?: string; // the Safe that queued it
+  safeActions?: { kind: 'approve' | 'execute'; hash: string; safe: string; at: number }[]; // approve / execute queued in a Safe
+  proposeTx?: string; // tx that created the proposal (same as execTx when it minted at once)
+  execTx?: string; // tx that minted this batch's vouchers
+  completedAt?: number; // block time of that tx: every row's voucher found minted to its wallet
+  // what this batch was proposed with (from the form at that moment); unset until proposed from here
+  token?: string;
+  startDate?: number;
+  expiryDate?: number;
+  fromTs?: number; // earliest time its proposal can exist (when it was proposed from this page): bounds log searches
 }
 export interface StoredUpload {
   id: string;
   chainId: number;
   dao: string; // VoucherDAO address (lowercase)
   typeId: number;
+  // form values when the upload was saved — informational only: proposals use the form's values at
+  // propose time and record them on the batch
   token: string;
   startDate: number;
   expiryDate: number;
@@ -25,6 +38,10 @@ export interface StoredUpload {
   rows: StoredRow[];
   batches: StoredBatch[];
   minted?: Record<number, string[]>; // proposalId -> voucher ids in row order
+  // claim state per voucher id from the last "Check claims" (claimed / revoked are final on-chain,
+  // so those are never re-read); claimsAt = when that check ran
+  claims?: Record<string, { claimed: boolean; revoked: boolean; owner: string | null }>;
+  claimsAt?: number;
 }
 
 const DB = 'dg_voucherV2';
@@ -82,3 +99,37 @@ export async function deleteUpload(id: string): Promise<void> {
 }
 
 export const newUploadId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Take rows out of their batches before those are sent (indexes into `u.rows`) and move them into a
+ * new batch per source file at the end of the upload — "<file> — removed wallets", not proposed — so
+ * they stay tracked: propose it later, or Remove that batch. Batch ranges shift; a batch left empty
+ * is dropped. Only for batches not yet sent (their content is what the on-chain match compares).
+ * Returns the new upload and, per old batch index, its new index (-1 = dropped).
+ */
+export function removeRows(u: StoredUpload, rowIdxs: number[]): { upload: StoredUpload; batchMap: number[] } {
+  const drop = new Set(rowIdxs);
+  const rows: StoredRow[] = [];
+  const batchMap: number[] = [];
+  const batches: StoredBatch[] = [];
+  const moved = new Map<string, StoredRow[]>(); // source file -> removed rows, in order
+  u.batches.forEach((b, bi) => {
+    const keep: StoredRow[] = [];
+    for (let i = b.start; i < b.end; i++) {
+      if (!drop.has(i)) keep.push(u.rows[i]);
+      else {
+        const key = b.file ?? `batch ${bi + 1}`;
+        moved.set(key, [...(moved.get(key) || []), u.rows[i]]);
+      }
+    }
+    if (!keep.length) { batchMap.push(-1); return; }
+    batchMap.push(batches.length);
+    batches.push({ ...b, start: rows.length, end: rows.length + keep.length });
+    rows.push(...keep);
+  });
+  for (const [file, r] of Array.from(moved.entries())) {
+    batches.push({ start: rows.length, end: rows.length + r.length, proposalId: null, file: `${file} — removed wallets` });
+    rows.push(...r);
+  }
+  return { upload: { ...u, rows, batches }, batchMap };
+}
