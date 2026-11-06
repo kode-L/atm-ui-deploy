@@ -15,6 +15,7 @@ export interface StoredBatch {
   safeActions?: { kind: 'approve' | 'execute'; hash: string; safe: string; at: number }[]; // approve / execute queued in a Safe
   proposeTx?: string; // tx that created the proposal (same as execTx when it minted at once)
   execTx?: string; // tx that minted this batch's vouchers
+  voucherIds?: string[]; // voucher / NFT ids it minted, in row order (direct + ATM v1; DAO uses minted[proposalId])
   completedAt?: number; // block time of that tx: every row's voucher found minted to its wallet
   // what this batch was proposed with (from the form at that moment); unset until proposed from here
   token?: string;
@@ -22,10 +23,18 @@ export interface StoredBatch {
   expiryDate?: number;
   fromTs?: number; // earliest time its proposal can exist (when it was proposed from this page): bounds log searches
 }
+
+// Which page an upload belongs to. Uploads are listed per page AND per contract address, so a list
+// never shows (or matches against) another page's data.
+//   dao    — VoucherDAO bulk-mint proposals (address = VoucherDAO)
+//   direct — VoucherNFT.mintBatch from the connected wallet (address = VoucherNFT)
+//   atm-v1 — ATMVoucher.mintBatch, the older voucher contract (address = ATMVoucher)
+export type UploadScope = 'dao' | 'direct' | 'atm-v1';
 export interface StoredUpload {
   id: string;
   chainId: number;
-  dao: string; // VoucherDAO address (lowercase)
+  dao: string; // the page's contract address (lowercase): VoucherDAO, VoucherNFT or ATMVoucher — see scope
+  scope?: UploadScope; // unset on uploads saved before scopes existed: 'dao' (or 'direct' at a VoucherNFT address)
   typeId: number;
   // form values when the upload was saved — informational only: proposals use the form's values at
   // propose time and record them on the batch
@@ -80,10 +89,12 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
   });
 }
 
-export async function listUploads(chainId: number, dao: string): Promise<StoredUpload[]> {
+export async function listUploads(chainId: number, dao: string, scope?: UploadScope): Promise<StoredUpload[]> {
   const all = ((await tx<StoredUpload[]>('readonly', (s) => s.getAll() as IDBRequest<StoredUpload[]>)) ?? Array.from(memory.values()));
   return all
     .filter((u) => u.chainId === chainId && u.dao === dao.toLowerCase())
+    // legacy uploads (no scope) were DAO or direct, told apart by their address already
+    .filter((u) => !scope || (u.scope ? u.scope === scope : scope !== 'atm-v1'))
     .sort((a, b) => b.createdAt - a.createdAt || (b.batches[0]?.proposalId ?? 0) - (a.batches[0]?.proposalId ?? 0));
 }
 
@@ -132,4 +143,35 @@ export function removeRows(u: StoredUpload, rowIdxs: number[]): { upload: Stored
     rows.push(...r);
   }
   return { upload: { ...u, rows, batches }, batchMap };
+}
+
+/** Voucher ids a batch minted, in row order, whatever page / storage layout it came from. */
+export function batchVoucherIds(u: StoredUpload, bi: number): string[] | undefined {
+  const b = u.batches[bi];
+  if (!b) return undefined;
+  if (b.voucherIds) return b.voucherIds;
+  if (b.proposalId !== null) return u.minted?.[b.proposalId];
+  return u.scope === 'direct' || (!u.scope && b.execTx) ? u.minted?.[bi] : undefined; // old direct uploads: keyed by batch index
+}
+
+/** A new upload (not saved yet) for one page, split into batches of at most `maxBatch` rows per file. */
+export function makeUpload(o: {
+  chainId: number; addr: string; scope: UploadScope; typeId: number; token: string; startDate: number; expiryDate: number;
+  name: string; source?: string; maxBatch: number; files: { file?: string; rows: StoredRow[] }[];
+}): StoredUpload {
+  const rows: StoredRow[] = [];
+  const batches: StoredBatch[] = [];
+  for (const f of o.files) {
+    const n = Math.max(1, Math.ceil(f.rows.length / o.maxBatch));
+    for (let k = 0; k < n; k++) {
+      const part = f.rows.slice(k * o.maxBatch, (k + 1) * o.maxBatch);
+      if (!part.length) continue;
+      batches.push({ start: rows.length, end: rows.length + part.length, proposalId: null, file: f.file ? (n > 1 ? `${f.file} (${k + 1}/${n})` : f.file) : undefined });
+      rows.push(...part);
+    }
+  }
+  return {
+    id: newUploadId(), chainId: o.chainId, dao: o.addr.toLowerCase(), scope: o.scope, typeId: o.typeId, token: o.token,
+    startDate: o.startDate, expiryDate: o.expiryDate, createdAt: Math.floor(Date.now() / 1000), name: o.name, source: o.source, rows, batches,
+  };
 }

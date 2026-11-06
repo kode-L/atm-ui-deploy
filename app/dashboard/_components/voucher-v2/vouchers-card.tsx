@@ -9,9 +9,9 @@ import {
 } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import PoolFundingBox from './pool-funding-box';
-import { EditRow, MintRow, RecipientRows, blankRow, checkRows } from './mint-csv';
-import DirectBulkUploads, { DirectParams, makeDirectUpload, runDirectUpload } from './direct-bulk';
-import { saveUpload } from './upload-store';
+import { EditRow, MAX_PER_CALL, MintRow, RecipientRows, blankRow, checkRows } from './mint-csv';
+import BulkTracker from './bulk-tracker';
+import { makeUpload, saveUpload } from './upload-store';
 import { AddressInput, Badge, ContractTag, Field, Select, btnCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
 
 const SCAN_LIMIT = 2000; // vouchers read per browse scan (newest first)
@@ -132,7 +132,9 @@ function MintPanel({ types }: { types: VoucherType[] }) {
   const toFace = (v: string) => (fungible(t) ? toUnits(v, 18) : String(Math.max(0, parseInt(v || '0', 10) || 0)));
   const token = reward ? f.token || t?.approvedTokens[0] || ZERO : ZERO;
   const [uploadsVersion, setUploadsVersion] = useState(0);
-  const directParams = (): DirectParams => ({ token, startDate: utcInputToUnix(f.start), expiryDate: utcInputToUnix(f.expiry) });
+  // the shared bulk tracker (page key "direct"): opens an upload and, with send, its review dialog
+  const [kick, setKick] = useState<{ uploadId: string; n: number; send?: boolean } | null>(null);
+  const directParams = () => ({ token, startDate: utcInputToUnix(f.start), expiryDate: utcInputToUnix(f.expiry), duration: 0 });
 
   const mint = async () => {
     if (!t) return;
@@ -153,19 +155,21 @@ function MintPanel({ types }: { types: VoucherType[] }) {
         if (errors.length) throw new Error(`Fix the recipient list first: ${errors.slice(0, 3).join('; ')}`);
         if (!list.length) throw new Error('Add recipients, or upload a CSV');
         // saved as a bulk upload first (Bulk uploads, below): each mintBatch-sized batch is tracked,
-        // so a list that stops halfway resumes from there instead of minting twice
-        const u = makeDirectUpload(ctx, t, `List ${new Date().toLocaleString()}`, list.map((r) => ({ to: r.to, face: toFace(r.amount), tokenId: r.tokenId || '0' })), directParams());
+        // so a list that stops halfway resumes from there instead of minting twice. The review dialog
+        // (all details + every wallet) opens before anything is sent.
+        const nftAddr = ctx.book.contracts.VoucherNFT;
+        if (!nftAddr) throw new Error('VoucherNFT address missing');
+        const p = directParams();
+        const u = makeUpload({
+          chainId: ctx.chainId, addr: nftAddr, scope: 'direct', typeId: t.id, token: p.token, startDate: p.startDate, expiryDate: p.expiryDate,
+          name: `List of ${list.length} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, maxBatch: MAX_PER_CALL,
+          files: [{ rows: list.map((r) => ({ to: r.to, face: toFace(r.amount), tokenId: r.tokenId || '0' })) }],
+        });
         await saveUpload(u);
         setRows([blankRow()]);
         setUploadsVersion((v) => v + 1);
-        try {
-          await runDirectUpload(ctx, u);
-        } catch (e: any) {
-          throw new Error(`${e.message} The list is saved under Bulk uploads (below) — Mint remaining continues from where it stopped.`);
-        } finally {
-          setUploadsVersion((v) => v + 1);
-        }
-        setMsg({ ok: true, text: `Minted ${list.length} voucher(s) in ${u.batches.length} transaction(s). Results are under Bulk uploads (below).` });
+        setKick({ uploadId: u.id, n: Date.now(), send: true });
+        setMsg({ ok: true, text: `Saved as an upload (${u.batches.length} batch${u.batches.length === 1 ? '' : 'es'}) — check the details in the dialog and confirm to mint. Progress shows under Bulk uploads (below).` });
       }
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });
@@ -220,7 +224,7 @@ function MintPanel({ types }: { types: VoucherType[] }) {
       {short && <span className="text-xs text-yellow-300 ml-3">Top up the pool first (above) — minting now would fail.</span>}
       {msg && <p className={`text-xs break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
       {bulk && t && t.approvalsRequired <= 1 && (
-        <DirectBulkUploads type={t} params={directParams} version={uploadsVersion} onChange={() => setUploadsVersion((v) => v + 1)} />
+        <BulkTracker mode="direct" type={t} params={directParams} version={uploadsVersion} kick={kick} onChange={() => setUploadsVersion((v) => v + 1)} />
       )}
     </div>
   );

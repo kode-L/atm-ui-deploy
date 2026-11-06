@@ -9,6 +9,10 @@ import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
 import { getExplorerAddressUrl } from '@/lib/contracts/config';
 import { utcInputToUnix } from '@/lib/utc-time';
 import ATMVoucherArtifact from '@/lib/contracts/ATMVoucher.json';
+import { TokenStandard, VoucherMode, VoucherType } from '@/lib/contracts/voucher-v2';
+import { VoucherV2Provider } from './voucher-v2/context';
+import BulkTracker from './voucher-v2/bulk-tracker';
+import { makeUpload, saveUpload } from './voucher-v2/upload-store';
 import ATMVoucherProxyArtifact from '@/lib/contracts/ATMVoucherProxy.json';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import {
@@ -21,6 +25,14 @@ import {
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
 
 interface VoucherTypeRow { id: number; name: string; mintCount: string; }
+// an ATM v1 voucher type, described the way the shared bulk tracker expects (18-decimal face values,
+// no payout token, no approvals)
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+const asTrackerType = (id: number, name: string): VoucherType => ({
+  id, name, redemptionDays: 0, transferable: true, approvalsRequired: 1, mode: VoucherMode.Reward, tokenStandard: TokenStandard.ERC20,
+  mintingPaused: false, claimPaused: false, payoutRecipient: ZERO_ADDR, settlementTarget: ZERO_ADDR, fundingMode: 0, pointsDirection: 0,
+  transferGate: ZERO_ADDR, revokeDestination: ZERO_ADDR, payoutMode: 0, routeTarget: ZERO_ADDR, approvedTokens: [],
+});
 interface VoucherRow {
   tokenId: number;
   faceValue: string;
@@ -388,17 +400,34 @@ export default function ATMVoucherSection() {
     }
     const startDate = utcInputToUnix(batchStartDate);
     const expiryDate = batchNeverExpires ? 0 : utcInputToUnix(batchExpiryDate);
-    setTxStatus({ status: 'pending', message: `Minting ${to.length} voucher(s)...` });
+    // saved as a bulk upload first (Bulk uploads, below): split into MAX_BATCH_SIZE batches, each
+    // tracked on-chain, and the review dialog (every detail + every wallet) opens before sending
     try {
-      const tx = await atm.mintBatch(to, faceValues, voucherType, startDate, expiryDate, redemptionDays, batchTransferable, batchUri.trim());
-      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
-      await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: `${to.length} voucher(s) minted.` });
+      const maxBatch = Number(await atm.MAX_BATCH_SIZE().catch(() => 50)) || 50;
+      const u = makeUpload({
+        chainId, addr: atmVoucherAddress, scope: 'atm-v1', typeId: voucherType, token: ZERO_ADDR, startDate, expiryDate,
+        name: `List of ${to.length} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, maxBatch,
+        files: [{ rows: to.map((addr, i) => ({ to: ethers.utils.getAddress(addr), face: faceValues[i].toString(), tokenId: '0' })) }],
+      });
+      await saveUpload(u);
       setBatchRows([blankMintRow()]);
-      await fetchTypes();
+      setBatchUploadsVersion((v) => v + 1);
+      setBatchKick({ uploadId: u.id, n: Date.now(), send: true });
+      setTxStatus({ status: 'success', message: `Saved as an upload (${u.batches.length} batch${u.batches.length === 1 ? '' : 'es'}) — check the details in the dialog and confirm to mint. Progress shows under Bulk uploads.` });
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
     }
+  };
+  const [batchUploadsVersion, setBatchUploadsVersion] = useState(0);
+  const [batchKick, setBatchKick] = useState<{ uploadId: string; n: number; send?: boolean } | null>(null);
+  // what each batch is sent with: this card's type, dates and terms at that moment
+  const batchParams = () => {
+    const rd = parseInt(batchRedemptionDays);
+    if (isNaN(rd) || rd < 0) throw new Error('Redemption days must be 0 or more (0 = instant)');
+    return {
+      token: ZERO_ADDR, startDate: utcInputToUnix(batchStartDate), expiryDate: batchNeverExpires ? 0 : utcInputToUnix(batchExpiryDate),
+      duration: 0, redemptionDays: rd, transferable: batchTransferable, uri: batchUri.trim(),
+    };
   };
 
   // ── My Vouchers / Owner Lookup ──
@@ -1004,7 +1033,20 @@ export default function ATMVoucherSection() {
               </label>
             </div>
             <button onClick={handleMintBatch} disabled={!isMinterConnected} className={`w-full mt-4 ${btnCls}`}>Mint Batch</button>
+            <p className="text-[11px] text-txt-secondary mt-2">Saved as a bulk upload first: you review every wallet before sending, and each batch is tracked on-chain below.</p>
           </Card>
+
+          {/* ── Bulk uploads (shared tracker, page key atm-v1) ── */}
+          {atmVoucherAddress && (() => {
+            const bt = knownTypes.find((t) => String(t.id) === batchVoucherType);
+            if (!bt) return <p className="text-xs text-txt-secondary">Select a voucher type in Mint Batch to see its bulk uploads (import a .zip / CSVs, track each batch, download results).</p>;
+            return (
+              <VoucherV2Provider>
+                <BulkTracker mode="atm-v1" atm={{ address: atmVoucherAddress, abi: ATMVoucherArtifact.abi }} type={asTrackerType(bt.id, bt.name)}
+                  params={batchParams} version={batchUploadsVersion} kick={batchKick} onChange={() => setBatchUploadsVersion((v) => v + 1)} />
+              </VoucherV2Provider>
+            );
+          })()}
 
           {/* ── My Vouchers / Owner Lookup ── */}
           <Card title="Vouchers by Owner" icon={<Wallet className="w-5 h-5 text-accent" />}>
