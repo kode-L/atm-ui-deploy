@@ -8,6 +8,7 @@ const git = (cmd) => {
 };
 const commit = git('rev-parse --short HEAD') || (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || process.env.CI_COMMIT_SHA || '').slice(0, 7) || 'unknown';
 const buildInfo = {
+  NEXT_PUBLIC_APP_VERSION: require('./package.json').version || '',
   NEXT_PUBLIC_BUILD_COMMIT: commit,
   NEXT_PUBLIC_BUILD_BRANCH: git('rev-parse --abbrev-ref HEAD') || process.env.VERCEL_GIT_COMMIT_REF || process.env.GITHUB_REF_NAME || process.env.CI_COMMIT_REF_NAME || '',
   NEXT_PUBLIC_BUILD_COMMIT_TIME: git('log -1 --format=%ct') || '',

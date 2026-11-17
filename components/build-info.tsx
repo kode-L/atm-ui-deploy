@@ -10,6 +10,7 @@ const utc = (s?: string) => {
 };
 
 export default function BuildInfo() {
+  const version = process.env.NEXT_PUBLIC_APP_VERSION || '';
   const commit = process.env.NEXT_PUBLIC_BUILD_COMMIT || 'unknown';
   const branch = process.env.NEXT_PUBLIC_BUILD_BRANCH || '';
   const committed = utc(process.env.NEXT_PUBLIC_BUILD_COMMIT_TIME);
@@ -17,6 +18,7 @@ export default function BuildInfo() {
   const dirty = process.env.NEXT_PUBLIC_BUILD_DIRTY === '1';
   const abi = ARTIFACT_MANIFEST?.gitCommit;
   const text = [
+    version && `v${version}`,
     `Build ${commit}${dirty ? ' +uncommitted changes' : ''}`,
     branch,
     committed && `committed ${committed}`,
@@ -25,6 +27,7 @@ export default function BuildInfo() {
   ].filter(Boolean).join(' · ');
   return (
     <footer className="max-w-[1200px] mx-auto px-4 py-4 text-[11px] text-txt-secondary/70 border-t border-white/5 flex flex-wrap items-center gap-x-2">
+      {version && <span className="font-mono text-txt-secondary">v{version} ·</span>}
       <span className="font-mono">
         Build <b className="text-txt-secondary">{commit}</b>
         {dirty && <span className="text-yellow-300"> +uncommitted changes</span>}
