@@ -395,17 +395,18 @@ export default function RewardEligibilityRegistrySection() {
     if (!reg) return;
     setTypesLoading(true);
     try {
-      const currentBlock = await reg.provider.getBlockNumber();
-      const fromBlock = Math.max(0, currentBlock - 50000);
-      const events = await reg.queryFilter(reg.filters.TypeConfigured(), fromBlock, 'latest');
-      const seen = new Map<number, string>();
-      for (const ev of events) {
-        const args: any = (ev as any).args;
-        const id = args.typeId?.toNumber?.() ?? Number(args.typeId);
-        seen.set(id, ethers.utils.formatEther(args.maxClaimablePoints));
+      // Read typeConfig(id) directly - always the current on-chain state (an event scan only covered
+      // recent blocks and missed older types). Ids are small and dense: scan in batches until 10 ids
+      // in a row past the last configured one are unset.
+      const rows: TypeRow[] = [];
+      let lastFound = 0;
+      for (let start = 0; start <= 200 && start <= lastFound + 10; start += 10) {
+        const batch = await Promise.all(Array.from({ length: 10 }, (_, k) => start + k).map(id =>
+          reg.typeConfig(id).then((r: any) => ({ id, max: r[0], exists: !!r[1] })).catch(() => ({ id, max: null, exists: false }))));
+        for (const b of batch) {
+          if (b.exists) { rows.push({ id: b.id, maxClaimablePoints: ethers.utils.formatEther(b.max), exists: true }); lastFound = b.id; }
+        }
       }
-      const rows: TypeRow[] = Array.from(seen.entries()).map(([id, maxClaimablePoints]) => ({ id, maxClaimablePoints, exists: true }));
-      rows.sort((a, b) => a.id - b.id);
       setKnownTypes(rows);
     } catch (e) {
       console.error('fetch types:', e);
@@ -465,25 +466,35 @@ export default function RewardEligibilityRegistrySection() {
   // it takes effect once it also clears the proposal threshold, same as the manual form above.
   const [typePresets, setTypePresets] = useState<TypePreset[]>(INITIAL_TYPE_PRESETS);
   const [presetStatus, setPresetStatus] = useState<Record<number, boolean>>({}); // keyed by row index, not typeId — rows are freely editable/duplicable
+  const [presetOnChain, setPresetOnChain] = useState<Record<number, string>>({}); // row index -> on-chain max (whole points), '' if unset
   const [presetBusyIndex, setPresetBusyIndex] = useState<number | null>(null); // row index currently being proposed, or -1 for "all"
 
-  // Loaded after mount (localStorage isn't available during SSR) — starts from
-  // INITIAL_TYPE_PRESETS above until a saved list, if any, overrides it.
+  // Per network (the caps differ between mainnet and testnet). A list saved in this browser wins;
+  // otherwise the rows start from what is configured on-chain (see the effect after fetchTypes).
+  const presetsKey = `${TYPE_PRESETS_STORAGE_KEY}:${chainId || 0}`;
+  const [presetsFromStorage, setPresetsFromStorage] = useState(false);
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(TYPE_PRESETS_STORAGE_KEY);
-      if (saved) setTypePresets(JSON.parse(saved));
-    } catch { /* corrupt storage — keep defaults */ }
-  }, []);
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(presetsKey); } catch { /* storage unavailable */ }
+    if (saved) {
+      try { setTypePresets(JSON.parse(saved)); setPresetsFromStorage(true); return; } catch { /* corrupt - fall through */ }
+    }
+    setPresetsFromStorage(false);
+  }, [presetsKey]);
 
   const savePresets = (next: TypePreset[]) => {
     setTypePresets(next);
-    try { localStorage.setItem(TYPE_PRESETS_STORAGE_KEY, JSON.stringify(next)); } catch { /* storage unavailable/full — edits still work this session */ }
+    setPresetsFromStorage(true);
+    try { localStorage.setItem(presetsKey, JSON.stringify(next)); } catch { /* storage unavailable/full — edits still work this session */ }
   };
   const updatePresetRow = (i: number, field: keyof TypePreset, v: string) => savePresets(typePresets.map((p, idx) => idx === i ? { ...p, [field]: v } : p));
   const addPresetRow = () => savePresets([...typePresets, { typeId: '', maxPoints: '' }]);
   const removePresetRow = (i: number) => savePresets(typePresets.filter((_, idx) => idx !== i));
   const resetPresetsToDefault = () => savePresets(INITIAL_TYPE_PRESETS);
+  /** Replace the rows with exactly what is configured on-chain right now. */
+  const loadPresetsFromChain = () => {
+    if (knownTypes.length) savePresets(knownTypes.map(t => ({ typeId: String(t.id), maxPoints: t.maxClaimablePoints })));
+  };
 
   const fetchPresetStatus = useCallback(async () => {
     const reg = getRead();
@@ -494,14 +505,23 @@ export default function RewardEligibilityRegistrySection() {
         return isNaN(id) ? Promise.resolve([null, false]) : reg.typeConfig(id).catch(() => [null, false]);
       }));
       const next: Record<number, boolean> = {};
-      results.forEach((r: any, i) => { next[i] = !!r[1]; });
+      const onChain: Record<number, string> = {};
+      results.forEach((r: any, i) => { next[i] = !!r[1]; onChain[i] = r[1] ? ethers.utils.formatEther(r[0]) : ''; });
       setPresetStatus(next);
+      setPresetOnChain(onChain);
     } catch (e) {
       console.error('fetch preset status:', e);
     }
   }, [getRead, typePresets]);
 
   useEffect(() => { fetchPresetStatus(); }, [fetchPresetStatus]);
+
+  // No list saved for this network: start the preset rows from the chain's configured types.
+  useEffect(() => {
+    if (!presetsFromStorage && knownTypes.length) {
+      setTypePresets(knownTypes.map(t => ({ typeId: String(t.id), maxPoints: t.maxClaimablePoints })));
+    }
+  }, [knownTypes, presetsFromStorage]);
 
   const proposePreset = async (typeId: number, maxPoints: string) => {
     const reg = getWrite();
@@ -1189,6 +1209,7 @@ export default function RewardEligibilityRegistrySection() {
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <h4 className="font-medium">Default Type Presets</h4>
                 <div className="flex items-center gap-3">
+                  <button onClick={loadPresetsFromChain} disabled={!knownTypes.length} className="text-xs text-txt-secondary hover:text-accent underline disabled:opacity-40">Load from chain</button>
                   <button onClick={resetPresetsToDefault} className="text-xs text-txt-secondary hover:text-accent underline">Reset to Defaults</button>
                   <button
                     onClick={handleRepairAllPresets}
@@ -1218,8 +1239,11 @@ export default function RewardEligibilityRegistrySection() {
                   const typeIdNum = parseInt(p.typeId);
                   const configured = !isNaN(typeIdNum) && !!presetStatus[i];
                   const busy = presetBusyIndex === i;
+                  const chainVal = presetOnChain[i] || '';
+                  const differs = configured && p.maxPoints.trim() !== '' && Number(p.maxPoints) !== Number(chainVal);
                   return (
-                    <div key={i} className="grid grid-cols-[80px_1fr_100px_36px] gap-2 items-center">
+                    <React.Fragment key={i}>
+                    <div className="grid grid-cols-[80px_1fr_100px_36px] gap-2 items-center">
                       <input value={p.typeId} onChange={e => updatePresetRow(i, 'typeId', e.target.value)} type="number" min={0} placeholder="1" className={inputCls} />
                       <input value={p.maxPoints} onChange={e => updatePresetRow(i, 'maxPoints', e.target.value)} type="number" min={0} placeholder="500" className={inputCls} />
                       {configured ? (
@@ -1235,6 +1259,13 @@ export default function RewardEligibilityRegistrySection() {
                       )}
                       <button onClick={() => removePresetRow(i)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400 justify-self-center"><Trash2 className="w-4 h-4" /></button>
                     </div>
+                    {!isNaN(typeIdNum) && (
+                      <p className={`text-[11px] -mt-1 pl-[88px] ${differs ? 'text-yellow-400' : 'text-txt-secondary'}`}>
+                        On-chain: {configured ? <span className="font-mono">{chainVal}</span> : 'not configured'}
+                        {differs && ' — differs from this row (Repair/Overwrite to change it)'}
+                      </p>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </div>

@@ -256,6 +256,17 @@ export default function ContributionPoolSection() {
   const fail = (error: string) => setTxStatus({ status: 'error', error });
 
   // ── Contract instances ──
+  // the chain's current time (latest block timestamp), refreshed every 30s - pool status uses it
+  const [chainNow, setChainNow] = useState(0);
+  useEffect(() => {
+    if (!provider) return;
+    let cancelled = false;
+    const tick = () => provider.getBlock('latest').then(b => { if (!cancelled && b) setChainNow(b.timestamp); }).catch(() => {});
+    tick();
+    const t = setInterval(tick, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [provider]);
+
   const getRead = useCallback(() => {
     if (!provider || !contributionPoolAddress) return null;
     return new ethers.Contract(contributionPoolAddress, ABI, provider);
@@ -1037,10 +1048,22 @@ export default function ContributionPoolSection() {
   };
 
   // ── Render helpers ──
-  const poolStatus = (p: PoolRow) =>
-    p.refunding ? <span className="text-red-400">Refunding</span>
-      : p.contributionsOpen ? <span className="text-green-400">Open</span>
-        : <span className="text-yellow-400">Closed</span>;
+  // Status mirrors the contract's own contribute() checks, against the chain's current time
+  // (latest block timestamp): refunding, closed flag, startTime, endTime, target reached.
+  const poolState = (p: PoolRow): { label: string; cls: string; detail: string; canContribute: boolean } => {
+    const now = chainNow || Math.floor(Date.now() / 1000);
+    const fmt = (t: number) => new Date(t * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    if (p.refunding) return { label: 'Refunding', cls: 'text-red-400', detail: 'refund mode — claims only', canContribute: false };
+    if (!p.contributionsOpen) return { label: 'Closed', cls: 'text-yellow-400', detail: 'contributions closed by admin', canContribute: false };
+    if (now < p.startTime) return { label: 'Not started', cls: 'text-blue-400', detail: `opens ${fmt(p.startTime)}`, canContribute: false };
+    if (p.endTime !== 0 && now > p.endTime) return { label: 'Ended', cls: 'text-yellow-400', detail: `ended ${fmt(p.endTime)}`, canContribute: false };
+    if (!p.target.isZero() && p.raised.gte(p.target)) return { label: 'Target reached', cls: 'text-yellow-400', detail: 'no room left under the target', canContribute: false };
+    return { label: 'Open', cls: 'text-green-400', detail: p.endTime !== 0 ? `until ${fmt(p.endTime)}` : 'no end time', canContribute: true };
+  };
+  const poolStatus = (p: PoolRow) => {
+    const st = poolState(p);
+    return <span className={st.cls} title={st.detail}>{st.label}</span>;
+  };
   const limitStr = (v: BN) => v.isZero() ? 'No limit' : fmtUnits(v, 18);
 
   const Pager = ({ offset, total, onPage, loading }: { offset: number; total: number; onPage: (o: number) => void; loading?: boolean }) => (
@@ -1377,8 +1400,8 @@ export default function ContributionPoolSection() {
           <Card title={`Contribute${selectedPoolId ? ` to Pool #${selectedPoolId}` : ''}`} icon={<HandCoins className="w-5 h-5 text-accent" />}>
             {poolDetail?.pool.refunding ? (
               <p className="text-xs text-yellow-400 mb-3">This pool is in refund mode — contributions are closed, claim your refund below.</p>
-            ) : poolDetail && !poolDetail.pool.contributionsOpen ? (
-              <p className="text-xs text-yellow-400 mb-3">Contributions are closed for this pool.</p>
+            ) : poolDetail && !poolState(poolDetail.pool).canContribute ? (
+              <p className="text-xs text-yellow-400 mb-3">Contributions are not possible right now: {poolState(poolDetail.pool).label} — {poolState(poolDetail.pool).detail}.</p>
             ) : null}
             <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end">
               <div>
