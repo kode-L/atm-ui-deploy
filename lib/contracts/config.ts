@@ -13,13 +13,29 @@ type ChainDefaults = {
   contributionPoolAddress?: string;
   rgstAddress?: string;
   atmVoidAddress?: string;
+  // VoucherAdapter: deploy-form defaults (senator / signatures = the legacy Incentive contract's on
+  // this chain) and, once deployed, its address (the GameHub tab also finds it on-chain)
+  voucherNftAddress?: string;
+  senatorAddress?: string;
+  signNum?: number;
+  voucherAdapterAddress?: string;
 };
 
-// Per-chainId default contract addresses (keyed by chainId as a string, e.g. "97", "56").
-// This is the checked-in manifest to edit after deploying to a chain — env vars below still
-// take precedence over it, so a local .env can override a single address without touching it.
+// Per-chainId production addresses (keyed by chainId as a string, e.g. "97", "56"). This
+// checked-in manifest is the source of truth - edit it after deploying to a chain. A .env value
+// is only a fallback for a field chain.json leaves empty (and must be a real address).
 const CHAIN_DEFAULTS = chainDefaults as Record<string, ChainDefaults>;
-const chainDefault = (chainId: number, key: keyof ChainDefaults) => CHAIN_DEFAULTS[String(chainId)]?.[key] || '';
+const chainDefault = (chainId: number, key: keyof ChainDefaults): string => {
+  const v = CHAIN_DEFAULTS[String(chainId)]?.[key];
+  return v === undefined || v === null ? '' : String(v);
+};
+
+/** A real 0x address, else ''. Placeholder text in .env (e.g. "your_gamehub_address_here") or a
+ *  corrupted saved value must never override the per-chain production defaults in chain.json. */
+export const validAddr = (v?: string | null): string => (v && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? v.trim() : '');
+
+/** A chain.json address for this chain ('' if unset or not a real address). */
+export const chainAddress = (chainId: number, key: keyof ChainDefaults): string => validAddr(chainDefault(chainId, key));
 
 // Multiple endpoints per network so read calls (used app-wide via the fallback provider in
 // rpc-provider.ts) race across all of them instead of depending on one single public RPC —
@@ -62,71 +78,71 @@ export const BSC_MAINNET = {
 // Deployed contract addresses (BNB Smart Chain Testnet). Falls back to chain.json's "97"
 // entry, overridden by the env var if set.
 export const DEFAULT_SESSION_MANAGER_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'sessionManagerAddress');
-export const DEFAULT_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'tokenAddress');
+export const DEFAULT_TOKEN_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'tokenAddress') || validAddr(process.env.NEXT_PUBLIC_TOKEN_ADDRESS);
 // GameHub proxy — platform registry/factory. Set after deploying the hub stack from the Deploy tab.
-export const DEFAULT_HUB_ADDRESS = process.env.NEXT_PUBLIC_HUB_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'hubAddress');
+export const DEFAULT_HUB_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'hubAddress') || validAddr(process.env.NEXT_PUBLIC_HUB_ADDRESS);
 // Void — burns points sent to it straight to the dead address. Set after deploying from the Void tab.
-export const DEFAULT_TOKEN_VOID_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_VOID_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'tokenVoidAddress');
+export const DEFAULT_TOKEN_VOID_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'tokenVoidAddress') || validAddr(process.env.NEXT_PUBLIC_TOKEN_VOID_ADDRESS);
 // Pre-fills the Admin Address field on the Deploy tab's GameHub form for first deployment.
 // Not an on-chain source of truth — the actual admin is whatever address GameHub.initialize() was called with.
-export const DEFAULT_ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'adminAddress');
+export const DEFAULT_ADMIN_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'adminAddress') || validAddr(process.env.NEXT_PUBLIC_ADMIN_ADDRESS);
 
 // Optional fallback recognized as the Void contract owner in the UI (token-void-section.tsx's
 // isOwner check), in addition to whatever the live owner() call returns. Useful if the on-chain
 // owner hasn't loaded yet or you want a designated wallet to always see owner-only controls.
-export const DEFAULT_VOID_OWNER_ADDRESS = process.env.NEXT_PUBLIC_VOID_OWNER_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'voidOwnerAddress');
+export const DEFAULT_VOID_OWNER_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'voidOwnerAddress') || validAddr(process.env.NEXT_PUBLIC_VOID_OWNER_ADDRESS);
 
 // RewardEligibilityRegistry proxy — standalone player/type registry, unrelated to the GameHub
 // fleet. Set after deploying from the Reward Eligibility Registry tab.
-export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'rewardEligibilityRegistryAddress');
+export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'rewardEligibilityRegistryAddress') || validAddr(process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS);
 
 // ATMVoucher proxy — standalone ERC-721 voucher contract, unrelated to the GameHub fleet
 // (though GameHub can optionally point at one via setATMVoucher). Set after deploying
 // from the ATM Vouchers tab.
-export const DEFAULT_ATM_VOUCHER_ADDRESS = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'atmVoucherAddress');
+export const DEFAULT_ATM_VOUCHER_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'atmVoucherAddress') || validAddr(process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS);
 
 // ContributionPool proxy — standalone pooled-contribution contract with its own admin/operator
 // role model, unrelated to the GameHub fleet. Set after deploying from the Contribution Pool tab.
-export const DEFAULT_CONTRIBUTION_POOL_ADDRESS = process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'contributionPoolAddress');
+export const DEFAULT_CONTRIBUTION_POOL_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'contributionPoolAddress') || validAddr(process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS);
 
 // RGST proxy — standalone rebasing ERC20 with its own owner/minter/rebaser/receiver roles and a
 // timelocked proxy admin, unrelated to the GameHub fleet. Set after deploying from the RGST Token tab.
-export const DEFAULT_RGST_ADDRESS = process.env.NEXT_PUBLIC_RGST_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'rgstAddress');
+export const DEFAULT_RGST_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'rgstAddress') || validAddr(process.env.NEXT_PUBLIC_RGST_ADDRESS);
 
 // Senator (PR-node multisig) the VoucherAdapter verifies signed points transfers against: the same
 // one the legacy Incentive contract uses on each chain (Incentive.senator()), i.e. pagerank-service's
 // SENATOR_ADDRESS, so the PR nodes that already sign there are the ones the adapter accepts.
-export const DEFAULT_SENATOR_ADDRESS = '0x7fa9AdAfC33cB1a0edFD2ff1178Ed7959F5Cd852'; // BSC Testnet (97)
-export const DEFAULT_SENATOR_ADDRESS_MAINNET = '0x26BA33a62D15Ad5d9d8b31008AAfC1870f6bf2E9'; // BSC Mainnet (56)
+export const DEFAULT_SENATOR_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'senatorAddress');
+export const DEFAULT_SENATOR_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'senatorAddress');
 // Required PR-node signatures for signed points transfers - same as the legacy Incentive contract on
 // each chain (Incentive.signNum(); 0 there means its built-in default of 18).
-export const DEFAULT_SIGN_NUM = 1; // BSC Testnet (97): Incentive 0xA711…ae63 signNum = 1
-export const DEFAULT_SIGN_NUM_MAINNET = 18; // BSC Mainnet (56): Incentive 0x6336…9CCD signNum = 0 -> 18
+export const DEFAULT_SIGN_NUM = Number(chainDefault(BNB_TESTNET.chainId, 'signNum')) || 1;
+export const DEFAULT_SIGN_NUM_MAINNET = Number(chainDefault(BSC_MAINNET.chainId, 'signNum')) || 1;
 
 // Deployed Voucher V2 VoucherNFT per chain (atm-smart-contract ProductionAddress.md / TestnetAddress.md) —
 // pre-fills the VoucherAdapter deploy form when the Voucher V2 tab's address book has none.
-export const DEFAULT_VOUCHER_NFT_ADDRESS = '0xA1010B445db17C3d754B048dd40Cae4471290170'; // BSC Testnet (97)
-export const DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET = '0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9'; // BSC Mainnet (56)
+export const DEFAULT_VOUCHER_NFT_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'voucherNftAddress');
+export const DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'voucherNftAddress');
 
 // ATMVoid proxy — configurable burn contract (any registered ERC-20 / V2 LP token), its own
 // admin/operator roles. Set after deploying from the ATM Void tab.
-export const DEFAULT_ATM_VOID_ADDRESS = process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'atmVoidAddress');
+export const DEFAULT_ATM_VOID_ADDRESS = chainDefault(BNB_TESTNET.chainId, 'atmVoidAddress') || validAddr(process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS);
 
 // Same set of defaults, but for BSC Mainnet — deployments are independent per network,
 // so mainnet gets its own fallbacks (chain.json's "56" entry, env var still wins) alongside
 // the testnet ones above.
-export const DEFAULT_TOKEN_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_TOKEN_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'tokenAddress');
-export const DEFAULT_HUB_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_HUB_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'hubAddress');
+export const DEFAULT_TOKEN_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'tokenAddress') || validAddr(process.env.NEXT_PUBLIC_TOKEN_ADDRESS_MAINNET);
+export const DEFAULT_HUB_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'hubAddress') || validAddr(process.env.NEXT_PUBLIC_HUB_ADDRESS_MAINNET);
 // Mirrors DEFAULT_SESSION_MANAGER_ADDRESS (testnet) — no env var, chain.json only, same as testnet's.
 export const DEFAULT_SESSION_MANAGER_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'sessionManagerAddress');
-export const DEFAULT_TOKEN_VOID_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_TOKEN_VOID_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'tokenVoidAddress');
-export const DEFAULT_ADMIN_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ADMIN_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'adminAddress');
-export const DEFAULT_VOID_OWNER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_VOID_OWNER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'voidOwnerAddress');
-export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'rewardEligibilityRegistryAddress');
-export const DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'atmVoucherAddress');
-export const DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'contributionPoolAddress');
-export const DEFAULT_RGST_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_RGST_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'rgstAddress');
-export const DEFAULT_ATM_VOID_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'atmVoidAddress');
+export const DEFAULT_TOKEN_VOID_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'tokenVoidAddress') || validAddr(process.env.NEXT_PUBLIC_TOKEN_VOID_ADDRESS_MAINNET);
+export const DEFAULT_ADMIN_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'adminAddress') || validAddr(process.env.NEXT_PUBLIC_ADMIN_ADDRESS_MAINNET);
+export const DEFAULT_VOID_OWNER_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'voidOwnerAddress') || validAddr(process.env.NEXT_PUBLIC_VOID_OWNER_ADDRESS_MAINNET);
+export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'rewardEligibilityRegistryAddress') || validAddr(process.env.NEXT_PUBLIC_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET);
+export const DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'atmVoucherAddress') || validAddr(process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS_MAINNET);
+export const DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'contributionPoolAddress') || validAddr(process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS_MAINNET);
+export const DEFAULT_RGST_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'rgstAddress') || validAddr(process.env.NEXT_PUBLIC_RGST_ADDRESS_MAINNET);
+export const DEFAULT_ATM_VOID_ADDRESS_MAINNET = chainDefault(BSC_MAINNET.chainId, 'atmVoidAddress') || validAddr(process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS_MAINNET);
 
 export type NetworkKey = 'testnet' | 'mainnet';
 

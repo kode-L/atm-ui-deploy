@@ -62,10 +62,9 @@ export default function HubSection() {
   const [atmVoucherOnChain, setAtmVoucherOnChain] = useState('');
   const [atmVoucherInput, setAtmVoucherInput] = useState('');
 
-  // Points Managers (GameHub v1.0.6 hub-wide allowlist of contracts allowed to call
-  // applyPointsDelta / withdrawRetained on every operator instance, e.g. the VoucherAdapter)
+  // GameHub v1.0.6 points-manager list (contracts allowed to call applyPointsDelta / withdrawRetained
+  // on every operator instance) - shown and managed inside the Voucher Adapter card
   const [pointsManagers, setPointsManagers] = useState<string[]>([]);
-  const [pmInput, setPmInput] = useState('');
 
   const getHub = useCallback((withSigner = false) => {
     if (!hubAddress) return null;
@@ -310,42 +309,6 @@ export default function HubSection() {
     }
   };
 
-  const addPointsManager = async () => {
-    const hub = getHub(true);
-    if (!hub) return;
-    const addr = pmInput.trim();
-    if (!ethers.utils.isAddress(addr)) {
-      setTxStatus({ status: 'error', error: 'Enter a valid points manager address.' });
-      return;
-    }
-    setTxStatus({ status: 'pending', message: 'Adding points manager...' });
-    try {
-      const tx = await hub.setPointsManager(addr, true);
-      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
-      await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: 'Points manager added ✔' });
-      setPmInput('');
-      fetchAll();
-    } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
-    }
-  };
-
-  const removePointsManager = async (account: string) => {
-    const hub = getHub(true);
-    if (!hub) return;
-    setTxStatus({ status: 'pending', message: `Removing points manager ${account}...` });
-    try {
-      const tx = await hub.setPointsManager(account, false);
-      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
-      await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: 'Points manager removed ✔' });
-      fetchAll();
-    } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
-    }
-  };
-
   const removeOperator = async (operator: string) => {
     const hub = getHub(true);
     if (!hub) return;
@@ -575,50 +538,6 @@ export default function HubSection() {
         pointsManagers={pointsManagers}
         onHubChanged={fetchAll}
       />
-
-      {/* Points Managers — hub-wide allowlist (GameHub v1.0.6) checked live by every DailySessionManager */}
-      <Card title={`Points Managers (${pointsManagers.length})`} icon={<UserPlus className="w-4 h-4 text-accent" />}>
-        <p className="text-[11px] text-txt-secondary mb-3">
-          Contracts allowed to change points (<code className="text-accent">applyPointsDelta</code>) and pay out uncommitted payment-token
-          funds (<code className="text-accent">withdrawRetained</code>) on every operator instance — normally just the VoucherAdapter above.
-          Only add contracts you trust. Keep a single transfer contract registered: pagerank-service picks it from this list.
-        </p>
-        <div className="flex gap-2 mb-3">
-          <input value={pmInput} onChange={e => setPmInput(e.target.value)} placeholder="0x..." className={inputCls + ' flex-1'} />
-          <button
-            onClick={addPointsManager}
-            disabled={!isConnected || !pmInput}
-            className="bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold px-4 py-1.5 rounded-lg text-sm transition-colors"
-          >
-            Add
-          </button>
-        </div>
-        {pointsManagers.length === 0 && !loading && (
-          <p className="text-txt-secondary text-sm text-center py-6">No points managers registered (or this GameHub is older than v1.0.6).</p>
-        )}
-        <div className="space-y-2">
-          {pointsManagers.map(addr => (
-            <div key={addr} className="bg-surface-tertiary rounded-lg p-3 flex items-center justify-between gap-3">
-              <span className="flex items-center gap-1 text-xs">
-                <code className="font-mono text-accent">{addr}</code>
-                <button onClick={() => copyAddr(addr, addr)}>
-                  {copied === addr ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 hover:text-txt-primary" />}
-                </button>
-                <a href={getExplorerAddressUrl(chainId, addr)} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="w-3 h-3 hover:text-accent" />
-                </a>
-              </span>
-              <button
-                onClick={() => removePointsManager(addr)}
-                disabled={!isConnected}
-                className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-40 shrink-0"
-              >
-                <UserMinus className="w-3.5 h-3.5" /> Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      </Card>
 
       {/* Operator registry */}
       <Card title={`Operator Registry (${operators.length})`}>

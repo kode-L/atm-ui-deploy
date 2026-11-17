@@ -4,14 +4,18 @@
     "tokenAddress": "0xF5384649560806Ffc9B5406a3946DDc4CA23e308",
     "hubAddress": "0x932985AeED319a6097DfC7fB2E5776619aFE38A4",
     "sessionManagerAddress": "0xf268941f0F4938368ae7f8de5B770ECBd2B3643f",
-    "tokenVoidAddress": "",
+    "tokenVoidAddress": "0x4600Ff32CdFA1EDf46f3eAE75f9e5A5CF90EDb3a",
     "adminAddress": "0x3356ec280f80B2D15aFB0CF09A69cC7ef33d854f",
     "voidOwnerAddress": "",
-    "rewardEligibilityRegistryAddress": "",
-    "atmVoucherAddress": "0x219776510D3d448D82a8C2e7a7CCF190F75592cc",
+    "rewardEligibilityRegistryAddress": "0xd99Fd0b170F43CD159BA4809e8c4C5f923db5334",
+    "atmVoucherAddress": "0x93CD7f0B41d63732Ade0308672E7CDe433837E54",
     "contributionPoolAddress": "0x19548AB2d4D824e7B586d1B35F96F60Da73D54f9",
     "rgstAddress": "",
-    "atmVoidAddress": ""
+    "atmVoidAddress": "",
+    "voucherNftAddress": "0xA1010B445db17C3d754B048dd40Cae4471290170",
+    "senatorAddress": "0x7fa9AdAfC33cB1a0edFD2ff1178Ed7959F5Cd852",
+    "signNum": 1,
+    "voucherAdapterAddress": ""
   },
   "56": {
     "chainName": "BNB Smart Chain",
@@ -21,10 +25,14 @@
     "tokenVoidAddress": "0xbA664Eb753bD75cE86EF1F0B651ABF4Ad0D9C30A",
     "adminAddress": "0x585EBA5655270D41abE9E76651B17dEd4Cd35bCF",
     "voidOwnerAddress": "",
-    "rewardEligibilityRegistryAddress": "",
-    "atmVoucherAddress": "",
-    "contributionPoolAddress": "",
-    "rgstAddress": "",
-    "atmVoidAddress": ""
+    "rewardEligibilityRegistryAddress": "0xa2FE46E8AeBbb3fbce8430a217ABb8bb300b7BBD",
+    "atmVoucherAddress": "0xb45ab2bA69F8c1eCB18e38201D3AaF5006CFe370",
+    "contributionPoolAddress": "0x428dEC87959aE7c806ee21679BbCE3754f469023",
+    "rgstAddress": "0x69ADbBc4587b4946C9980F74E47C3cC36a865022",
+    "atmVoidAddress": "",
+    "voucherNftAddress": "0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9",
+    "senatorAddress": "0x26BA33a62D15Ad5d9d8b31008AAfC1870f6bf2E9",
+    "signNum": 18,
+    "voucherAdapterAddress": ""
   }
 }

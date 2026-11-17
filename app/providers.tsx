@@ -20,6 +20,7 @@ import {
   DEFAULT_RGST_ADDRESS,
   DEFAULT_RGST_ADDRESS_MAINNET,
   networkStorageKey,
+  validAddr,
 } from '@/lib/contracts/config';
 import { getFallbackProvider } from '@/lib/contracts/rpc-provider';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
@@ -95,20 +96,20 @@ function Web3Provider({ children }: { children: ReactNode }) {
     // addresses above, so it isn't subject to the mainnet/testnet mix-up those hit — a saved
     // override is read back normally here.
     const savedRegistry = localStorage.getItem(networkStorageKey('dg_rewardEligibilityRegistryAddress', netNs));
-    setRewardEligibilityRegistryAddressState(savedRegistry || (isMainnet ? DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET : DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS));
+    setRewardEligibilityRegistryAddressState(validAddr(savedRegistry) || (isMainnet ? DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET : DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS));
 
     // atmVoucherAddress is likewise a standalone contract, unaffected by the
     // token/hub/sessionManager mainnet/testnet mix-up noted above.
     const savedAtmVoucher = localStorage.getItem(networkStorageKey('dg_atmVoucherAddress', netNs));
-    setAtmVoucherAddressState(savedAtmVoucher || (isMainnet ? DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET : DEFAULT_ATM_VOUCHER_ADDRESS));
+    setAtmVoucherAddressState(validAddr(savedAtmVoucher) || (isMainnet ? DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET : DEFAULT_ATM_VOUCHER_ADDRESS));
 
     // contributionPoolAddress — standalone too, same saved-override behavior as atmVoucherAddress.
     const savedContributionPool = localStorage.getItem(networkStorageKey('dg_contributionPoolAddress', netNs));
-    setContributionPoolAddressState(savedContributionPool || (isMainnet ? DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET : DEFAULT_CONTRIBUTION_POOL_ADDRESS));
+    setContributionPoolAddressState(validAddr(savedContributionPool) || (isMainnet ? DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET : DEFAULT_CONTRIBUTION_POOL_ADDRESS));
 
     // rgstAddress — standalone too, same saved-override behavior as atmVoucherAddress.
     const savedRgst = localStorage.getItem(networkStorageKey('dg_rgstAddress', netNs));
-    setRgstAddressState(savedRgst || (isMainnet ? DEFAULT_RGST_ADDRESS_MAINNET : DEFAULT_RGST_ADDRESS));
+    setRgstAddressState(validAddr(savedRgst) || (isMainnet ? DEFAULT_RGST_ADDRESS_MAINNET : DEFAULT_RGST_ADDRESS));
 
     // Load splitters array
     try {

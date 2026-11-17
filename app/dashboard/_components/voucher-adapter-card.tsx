@@ -15,7 +15,7 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import { decodeError } from '@/lib/contracts/error-decoder';
-import { getExplorerAddressUrl, networkStorageKey } from '@/lib/contracts/config';
+import { getExplorerAddressUrl, networkStorageKey, chainAddress } from '@/lib/contracts/config';
 import VoucherAdapterArtifact from '@/lib/contracts/VoucherAdapter.json';
 import { Ticket, Copy, Check, ExternalLink, RefreshCw, Link2, Unlink, PauseCircle, PlayCircle, AlertTriangle } from 'lucide-react';
 
@@ -48,7 +48,10 @@ export function saveVoucherAdapterAddress(chainId: number, a: string) {
   try { localStorage.setItem(networkStorageKey(STORAGE_BASE, chainId), a); } catch { /* storage unavailable */ }
 }
 export function loadVoucherAdapterAddress(chainId: number): string {
-  try { return localStorage.getItem(networkStorageKey(STORAGE_BASE, chainId)) || ''; } catch { return ''; }
+  // the one deployed/loaded in this browser, else chain.json's voucherAdapterAddress for this chain
+  let saved = '';
+  try { saved = localStorage.getItem(networkStorageKey(STORAGE_BASE, chainId)) || ''; } catch { /* storage unavailable */ }
+  return (ethers.utils.isAddress(saved) ? saved : '') || chainAddress(chainId, 'voucherAdapterAddress');
 }
 
 /** Current PR-node set of a senator contract: AGFSenator (getSenators()) or the legacy epoch-rotating
@@ -188,6 +191,8 @@ export default function VoucherAdapterCard({
 
   const isLinked = pointsManagers.some(pm => same(pm, adapterAddress));
   const otherTransferManagers = transferManagers.filter(pm => !same(pm, adapterAddress));
+  // anything else on GameHub's points-manager list (normally empty - only the adapter belongs there)
+  const otherManagers = pointsManagers.filter(pm => !same(pm, adapterAddress));
 
   // generic "send tx, wait, report" helper
   const run = async (label: string, send: () => Promise<any>, done: string, after?: () => void) => {
@@ -226,6 +231,13 @@ export default function VoucherAdapterCard({
       allowed ? 'Linked ✔ — every operator DSM now accepts this adapter.' : 'Unlinked ✔ — the adapter can no longer change points or pay from DSMs.',
       onHubChanged,
     );
+  };
+
+  const removeManager = (account: string) => {
+    if (!signer) return;
+    const hub = new ethers.Contract(hubAddress, ['function setPointsManager(address,bool)'], signer);
+    run(`Removing ${account} from the points-manager list`, () => hub.setPointsManager(account, false),
+      'Removed ✔ — it can no longer change points or pay from DSMs.', onHubChanged);
   };
 
   // ── Settings ──
@@ -395,15 +407,6 @@ export default function VoucherAdapterCard({
               </div>
             </>
           )}
-          {otherTransferManagers.length > 0 && (
-            <div className="flex gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded p-2 mt-2">
-              <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
-              <p className="text-[11px] text-yellow-300">
-                Other transfer contract(s) registered on this hub: {otherTransferManagers.join(', ')}. pagerank-service picks the
-                transfer contract from the hub and refuses to sign when there is more than one — remove the old one in Points Managers.
-              </p>
-            </div>
-          )}
           <div className="flex gap-2 pt-2">
             {!isLinked ? (
               <button onClick={() => linkToHub(true)} disabled={!isConnected || !info || !same(info?.hub, hubAddress)} className={primaryBtn + ' flex items-center gap-1.5'}>
@@ -423,6 +426,33 @@ export default function VoucherAdapterCard({
         </div>
       ) : (
         <p className="text-txt-secondary text-sm text-center py-3">No VoucherAdapter on this hub yet — deploy one in the Deploy tab (Deploy VoucherAdapter), then link it here.</p>
+      )}
+
+      {/* ── Other contracts on GameHub's points-manager list (Link to GameHub uses the same list) ── */}
+      {otherManagers.length > 0 && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-3 space-y-2">
+          <div className="flex gap-2">
+            <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
+            <p className="text-[11px] text-yellow-300">
+              Other contract(s) allowed to change points on this hub. Normally only the VoucherAdapter is here.
+              {otherTransferManagers.length > 0 && ' A transfer contract is among them — pagerank-service refuses to sign while more than one is registered.'}
+              {' '}Remove any you no longer use.
+            </p>
+          </div>
+          {otherManagers.map(pm => (
+            <div key={pm} className="flex items-center justify-between gap-2 bg-surface-tertiary rounded p-2">
+              <span className="flex items-center gap-1 text-xs min-w-0">
+                <code className="font-mono text-accent break-all">{pm}</code>
+                {otherTransferManagers.some(t => same(t, pm)) && <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1.5 rounded shrink-0">transfer contract</span>}
+                <a href={getExplorerAddressUrl(chainId, pm)} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3 hover:text-accent" /></a>
+              </span>
+              <button onClick={() => removeManager(pm)} disabled={!isConnected}
+                className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium px-3 py-1 rounded text-xs disabled:opacity-40 shrink-0">
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ── Load existing (deployment itself is in the Deploy tab) ── */}
