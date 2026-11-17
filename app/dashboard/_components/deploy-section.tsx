@@ -281,7 +281,7 @@ export default function DeploySection() {
       setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: contract.deployTransaction?.hash });
       await contract.deployed();
       setNewImplAddress(contract.address);
-      setTxStatus({ status: 'success', hash: contract.deployTransaction?.hash, message: `New implementation deployed at ${contract.address}. Now upgrade the fleet.` });
+      setTxStatus({ status: 'success', hash: contract.deployTransaction?.hash, message: `New implementation deployed at ${contract.address}. Now upgrade the DSM.` });
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
     }
@@ -304,7 +304,7 @@ export default function DeploySection() {
       const tx = await hub.upgradeAllInstances(newImplAddress);
       setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
       await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: `Fleet upgraded — every operator instance now runs ${newImplAddress}.` });
+      setTxStatus({ status: 'success', hash: tx.hash, message: `DSM (DailySessionManager) upgraded — every operator instance now runs ${newImplAddress}.` });
       setNewImplAddress('');
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
@@ -386,7 +386,7 @@ export default function DeploySection() {
       <Card collapsible title="Deploy Platform (GameHub)" icon={<Rocket className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
           Deploy the hub stack to whichever network your wallet is connected to (BNB Testnet or BSC Mainnet — switch networks from the wallet button above). The GameHub is the platform registry &amp; factory: registering an operator (Hub tab)
-          deploys that operator&apos;s own DailySessionManager instance. All instances share one beacon, so the whole fleet upgrades in a single transaction.
+          deploys that operator&apos;s own DailySessionManager instance. All instances share one beacon, so every operator's <abbr title="DailySessionManager" className="no-underline cursor-help">DSM</abbr> upgrades in a single transaction (Upgrade DSM).
         </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -494,7 +494,7 @@ export default function DeploySection() {
       {/* ── Hub upgrade ── */}
       <Card collapsible title="Upgrade GameHub" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
-          Push new GameHub logic to <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong> itself — separate from the fleet upgrade above,
+          Push new GameHub logic to <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong> itself — separate from Upgrade <abbr title="DailySessionManager" className="no-underline cursor-help">DSM</abbr> below,
           since GameHub is a UUPS proxy (self-upgrading), not a beacon-based instance. Use this whenever hub-level behavior changes
           (e.g. reward-type catalog rules, operator registration). Requires DEFAULT_ADMIN_ROLE on the hub. The operator registry, reward-type catalog and schedule config are untouched.
         </p>
@@ -541,15 +541,15 @@ export default function DeploySection() {
         </div>
       </Card>
 
-      {/* ── Fleet upgrade ── */}
-      <Card collapsible title="Upgrade Fleet" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
+      {/* ── DSM upgrade (DailySessionManager, every operator's instance via the beacon) ── */}
+      <Card collapsible title={<span title="DailySessionManager — every operator's instance, upgraded together through the beacon">Upgrade DSM</span>} icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
           Push new DailySessionManager logic to <strong>every operator instance at once</strong> via the hub at <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong>
           (<code>upgradeAllInstances</code>). Requires DEFAULT_ADMIN_ROLE on the hub. Existing data (sessions, matches, balances) is untouched.
           <span className="text-yellow-400"> Upgrade GameHub first (see &quot;Upgrade GameHub&quot; below) when the new DailySessionManager depends on a newer hub — e.g. DSM v1.0.8 needs GameHub v1.0.6.</span>
         </p>
         <div className="bg-surface-tertiary rounded-lg px-4 py-2.5 mb-4 flex items-center gap-2 text-sm">
-          <span className="text-txt-secondary">Currently deployed fleet version:</span>
+          <span className="text-txt-secondary">Currently deployed <abbr title="DailySessionManager" className="no-underline cursor-help">DSM</abbr> version:</span>
           <span className="font-mono text-accent">
             {!sessionManagerAddress ? '— no instance loaded —' : currentFleetVersion || 'loading...'}
           </span>
@@ -595,18 +595,18 @@ export default function DeploySection() {
               <p className="text-[11px] text-txt-secondary mb-3">New version: <span className="font-mono text-accent">{newImplVersion || 'loading...'}</span></p>
             )}
             <button
-              onClick={upgradeFleet}
+              onClick={upgradeFleet} title="Upgrade every operator's DailySessionManager to the new implementation"
               disabled={!isConnected || !hubAddress || !newImplAddress}
               className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-lg text-sm transition-colors"
             >
-              Upgrade Fleet
+              Upgrade DSM
             </button>
             {!hubAddress && <p className="text-xs text-yellow-400 mt-2">&#9888; Deploy or load a GameHub first</p>}
           </div>
         </div>
       </Card>
 
-      {/* ── VoucherAdapter (after Upgrade GameHub v1.0.6 + Upgrade Fleet v1.0.8; linked in the GameHub tab) ── */}
+      {/* ── VoucherAdapter (after Upgrade GameHub v1.0.6 + Upgrade DSM v1.0.8; linked in the GameHub tab) ── */}
       <VoucherAdapterDeployCard />
 
       {/* ── Load Existing ── */}

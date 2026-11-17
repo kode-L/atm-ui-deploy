@@ -67,7 +67,7 @@ export default function OperatorsOverview({ provider, chainId, hubAddress, selec
   return (
     <div className="mt-2">
       <p className="text-[11px] text-txt-secondary mb-1">
-        DailySessionManagers — one per operator ({rows.length}) · {checked ? 'checked on-chain' : 'from chain.json, checking on-chain…'}
+        <abbr title="DailySessionManager" className="no-underline cursor-help">DSMs</abbr> — one DailySessionManager per operator ({rows.length}) · {checked ? 'checked on-chain' : 'from chain.json, checking on-chain…'}
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
         {rows.map(r => {
@@ -76,7 +76,7 @@ export default function OperatorsOverview({ provider, chainId, hubAddress, selec
             <div key={r.dsm} className={`bg-surface-tertiary rounded-lg px-3 py-2 text-xs ${sel ? 'ring-1 ring-accent/60' : ''}`}>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-txt-primary">
-                  DSM · {r.name}
+                  <abbr title="DailySessionManager" className="no-underline cursor-help">DSM</abbr> · {r.name}
                   {sel && <span className="ml-1 text-[10px] bg-accent/20 text-accent px-1.5 rounded">selected</span>}
                   {r.active === false && <span className="ml-1 text-[10px] text-yellow-400">inactive</span>}
                 </span>

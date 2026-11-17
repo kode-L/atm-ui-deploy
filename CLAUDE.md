@@ -25,9 +25,11 @@
 
 ## 4. Deploy tab
 - Deploy/upgrade cards are collapsible and closed by default (rarely used once deployed).
-- Order follows the upgrade runbook: Upgrade GameHub → Upgrade Fleet → Deploy VoucherAdapter, then
+- Order follows the upgrade runbook: Upgrade GameHub → Upgrade DSM (DailySessionManager) → Deploy VoucherAdapter, then
   link it in Hub → Linked Contracts → Voucher Adapter.
 - Contract JSONs in `lib/contracts/` are built from the tested AGF sources — don't hand-edit bytecode.
+- Naming: say **DSM**, never "fleet", for the operators' DailySessionManagers — render it as
+  `<abbr title="DailySessionManager">DSM</abbr>` so hovering shows the full name.
 
 ## Tooling
 - Yarn PnP or `node_modules` depending on the last install. Typecheck: `./node_modules/.bin/tsc --noEmit -p .`

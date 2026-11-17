@@ -136,7 +136,7 @@ export default function VoucherAdapterDeployCard() {
       <p className="text-txt-secondary text-sm mb-4">
         One adapter for every operator DSM under the hub at <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code>:
         Voucher V2 points/payout vouchers and PR-node signed points transfers. Deploy it after <b>Upgrade GameHub</b> (v1.0.6) and{' '}
-        <b>Upgrade Fleet</b> (DSM v1.0.8), then link it in the <b>GameHub tab → Linked Contracts → Voucher Adapter</b>.
+        <b>Upgrade <abbr title="DailySessionManager" className="no-underline cursor-help">DSM</abbr></b> (v1.0.8), then link it in the <b>GameHub tab → Linked Contracts → Voucher Adapter</b>.
       </p>
       {lastAdapter && (
         <div className="bg-surface-tertiary rounded-lg px-4 py-2.5 mb-4 flex items-center gap-2 text-sm flex-wrap">
