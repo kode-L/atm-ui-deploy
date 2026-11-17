@@ -98,6 +98,10 @@ export const DEFAULT_RGST_ADDRESS = process.env.NEXT_PUBLIC_RGST_ADDRESS || chai
 // SENATOR_ADDRESS, so the PR nodes that already sign there are the ones the adapter accepts.
 export const DEFAULT_SENATOR_ADDRESS = '0x7fa9AdAfC33cB1a0edFD2ff1178Ed7959F5Cd852'; // BSC Testnet (97)
 export const DEFAULT_SENATOR_ADDRESS_MAINNET = '0x26BA33a62D15Ad5d9d8b31008AAfC1870f6bf2E9'; // BSC Mainnet (56)
+// Required PR-node signatures for signed points transfers - same as the legacy Incentive contract on
+// each chain (Incentive.signNum(); 0 there means its built-in default of 18).
+export const DEFAULT_SIGN_NUM = 1; // BSC Testnet (97): Incentive 0xA711…ae63 signNum = 1
+export const DEFAULT_SIGN_NUM_MAINNET = 18; // BSC Mainnet (56): Incentive 0x6336…9CCD signNum = 0 -> 18
 
 // Deployed Voucher V2 VoucherNFT per chain (atm-smart-contract ProductionAddress.md / TestnetAddress.md) —
 // pre-fills the VoucherAdapter deploy form when the Voucher V2 tab's address book has none.

@@ -15,7 +15,7 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import { decodeError } from '@/lib/contracts/error-decoder';
-import { getExplorerAddressUrl, networkStorageKey, DEFAULT_SENATOR_ADDRESS, DEFAULT_SENATOR_ADDRESS_MAINNET, DEFAULT_VOUCHER_NFT_ADDRESS, DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET } from '@/lib/contracts/config';
+import { getExplorerAddressUrl, networkStorageKey, DEFAULT_SENATOR_ADDRESS, DEFAULT_SENATOR_ADDRESS_MAINNET, DEFAULT_SIGN_NUM, DEFAULT_SIGN_NUM_MAINNET, DEFAULT_VOUCHER_NFT_ADDRESS, DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET } from '@/lib/contracts/config';
 import { loadBook } from '@/lib/contracts/voucher-v2';
 import VoucherAdapterArtifact from '@/lib/contracts/VoucherAdapter.json';
 import VoucherAdapterProxyArtifact from '@/lib/contracts/VoucherAdapterProxy.json';
@@ -175,6 +175,12 @@ export default function VoucherAdapterCard({
     if (chainId === 97) setDeploySenator(DEFAULT_SENATOR_ADDRESS);
     else if (chainId === 56) setDeploySenator(DEFAULT_SENATOR_ADDRESS_MAINNET);
   }, [chainId, deploySenator]);
+  useEffect(() => {
+    // same required signature count as the legacy Incentive contract on this chain
+    if (deploySignNum) return;
+    if (chainId === 97) setDeploySignNum(String(DEFAULT_SIGN_NUM));
+    else if (chainId === 56) setDeploySignNum(String(DEFAULT_SIGN_NUM_MAINNET));
+  }, [chainId, deploySignNum]);
   useEffect(() => {
     // pre-fill VoucherNFT: the Voucher V2 tab's address book first, else the deployed one per chain
     // (optional - can be left empty and set later)
@@ -447,7 +453,7 @@ export default function VoucherAdapterCard({
               <input value={deploySenator} onChange={e => setDeploySenator(e.target.value)} placeholder="0x..." className={inputCls} />
             </div>
             <div>
-              <label className="text-[11px] text-txt-secondary">Required PR-node signatures</label>
+              <label className="text-[11px] text-txt-secondary">Required PR-node signatures (same as Incentive)</label>
               <input value={deploySignNum} onChange={e => setDeploySignNum(e.target.value)} placeholder="e.g. 2" className={inputCls} />
             </div>
             <div>
