@@ -26,6 +26,8 @@ type ChainDefaults = {
   // one DailySessionManager per operator: name -> { dsm contract, operator wallet }
   // (shown instantly, then checked against GameHub on-chain)
   operators?: Record<string, { dsm: string; operator: string }>;
+  // Reward Eligibility Registry operators (propose/approve types), name -> address; checked on-chain on load
+  registryOperators?: Record<string, string>;
   // TokenVoid contracts on this chain, name -> address (Luca Void tab dropdown)
   tokenVoids?: Record<string, string>;
   // Voucher V2 set on this chain (checked live by Voucher V2 -> Overview -> On-chain set)
@@ -56,6 +58,12 @@ export const chainOperators = (chainId: number): { name: string; dsm: string; op
   Object.entries(CHAIN_DEFAULTS[String(chainId)]?.operators || {})
     .filter(([, o]) => o && validAddr(o.dsm) && validAddr(o.operator))
     .map(([name, o]) => ({ name, dsm: o.dsm, operator: o.operator }));
+
+/** chain.json's Reward Eligibility Registry operators for this chain, as { name, address }. */
+export const chainRegistryOperators = (chainId: number): { name: string; address: string }[] =>
+  Object.entries(CHAIN_DEFAULTS[String(chainId)]?.registryOperators || {})
+    .filter(([, address]) => validAddr(address))
+    .map(([name, address]) => ({ name, address }));
 
 /** chain.json's TokenVoid contracts for this chain, as { label, address } (Luca Void tab dropdown). */
 export const chainTokenVoids = (chainId: number): { label: string; address: string }[] =>

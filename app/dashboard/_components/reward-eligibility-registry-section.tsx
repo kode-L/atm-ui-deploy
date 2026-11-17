@@ -5,7 +5,7 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
-import { getExplorerAddressUrl, REWARD_ELIGIBILITY_REGISTRY_PROPOSAL_TYPE_LABELS } from '@/lib/contracts/config';
+import { getExplorerAddressUrl, REWARD_ELIGIBILITY_REGISTRY_PROPOSAL_TYPE_LABELS, chainRegistryOperators } from '@/lib/contracts/config';
 import RegistryArtifact from '@/lib/contracts/RewardEligibilityRegistry.json';
 import RegistryProxyArtifact from '@/lib/contracts/RewardEligibilityRegistryProxy.json';
 import {
@@ -16,7 +16,7 @@ import {
 
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
 
-interface OperatorRow { address: string; allowed: boolean; }
+interface OperatorRow { address: string; allowed: boolean; name?: string; }
 interface TypeRow { id: number; maxClaimablePoints: string; exists: boolean; }
 interface ProposalRow {
   id: number;
@@ -328,15 +328,22 @@ export default function RewardEligibilityRegistrySection() {
     if (!reg) return;
     setOperatorsLoading(true);
     try {
-      const currentBlock = await reg.provider.getBlockNumber();
-      const fromBlock = Math.max(0, currentBlock - 50000);
-      const events = await reg.queryFilter(reg.filters.OperatorSet(), fromBlock, 'latest');
-      const latest = new Map<string, boolean>();
-      for (const ev of events) {
-        const args: any = (ev as any).args;
-        latest.set(args.operator.toLowerCase(), !!args.allowed);
-      }
-      const rows: OperatorRow[] = Array.from(latest.entries()).map(([addr, allowed]) => ({ address: addr, allowed }));
+      // 1. chain.json's known operators, each checked live with operators(address) - always complete
+      const known = chainRegistryOperators(chainId || 97);
+      const latest = new Map<string, { allowed: boolean; name?: string }>();
+      const checks = await Promise.all(known.map(k => reg.operators(k.address).then((ok: boolean) => !!ok).catch(() => false)));
+      known.forEach((k, i) => latest.set(k.address.toLowerCase(), { allowed: checks[i], name: k.name }));
+      // 2. plus anything set in recent OperatorSet events (catches a newly added operator)
+      try {
+        const currentBlock = await reg.provider.getBlockNumber();
+        const events = await reg.queryFilter(reg.filters.OperatorSet(), Math.max(0, currentBlock - 50000), 'latest');
+        for (const ev of events) {
+          const args: any = (ev as any).args;
+          const a = args.operator.toLowerCase();
+          latest.set(a, { allowed: !!args.allowed, name: latest.get(a)?.name });
+        }
+      } catch { /* recent events are a bonus; chain.json + live checks already listed */ }
+      const rows: OperatorRow[] = Array.from(latest.entries()).map(([addr, v]) => ({ address: addr, allowed: v.allowed, name: v.name }));
       rows.sort((a, b) => (a.allowed === b.allowed ? 0 : a.allowed ? -1 : 1));
       setKnownOperators(rows);
     } catch (e) {
@@ -344,7 +351,7 @@ export default function RewardEligibilityRegistrySection() {
     } finally {
       setOperatorsLoading(false);
     }
-  }, [getRead]);
+  }, [getRead, chainId]);
 
   useEffect(() => { fetchOperators(); }, [fetchOperators]);
 
@@ -1243,7 +1250,7 @@ export default function RewardEligibilityRegistrySection() {
                 <RefreshCw className={`w-3.5 h-3.5 ${operatorsLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <p className="text-[11px] text-txt-secondary mb-2">Discovered from OperatorSet events over the last ~50,000 blocks — use Lookup for an address outside that window.</p>
+            <p className="text-[11px] text-txt-secondary mb-2">Known operators from chain.json, each checked on-chain now (ALLOWED / REMOVED), plus any set in the last ~50,000 blocks. Use Lookup (or &quot;check&quot; on a proposal) for any other address.</p>
             {knownOperators.length === 0 ? (
               <p className="text-sm text-txt-secondary">No operators discovered yet.</p>
             ) : (
@@ -1251,7 +1258,7 @@ export default function RewardEligibilityRegistrySection() {
                 {knownOperators.map(op => (
                   <div key={op.address} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-tertiary">
                     <div className={`w-2 h-2 rounded-full shrink-0 ${op.allowed ? 'bg-green-400' : 'bg-red-400'}`} />
-                    <code className="text-xs font-mono flex-1 truncate">{op.address}</code>
+                    <code className="text-xs font-mono flex-1 truncate">{op.name && <span className="font-sans text-txt-primary mr-2">{op.name}</span>}{op.address}</code>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${op.allowed ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{op.allowed ? 'ALLOWED' : 'REMOVED'}</span>
                     <button onClick={() => handleSetOperator(op.address, !op.allowed)} disabled={!isOwnerConnected} className="text-[10px] text-accent hover:underline disabled:text-txt-secondary disabled:no-underline disabled:cursor-not-allowed shrink-0">{op.allowed ? 'Remove' : 'Re-add'}</button>
                   </div>
