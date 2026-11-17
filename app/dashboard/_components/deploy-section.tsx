@@ -144,7 +144,7 @@ export default function DeploySection() {
     return () => { cancelled = true; };
   }, [provider, currentImplAddress]);
 
-  // Fleet upgrade fields (hub.upgradeAllInstancesAndInitCarryForward). Auto-filled by
+  // Fleet upgrade fields (hub.upgradeAllInstances). Auto-filled by
   // "Deploy New Implementation" below, but always directly editable — paste an
   // already-deployed address here instead if you don't need a fresh deploy.
   const [newImplAddress, setNewImplAddress] = useState('');
@@ -291,22 +291,19 @@ export default function DeploySection() {
     setTxStatus({ status: 'pending', message: 'Checking upgrade...' });
     try {
       const hub = new ethers.Contract(hubAddress, GameHubArtifact.abi, signer);
-      // upgradeAllInstancesAndInitCarryForward upgrades the beacon AND calls
-      // initializeCarryForward() on every currently-active instance in the same
-      // transaction — the one-time carry-forward migration step, done atomically so
-      // there's no window for a newly-registered operator to slip in between the two
-      // and get initialized needlessly. Requires the hub itself to already be running
-      // the GameHub implementation that declares this function — upgrade the hub first
-      // (below) if this reverts with a missing-function error.
+      // upgradeAllInstances only retargets the beacon: every operator instance runs the
+      // new implementation, nothing else is called. (The carry-forward cutover was a
+      // one-time migration, already done on every live instance — the old
+      // upgradeAllInstancesAndInitCarryForward path is no longer needed.)
       // Simulate first so a bad address or missing role fails instantly with a decoded
       // reason instead of after a signed, mined transaction.
-      await hub.callStatic.upgradeAllInstancesAndInitCarryForward(newImplAddress);
+      await hub.callStatic.upgradeAllInstances(newImplAddress);
 
-      setTxStatus({ status: 'pending', message: 'Upgrading all operator instances and initializing carry-forward...' });
-      const tx = await hub.upgradeAllInstancesAndInitCarryForward(newImplAddress);
+      setTxStatus({ status: 'pending', message: 'Upgrading all operator instances...' });
+      const tx = await hub.upgradeAllInstances(newImplAddress);
       setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
       await tx.wait();
-      setTxStatus({ status: 'success', hash: tx.hash, message: `Fleet upgraded — every operator instance now runs ${newImplAddress} and has its carry-forward cutover initialized.` });
+      setTxStatus({ status: 'success', hash: tx.hash, message: `Fleet upgraded — every operator instance now runs ${newImplAddress}.` });
       setNewImplAddress('');
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
@@ -496,10 +493,9 @@ export default function DeploySection() {
       {/* ── Fleet upgrade ── */}
       <Card title="Upgrade Fleet" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
-          Push new DailySessionManager logic to <strong>every operator instance at once</strong> via the hub at <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong>,
-          and initialize each instance&apos;s carry-forward cutover in the same transaction.
-          Requires DEFAULT_ADMIN_ROLE on the hub. Existing data (sessions, matches, balances) is untouched.
-          <span className="text-yellow-400"> Requires the hub itself to already be upgraded (see &quot;Upgrade GameHub&quot; below) to a version that has <code>upgradeAllInstancesAndInitCarryForward</code> — upgrade the hub first if this is your first time running this.</span>
+          Push new DailySessionManager logic to <strong>every operator instance at once</strong> via the hub at <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong>
+          (<code>upgradeAllInstances</code>). Requires DEFAULT_ADMIN_ROLE on the hub. Existing data (sessions, matches, balances) is untouched.
+          <span className="text-yellow-400"> Upgrade GameHub first (see &quot;Upgrade GameHub&quot; below) when the new DailySessionManager depends on a newer hub — e.g. DSM v1.0.8 needs GameHub v1.0.6.</span>
         </p>
         <div className="bg-surface-tertiary rounded-lg px-4 py-2.5 mb-4 flex items-center gap-2 text-sm">
           <span className="text-txt-secondary">Currently deployed fleet version:</span>

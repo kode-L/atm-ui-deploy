@@ -93,6 +93,17 @@ export const DEFAULT_CONTRIBUTION_POOL_ADDRESS = process.env.NEXT_PUBLIC_CONTRIB
 // timelocked proxy admin, unrelated to the GameHub fleet. Set after deploying from the RGST Token tab.
 export const DEFAULT_RGST_ADDRESS = process.env.NEXT_PUBLIC_RGST_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'rgstAddress');
 
+// Senator (PR-node multisig) the VoucherAdapter verifies signed points transfers against: the same
+// one the legacy Incentive contract uses on each chain (Incentive.senator()), i.e. pagerank-service's
+// SENATOR_ADDRESS, so the PR nodes that already sign there are the ones the adapter accepts.
+export const DEFAULT_SENATOR_ADDRESS = '0x7fa9AdAfC33cB1a0edFD2ff1178Ed7959F5Cd852'; // BSC Testnet (97)
+export const DEFAULT_SENATOR_ADDRESS_MAINNET = '0x26BA33a62D15Ad5d9d8b31008AAfC1870f6bf2E9'; // BSC Mainnet (56)
+
+// Deployed Voucher V2 VoucherNFT per chain (atm-smart-contract ProductionAddress.md / TestnetAddress.md) —
+// pre-fills the VoucherAdapter deploy form when the Voucher V2 tab's address book has none.
+export const DEFAULT_VOUCHER_NFT_ADDRESS = '0xA1010B445db17C3d754B048dd40Cae4471290170'; // BSC Testnet (97)
+export const DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET = '0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9'; // BSC Mainnet (56)
+
 // ATMVoid proxy — configurable burn contract (any registered ERC-20 / V2 LP token), its own
 // admin/operator roles. Set after deploying from the ATM Void tab.
 export const DEFAULT_ATM_VOID_ADDRESS = process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'atmVoidAddress');
