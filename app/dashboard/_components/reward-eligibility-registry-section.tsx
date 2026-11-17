@@ -947,6 +947,41 @@ export default function RewardEligibilityRegistrySection() {
     }
   };
 
+  // ── Guided "Add or change a type": propose -> other operators approve -> applies at the threshold ──
+  const [addTypeId, setAddTypeId] = useState('');
+  const [addMaxPoints, setAddMaxPoints] = useState('');
+  const nextFreeTypeId = knownTypes.length ? Math.max(...knownTypes.map(t => t.id)) + 1 : 1;
+  useEffect(() => { if (!addTypeId && knownTypes.length) setAddTypeId(String(nextFreeTypeId)); }, [knownTypes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const addTypeNum = parseInt(addTypeId, 10);
+  const addTypeCurrent = knownTypes.find(t => t.id === addTypeNum);
+  const pendingTypeProposals = proposals.filter(p => p.proposalType === 1 && !p.executed && !p.cancelled);
+
+  const handleAddType = async () => {
+    const reg = getWrite();
+    if (!reg) return;
+    if (isNaN(addTypeNum) || addTypeNum < 0) { setTxStatus({ status: 'error', error: 'Enter a type ID (0 or higher).' }); return; }
+    if (!addMaxPoints.trim() || isNaN(Number(addMaxPoints)) || Number(addMaxPoints) <= 0) { setTxStatus({ status: 'error', error: 'Enter the max claimable points (whole points, e.g. 500).' }); return; }
+    setTxStatus({ status: 'pending', message: `Proposing type #${addTypeNum} → max ${addMaxPoints} pts...` });
+    try {
+      const value = ethers.utils.parseEther(addMaxPoints.trim());
+      await reg.callStatic.proposeTypeConfig(addTypeNum, value);
+      const tx = await reg.proposeTypeConfig(addTypeNum, value);
+      setTxStatus({ status: 'pending', hash: tx.hash, message: 'Waiting for confirmation...' });
+      await tx.wait();
+      const t = thresholdVal || 1;
+      setTxStatus({
+        status: 'success', hash: tx.hash,
+        message: t <= 1
+          ? `Type #${addTypeNum} set to ${addMaxPoints} pts.`
+          : `Proposal created — your approval counts as 1 of ${t}. ${t - 1} more operator approval(s) needed; it applies automatically when reached (Step 3 below).`,
+      });
+      setAddMaxPoints('');
+      await Promise.all([fetchProposals(), fetchTypes()]);
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+  };
+
   // ── Proxy admin (upgrade implementation, change admin) ──
   const [newImplAddress, setNewImplAddress] = useState('');
   const [newImplVersion, setNewImplVersion] = useState('');
@@ -1205,6 +1240,61 @@ export default function RewardEligibilityRegistrySection() {
               Create or update a type&apos;s <strong>max claimable points</strong> — entered below in whole points (e.g. <code className="text-accent">500</code> for 500&nbsp;pts), same units as carry-forward/points balances elsewhere in this app; it's scaled to the on-chain 18-decimal value automatically. This goes through the proposal flow — it only takes effect once approved by at least {thresholdVal || 'the configured'} operator(s) (see Proposals below).
             </p>
             {!isConnectedOperator && <p className="text-xs text-yellow-400 mb-4">&#9888; Connected wallet is not a registered operator — proposing will revert until it's added on the Operators card above.</p>}
+            <div className="bg-surface-tertiary rounded-lg p-4 mb-4 space-y-3">
+              <h4 className="font-medium">Add or change a type</h4>
+              <div className="grid grid-cols-1 md:grid-cols-[160px_1fr_auto] gap-3 items-end">
+                <div>
+                  <label className="text-xs text-txt-secondary">1. Type ID</label>
+                  <input value={addTypeId} onChange={e => setAddTypeId(e.target.value)} type="number" min={0} placeholder={String(nextFreeTypeId)} className={`${inputCls} mt-1`} />
+                </div>
+                <div>
+                  <label className="text-xs text-txt-secondary">2. Max claimable points (whole points)</label>
+                  <input value={addMaxPoints} onChange={e => setAddMaxPoints(e.target.value)} type="number" min={0} placeholder="e.g. 500" className={`${inputCls} mt-1`} />
+                </div>
+                <button onClick={handleAddType} disabled={!isConnectedOperator || !addTypeId || !addMaxPoints} className={`px-6 ${btnCls}`}>Propose</button>
+              </div>
+              <p className="text-[11px] text-txt-secondary">
+                {isNaN(addTypeNum) ? null : addTypeCurrent
+                  ? <>Type #{addTypeNum} <b>already exists</b> on-chain with max <span className="font-mono text-accent">{addTypeCurrent.maxClaimablePoints}</span> pts — this proposal <b>changes</b> it.</>
+                  : <>Type #{addTypeNum} is <b>new</b> (next free ID: {nextFreeTypeId}).</>}
+                {' '}Saved on-chain as {addMaxPoints || '…'} × 10¹⁸. Proposing counts as your approval (1 of {thresholdVal || '?'});
+                it takes effect automatically once {thresholdVal || 'the threshold'} operators have approved.
+              </p>
+              <div>
+                <p className="text-xs font-semibold mb-1">3. Waiting for approval ({pendingTypeProposals.length})</p>
+                {pendingTypeProposals.length === 0 ? (
+                  <p className="text-[11px] text-txt-secondary">No pending type proposals.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {pendingTypeProposals.map(p => {
+                      const canReject = !!address && (p.proposer?.toLowerCase() === address.toLowerCase() || isOwnerConnected);
+                      return (
+                        <div key={p.id} className="flex items-center justify-between gap-2 bg-surface rounded-lg px-3 py-2 text-xs flex-wrap">
+                          <span>
+                            <b>#{p.id}</b>{' '}
+                            {(p.typeIds || []).map((tid, i) => {
+                              const cur = knownTypes.find(t => t.id === tid);
+                              return <span key={tid} className="mr-2">type {tid} → <span className="font-mono text-accent">{p.maxPointsList?.[i]}</span> pts{cur ? <span className="text-txt-secondary"> (now {cur.maxClaimablePoints})</span> : <span className="text-txt-secondary"> (new)</span>}</span>;
+                            })}
+                            <span className="text-txt-secondary">· approvals {p.approvalCount}/{p.snapshotThreshold}{p.approvedByMe ? ' · you approved' : ''}</span>
+                          </span>
+                          <span className="flex gap-2">
+                            {isConnectedOperator && !p.approvedByMe && (
+                              <button onClick={() => handleApprove(p.id)} className="px-3 py-1 rounded bg-accent text-black font-semibold">Approve</button>
+                            )}
+                            {canReject && (
+                              <button onClick={() => handleReject(p.id)} className="px-3 py-1 rounded bg-red-500/10 border border-red-500/30 text-red-400">Reject</button>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <details className="mb-4">
+              <summary className="text-xs text-txt-secondary cursor-pointer hover:text-accent mb-2">Advanced: presets, batch propose / repair, manual form</summary>
             <div className="bg-surface-tertiary rounded-lg p-4 mb-4">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <h4 className="font-medium">Default Type Presets</h4>
@@ -1286,6 +1376,7 @@ export default function RewardEligibilityRegistrySection() {
                 </div>
               </div>
             </div>
+            </details>
             <div className="flex gap-2 mb-3">
               <input value={lookupTypeId} onChange={e => setLookupTypeId(e.target.value)} type="number" placeholder="Lookup type ID..." className={inputCls} onKeyDown={e => e.key === 'Enter' && handleLookupType()} />
               <button onClick={handleLookupType} disabled={!lookupTypeId} className={`shrink-0 flex items-center gap-1.5 px-4 ${btnCls}`}><Search className="w-4 h-4" /> Lookup</button>

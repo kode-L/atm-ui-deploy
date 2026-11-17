@@ -29,7 +29,9 @@
         "SourceRegistry": "0x64BE35A20A40e783AB79B0F452577A53dB375644",
         "RevocationVault": "0x2947E7E7bf2CEAf0E777A76001eC9C6C1b936f51",
         "AllowlistTransferGate": "0xF4762e6267eAEDC2b596f01dC458894cE30dBcc7",
-        "VoucherTransfer": "0x3cEe9A72B239Ab8372479A9a460880847cf9f83E"
+        "VoucherTransfer": "0x3cEe9A72B239Ab8372479A9a460880847cf9f83E",
+        "RewardVault": "0x2A7035cd1dAB7479b4cc8B024AA2266E95fB4a37",
+        "VoucherSettlement": "0xec5bad08480e8E2108D0a42a53c24f370c538CDf"
       },
       "pools": {
         "AC VoucherSettlement": "0xec5bad08480e8E2108D0a42a53c24f370c538CDf",
@@ -67,7 +69,8 @@
       "contracts": {
         "VoucherNFT": "0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9",
         "VoucherNFTViews": "0xD3681f3b5363C9104b4B109B3D95C690DF01e21c",
-        "SourceRegistry": "0x8a045506E31F784f8d5D13AF45E0D19C442447E8"
+        "SourceRegistry": "0x8a045506E31F784f8d5D13AF45E0D19C442447E8",
+        "RewardVault": "0x7901726E76c86D5c7DF7F6cCb448b6253aef5f34"
       },
       "pools": {
         "ActiveUserReward": "0x7901726E76c86D5c7DF7F6cCb448b6253aef5f34",
