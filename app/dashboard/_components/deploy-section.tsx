@@ -11,6 +11,7 @@ import SessionManagerArtifact from '@/lib/contracts/DailySessionManager.json';
 import BeaconArtifact from '@/lib/contracts/UpgradeableBeacon.json';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import GameHubProxyArtifact from '@/lib/contracts/GameHubProxy.json';
+import VoucherAdapterDeployCard from './voucher-adapter-deploy-card';
 import { DEFAULT_ADMIN_ADDRESS, DEFAULT_ADMIN_ADDRESS_MAINNET, BSC_MAINNET, NETWORKS, getExplorerAddressUrl } from '@/lib/contracts/config';
 
 // Session Start Offset is stored on-chain as seconds since 00:00 UTC (see lib/utc-time).
@@ -604,6 +605,9 @@ export default function DeploySection() {
           </div>
         </div>
       </Card>
+
+      {/* ── VoucherAdapter (after Upgrade GameHub v1.0.6 + Upgrade Fleet v1.0.8; linked in the GameHub tab) ── */}
+      <VoucherAdapterDeployCard />
 
       {/* ── Load Existing ── */}
       <Card title="Load Existing Contracts" icon={<ExternalLink className="w-5 h-5 text-accent" />}>

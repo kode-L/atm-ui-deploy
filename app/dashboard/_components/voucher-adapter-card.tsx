@@ -15,10 +15,8 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import { decodeError } from '@/lib/contracts/error-decoder';
-import { getExplorerAddressUrl, networkStorageKey, DEFAULT_SENATOR_ADDRESS, DEFAULT_SENATOR_ADDRESS_MAINNET, DEFAULT_SIGN_NUM, DEFAULT_SIGN_NUM_MAINNET, DEFAULT_VOUCHER_NFT_ADDRESS, DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET } from '@/lib/contracts/config';
-import { loadBook } from '@/lib/contracts/voucher-v2';
+import { getExplorerAddressUrl, networkStorageKey } from '@/lib/contracts/config';
 import VoucherAdapterArtifact from '@/lib/contracts/VoucherAdapter.json';
-import VoucherAdapterProxyArtifact from '@/lib/contracts/VoucherAdapterProxy.json';
 import { Ticket, Copy, Check, ExternalLink, RefreshCw, Link2, Unlink, PauseCircle, PlayCircle, AlertTriangle } from 'lucide-react';
 
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
@@ -44,6 +42,14 @@ const ZERO = ethers.constants.AddressZero;
 const isAddr = (a: string) => !!a && ethers.utils.isAddress(a.trim());
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const STORAGE_BASE = 'dg_voucherAdapterAddress';
+
+/** Per-chain "last deployed / loaded" VoucherAdapter - the Deploy tab saves it, this card reads it. */
+export function saveVoucherAdapterAddress(chainId: number, a: string) {
+  try { localStorage.setItem(networkStorageKey(STORAGE_BASE, chainId), a); } catch { /* storage unavailable */ }
+}
+export function loadVoucherAdapterAddress(chainId: number): string {
+  try { return localStorage.getItem(networkStorageKey(STORAGE_BASE, chainId)) || ''; } catch { return ''; }
+}
 
 export default function VoucherAdapterCard({
   hubAddress,
@@ -78,7 +84,7 @@ export default function VoucherAdapterCard({
 
   const setAdapterAddress = (a: string) => {
     setAdapterAddressState(a);
-    try { localStorage.setItem(networkStorageKey(STORAGE_BASE, chainId), a); } catch { /* storage unavailable */ }
+    saveVoucherAdapterAddress(chainId, a);
   };
 
   // ── find the adapter: the one linked on the hub wins, else the last one deployed/loaded here ──
@@ -104,9 +110,7 @@ export default function VoucherAdapterCard({
       if (linkedAdapter) {
         setAdapterAddressState(linkedAdapter);
       } else {
-        let saved = '';
-        try { saved = localStorage.getItem(networkStorageKey(STORAGE_BASE, chainId)) || ''; } catch { /* ignore */ }
-        setAdapterAddressState(saved);
+        setAdapterAddressState(loadVoucherAdapterAddress(chainId));
       }
     })();
     return () => { cancelled = true; };
@@ -161,87 +165,8 @@ export default function VoucherAdapterCard({
     }
   };
 
-  // ── Deploy (implementation, then proxy + initialize) ──
-  const [implAddress, setImplAddress] = useState('');
-  const [deployAdmin, setDeployAdmin] = useState('');
-  const [deploySenator, setDeploySenator] = useState('');
-  const [deploySignNum, setDeploySignNum] = useState('');
-  const [deployVoucherNFT, setDeployVoucherNFT] = useState('');
+  // ── Load an existing adapter (deployed from the Deploy tab, or elsewhere) ──
   const [manualLoad, setManualLoad] = useState('');
-
-  useEffect(() => { if (address && !deployAdmin) setDeployAdmin(address); }, [address, deployAdmin]);
-  useEffect(() => {
-    if (deploySenator) return;
-    if (chainId === 97) setDeploySenator(DEFAULT_SENATOR_ADDRESS);
-    else if (chainId === 56) setDeploySenator(DEFAULT_SENATOR_ADDRESS_MAINNET);
-  }, [chainId, deploySenator]);
-  useEffect(() => {
-    // same required signature count as the legacy Incentive contract on this chain
-    if (deploySignNum) return;
-    if (chainId === 97) setDeploySignNum(String(DEFAULT_SIGN_NUM));
-    else if (chainId === 56) setDeploySignNum(String(DEFAULT_SIGN_NUM_MAINNET));
-  }, [chainId, deploySignNum]);
-  useEffect(() => {
-    // pre-fill VoucherNFT: the Voucher V2 tab's address book first, else the deployed one per chain
-    // (optional - can be left empty and set later)
-    if (deployVoucherNFT || !chainId) return;
-    const nft = loadBook(chainId).contracts.VoucherNFT
-      || (chainId === 56 ? DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET : chainId === 97 ? DEFAULT_VOUCHER_NFT_ADDRESS : '');
-    if (nft) setDeployVoucherNFT(nft);
-  }, [chainId, deployVoucherNFT]);
-
-  const deployImplementation = async () => {
-    if (!signer) return;
-    setTxStatus({ status: 'pending', message: 'Deploying VoucherAdapter implementation...' });
-    try {
-      const factory = new ethers.ContractFactory(VoucherAdapterArtifact.abi, VoucherAdapterArtifact.bytecode, signer);
-      const impl = await factory.deploy();
-      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: impl.deployTransaction?.hash });
-      await impl.deployed();
-      setImplAddress(impl.address);
-      setTxStatus({ status: 'success', hash: impl.deployTransaction?.hash, message: `Implementation deployed at ${impl.address}. Now deploy the proxy.` });
-    } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
-    }
-  };
-
-  const deployProxy = async () => {
-    if (!signer || !implAddress) return;
-    const admin = deployAdmin.trim();
-    const senator = deploySenator.trim();
-    const nft = deployVoucherNFT.trim() || ZERO;
-    const signNum = parseInt(deploySignNum, 10);
-    if (!isAddr(admin) || !isAddr(senator)) {
-      setTxStatus({ status: 'error', error: 'Admin and senator must be valid addresses.' });
-      return;
-    }
-    if (nft !== ZERO && !isAddr(nft)) {
-      setTxStatus({ status: 'error', error: 'VoucherNFT must be a valid address, or empty to set it later.' });
-      return;
-    }
-    if (!signNum || signNum < 1) {
-      setTxStatus({ status: 'error', error: 'Required PR-node signatures must be at least 1.' });
-      return;
-    }
-    setTxStatus({ status: 'pending', message: 'Deploying proxy + initializing...' });
-    try {
-      const iface = new ethers.utils.Interface(VoucherAdapterArtifact.abi);
-      const initData = iface.encodeFunctionData('initialize', [admin, hubAddress, nft, senator, signNum]);
-      const factory = new ethers.ContractFactory(VoucherAdapterProxyArtifact.abi, VoucherAdapterProxyArtifact.bytecode, signer);
-      const proxy = await factory.deploy(implAddress, initData);
-      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: proxy.deployTransaction?.hash });
-      await proxy.deployed();
-      setAdapterAddress(proxy.address);
-      setImplAddress('');
-      setTxStatus({
-        status: 'success',
-        hash: proxy.deployTransaction?.hash,
-        message: `VoucherAdapter deployed at ${proxy.address}. Next: "Link to GameHub" below so the DSMs accept it.`,
-      });
-    } catch (e: any) {
-      setTxStatus({ status: 'error', error: decodeError(e) });
-    }
-  };
 
   const loadExisting = () => {
     if (!isAddr(manualLoad)) {
@@ -432,46 +357,14 @@ export default function VoucherAdapterCard({
           </div>
         </div>
       ) : (
-        <p className="text-txt-secondary text-sm text-center py-3">No VoucherAdapter linked on this hub yet — deploy one below, or load an existing address.</p>
+        <p className="text-txt-secondary text-sm text-center py-3">No VoucherAdapter on this hub yet — deploy one in the Deploy tab (Deploy VoucherAdapter), then link it here.</p>
       )}
 
-      {/* ── Deploy ── */}
-      <details className="bg-surface-tertiary rounded-lg p-3 mb-3" open={!isAddr(adapterAddress)}>
-        <summary className="text-xs font-semibold text-accent cursor-pointer">Deploy new VoucherAdapter</summary>
-        <div className="space-y-2 mt-2">
-          <p className="text-[11px] text-txt-secondary">
-            Needs GameHub v1.0.6 and DailySessionManager v1.0.8 (Deploy tab → Upgrade GameHub, then Upgrade Fleet) — older versions
-            have no points-manager allowlist. Hub is this GameHub. Use the same senator and signature count the PR nodes already use.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] text-txt-secondary">Admin</label>
-              <input value={deployAdmin} onChange={e => setDeployAdmin(e.target.value)} placeholder="0x..." className={inputCls} />
-            </div>
-            <div>
-              <label className="text-[11px] text-txt-secondary">Senator (PR-node multisig)</label>
-              <input value={deploySenator} onChange={e => setDeploySenator(e.target.value)} placeholder="0x..." className={inputCls} />
-            </div>
-            <div>
-              <label className="text-[11px] text-txt-secondary">Required PR-node signatures (same as Incentive)</label>
-              <input value={deploySignNum} onChange={e => setDeploySignNum(e.target.value)} placeholder="e.g. 2" className={inputCls} />
-            </div>
-            <div>
-              <label className="text-[11px] text-txt-secondary">VoucherNFT (optional — can be set later)</label>
-              <input value={deployVoucherNFT} onChange={e => setDeployVoucherNFT(e.target.value)} placeholder="empty = points transfers only for now" className={inputCls} />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={deployImplementation} disabled={!isConnected || !!implAddress} className={primaryBtn + ' flex-1'}>1. Deploy implementation</button>
-            <button onClick={deployProxy} disabled={!isConnected || !implAddress} className={primaryBtn + ' flex-1'}>2. Deploy proxy + initialize</button>
-          </div>
-          {implAddress && <p className="text-[11px] text-txt-secondary">Implementation: <code className="text-accent">{implAddress}</code></p>}
-          <div className="flex gap-2 pt-1">
-            <input value={manualLoad} onChange={e => setManualLoad(e.target.value)} placeholder="or load an existing VoucherAdapter: 0x..." className={inputCls + ' flex-1'} />
-            <button onClick={loadExisting} disabled={!manualLoad} className={secondaryBtn}>Load</button>
-          </div>
-        </div>
-      </details>
+      {/* ── Load existing (deployment itself is in the Deploy tab) ── */}
+      <div className="flex gap-2 mb-3">
+        <input value={manualLoad} onChange={e => setManualLoad(e.target.value)} placeholder="Load a VoucherAdapter address: 0x..." className={inputCls + ' flex-1'} />
+        <button onClick={loadExisting} disabled={!manualLoad} className={secondaryBtn}>Load</button>
+      </div>
 
       {info && (
         <div className="space-y-3">
