@@ -172,7 +172,7 @@ export default function DashboardPage() {
       <div>
         <ContractOverview items={overviewItems} provider={provider} chainId={chainId || 97}>
           {['deploy', 'hub', 'admin', 'operators', 'sessions', 'matches', 'explorer', 'daily-points', 'boost', 'splitter'].includes(activeTab) && (
-            <OperatorsOverview provider={provider} chainId={chainId || 97} hubAddress={hubAddress} />
+            <OperatorsOverview provider={provider} chainId={chainId || 97} hubAddress={hubAddress} selectedDsm={sessionManagerAddress} />
           )}
         </ContractOverview>
         {activeTab === 'deploy' && !isPureOperator && <DeploySection />}

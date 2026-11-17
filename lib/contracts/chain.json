@@ -44,9 +44,18 @@
       "Luca Void": "0x4600Ff32CdFA1EDf46f3eAE75f9e5A5CF90EDb3a"
     },
     "operators": {
-      "Internal": "0x8963b195aBCAeb9700503F5C95BDb4f220ce3639",
-      "RK": "0xF736FeA6157f0A401c0746a48a6865e802F66845",
-      "BOT": "0x896740977A2278549154dd10E303385bAE5E62cb"
+      "Internal": {
+        "dsm": "0x6C89e06B838040792C584c4a5Ee9f36ecb740A1F",
+        "operator": "0x8963b195aBCAeb9700503F5C95BDb4f220ce3639"
+      },
+      "RK": {
+        "dsm": "0xf268941f0F4938368ae7f8de5B770ECBd2B3643f",
+        "operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
+      },
+      "BOT": {
+        "dsm": "0xc0B2780044BE80d18C5F5ECc109D1CfbD9359664",
+        "operator": "0x896740977A2278549154dd10E303385bAE5E62cb"
+      }
     }
   },
   "56": {
@@ -88,7 +97,10 @@
       "Token Void (0x3aB4)": "0x3aB4DF20C29f88fD98Dc88Af139C695682c1ed35"
     },
     "operators": {
-      "RSK Operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
+      "RSK Operator": {
+        "dsm": "0x2a8509d91d0A1d26E9cc1617A190CeF86b2E90c2",
+        "operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
+      }
     }
   }
 }

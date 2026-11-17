@@ -31,15 +31,14 @@ export function sectionContracts(tab: string, c: SectionCtx): OverviewItem[] {
   const isMainnet = c.chainId === BSC_MAINNET.chainId;
   const ns = isMainnet ? BSC_MAINNET.chainId : 97;
   const hub = { label: 'GameHub', address: c.hubAddress };
-  const dsm = { label: 'DailySessionManager (selected operator)', address: c.sessionManagerAddress };
   const token = { label: 'Payment token (LUCA)', address: c.tokenAddress };
   const adapter = { label: 'VoucherAdapter', address: loadVoucherAdapterAddress(ns) };
 
   switch (tab) {
     case 'deploy':
-      return [hub, dsm, adapter];
+      return [hub, adapter];
     case 'hub':
-      return [hub, dsm, adapter,
+      return [hub, adapter,
         { label: 'Reward Eligibility Registry', address: c.rewardEligibilityRegistryAddress },
         { label: 'ATM Voucher', address: c.atmVoucherAddress }];
     case 'tokens':
@@ -50,7 +49,7 @@ export function sectionContracts(tab: string, c: SectionCtx): OverviewItem[] {
     case 'explorer':
     case 'daily-points':
     case 'boost':
-      return [hub, dsm, token];
+      return [hub, token];
     case 'splitter':
       return [{ label: 'PaymentSplitter (selected)', address: c.activeSplitter }, hub];
     case 'void': {
