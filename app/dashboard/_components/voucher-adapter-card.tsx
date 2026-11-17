@@ -51,6 +51,43 @@ export function loadVoucherAdapterAddress(chainId: number): string {
   try { return localStorage.getItem(networkStorageKey(STORAGE_BASE, chainId)) || ''; } catch { return ''; }
 }
 
+/** Current PR-node set of a senator contract: AGFSenator (getSenators()) or the legacy epoch-rotating
+ *  Senator (senators(i) until it reverts). Both have getExecuter(). The set can rotate, so read it live. */
+export async function readSenators(provider: ethers.providers.Provider, senator: string): Promise<{ senators: string[]; executer: string } | null> {
+  if (!senator || !ethers.utils.isAddress(senator)) return null;
+  const c = new ethers.Contract(senator, [
+    'function getSenators() view returns (address[])',
+    'function senators(uint256) view returns (address)',
+    'function getExecuter() view returns (address)',
+  ], provider);
+  try {
+    let list: string[] = [];
+    try {
+      list = await c.getSenators();
+    } catch {
+      for (let i = 0; i < 200; i++) {
+        try { list.push(await c.senators(i)); } catch { break; }
+      }
+    }
+    const executer: string = await c.getExecuter().catch(() => ethers.constants.AddressZero);
+    return { senators: list, executer };
+  } catch {
+    return null;
+  }
+}
+
+export function useSenators(provider: ethers.providers.Provider | null | undefined, senator: string) {
+  const [data, setData] = useState<{ senators: string[]; executer: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    if (!provider || !senator || !ethers.utils.isAddress(senator)) return;
+    readSenators(provider, senator).then(r => { if (!cancelled) setData(r); });
+    return () => { cancelled = true; };
+  }, [provider, senator]);
+  return data;
+}
+
 export default function VoucherAdapterCard({
   hubAddress,
   operators,
@@ -67,6 +104,7 @@ export default function VoucherAdapterCard({
   const [copied, setCopied] = useState('');
   const [adapterAddress, setAdapterAddressState] = useState('');
   const [info, setInfo] = useState<AdapterInfo | null>(null);
+  const senatorSet = useSenators(provider, info?.senator || '');
   const [loading, setLoading] = useState(false);
   // points managers that look like a transfer contract (PointsTransfer or VoucherAdapter):
   // pagerank-service refuses to sign when more than one of these is registered
@@ -319,7 +357,34 @@ export default function VoucherAdapterCard({
               )}
               {addrLine('VoucherNFT', info.voucherNFT)}
               {addrLine('Senator', info.senator)}
-              <div className="flex justify-between text-xs"><span className="text-txt-secondary">Required PR-node signatures</span><span>{info.signNum}</span></div>
+              <div className="flex justify-between text-xs">
+                <span className="text-txt-secondary">Required PR-node signatures</span>
+                <span className={senatorSet && info.signNum > senatorSet.senators.length ? 'text-red-400' : ''}>
+                  {info.signNum}{senatorSet ? ` of ${senatorSet.senators.length} current senators` : ''}
+                </span>
+              </div>
+              {senatorSet && info.signNum > senatorSet.senators.length && (
+                <p className="text-[11px] text-red-400">⚠ More signatures required than senators exist — every transfer would fail (NotEnoughSignatures). Lower it in Settings.</p>
+              )}
+              {senatorSet && senatorSet.senators.length > 0 && (
+                <details className="text-xs">
+                  <summary className="text-txt-secondary cursor-pointer">PR nodes (senators) — {senatorSet.senators.length}, read live (the set can rotate)</summary>
+                  <div className="mt-1 space-y-0.5 max-h-64 overflow-y-auto">
+                    {senatorSet.senators.map((s, i) => (
+                      <div key={s + i} className="flex items-center gap-2 font-mono">
+                        <span className="text-txt-secondary w-6 text-right">{i}</span>
+                        <a href={getExplorerAddressUrl(chainId, s)} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline break-all">{s}</a>
+                        {same(s, senatorSet.executer) && <span className="text-[10px] bg-accent/20 text-accent px-1.5 rounded">executer</span>}
+                      </div>
+                    ))}
+                    {!senatorSet.senators.some(s => same(s, senatorSet.executer)) && senatorSet.executer !== ZERO && (
+                      <div className="flex items-center gap-2 font-mono"><span className="w-6" />
+                        <span className="text-accent break-all">{senatorSet.executer}</span><span className="text-[10px] bg-accent/20 text-accent px-1.5 rounded">executer</span>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
               <div className="flex justify-between text-xs">
                 <span className="text-txt-secondary">State</span>
                 <span className={info.paused ? 'text-red-400' : 'text-green-400'}>{info.paused ? 'Paused' : 'Active'}</span>

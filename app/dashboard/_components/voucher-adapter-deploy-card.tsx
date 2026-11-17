@@ -16,7 +16,7 @@ import { loadBook } from '@/lib/contracts/voucher-v2';
 import VoucherAdapterArtifact from '@/lib/contracts/VoucherAdapter.json';
 import VoucherAdapterProxyArtifact from '@/lib/contracts/VoucherAdapterProxy.json';
 import { Ticket, ExternalLink, Copy, Check } from 'lucide-react';
-import { saveVoucherAdapterAddress, loadVoucherAdapterAddress } from './voucher-adapter-card';
+import { saveVoucherAdapterAddress, loadVoucherAdapterAddress, useSenators } from './voucher-adapter-card';
 
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
 
@@ -24,7 +24,7 @@ const ZERO = ethers.constants.AddressZero;
 const isAddr = (a: string) => !!a && ethers.utils.isAddress(a.trim());
 
 export default function VoucherAdapterDeployCard() {
-  const { signer, isConnected, address, chainId, hubAddress } = useWeb3();
+  const { provider, signer, isConnected, address, chainId, hubAddress } = useWeb3();
   const [txStatus, setTxStatus] = useState<TxState>({ status: 'idle' });
   const [copied, setCopied] = useState(false);
   const [implAddress, setImplAddress] = useState('');
@@ -33,6 +33,8 @@ export default function VoucherAdapterDeployCard() {
   const [deploySignNum, setDeploySignNum] = useState('');
   const [deployVoucherNFT, setDeployVoucherNFT] = useState('');
   const [lastAdapter, setLastAdapter] = useState('');
+  const senatorSet = useSenators(provider, deploySenator.trim());
+  const signNumValue = parseInt(deploySignNum, 10);
 
   const inputCls = 'w-full mt-0.5 bg-surface-tertiary rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent';
   const primaryBtn = 'bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold px-4 py-2.5 rounded-lg text-sm transition-colors';
@@ -136,6 +138,12 @@ export default function VoucherAdapterDeployCard() {
         <div>
           <label className="text-[11px] text-txt-secondary">Required PR-node signatures (same as Incentive)</label>
           <input value={deploySignNum} onChange={e => setDeploySignNum(e.target.value)} placeholder="e.g. 18" className={inputCls} />
+          {senatorSet && (
+            <p className={`text-[11px] mt-0.5 ${signNumValue > senatorSet.senators.length ? 'text-red-400' : 'text-txt-secondary'}`}>
+              {senatorSet.senators.length} current senators (PR nodes){signNumValue > 0 ? ` — requires ${signNumValue} of ${senatorSet.senators.length}` : ''}
+              {signNumValue > senatorSet.senators.length ? ' — more than exist, transfers would always fail' : ''}
+            </p>
+          )}
         </div>
         <div>
           <label className="text-[11px] text-txt-secondary">VoucherNFT (optional — can be set later)</label>
