@@ -12,6 +12,7 @@ type ChainDefaults = {
   atmVoucherAddress?: string;
   contributionPoolAddress?: string;
   rgstAddress?: string;
+  atmVoidAddress?: string;
 };
 
 // Per-chainId default contract addresses (keyed by chainId as a string, e.g. "97", "56").
@@ -92,6 +93,10 @@ export const DEFAULT_CONTRIBUTION_POOL_ADDRESS = process.env.NEXT_PUBLIC_CONTRIB
 // timelocked proxy admin, unrelated to the GameHub fleet. Set after deploying from the RGST Token tab.
 export const DEFAULT_RGST_ADDRESS = process.env.NEXT_PUBLIC_RGST_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'rgstAddress');
 
+// ATMVoid proxy — configurable burn contract (any registered ERC-20 / V2 LP token), its own
+// admin/operator roles. Set after deploying from the ATM Void tab.
+export const DEFAULT_ATM_VOID_ADDRESS = process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS || chainDefault(BNB_TESTNET.chainId, 'atmVoidAddress');
+
 // Same set of defaults, but for BSC Mainnet — deployments are independent per network,
 // so mainnet gets its own fallbacks (chain.json's "56" entry, env var still wins) alongside
 // the testnet ones above.
@@ -106,6 +111,7 @@ export const DEFAULT_REWARD_ELIGIBILITY_REGISTRY_ADDRESS_MAINNET = process.env.N
 export const DEFAULT_ATM_VOUCHER_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ATM_VOUCHER_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'atmVoucherAddress');
 export const DEFAULT_CONTRIBUTION_POOL_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_CONTRIBUTION_POOL_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'contributionPoolAddress');
 export const DEFAULT_RGST_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_RGST_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'rgstAddress');
+export const DEFAULT_ATM_VOID_ADDRESS_MAINNET = process.env.NEXT_PUBLIC_ATM_VOID_ADDRESS_MAINNET || chainDefault(BSC_MAINNET.chainId, 'atmVoidAddress');
 
 export type NetworkKey = 'testnet' | 'mainnet';
 

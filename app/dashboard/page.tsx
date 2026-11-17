@@ -14,6 +14,7 @@ import OperatorsSection from './_components/operators-section';
 import SplitterSection from './_components/splitter-section';
 import SessionExplorer from './_components/session-explorer';
 import TokenVoidSection from './_components/token-void-section';
+import ATMVoidSection from './_components/atm-void-section';
 import RewardEligibilityRegistrySection from './_components/reward-eligibility-registry-section';
 import ATMVoucherSection from './_components/atm-voucher-section';
 import VoucherV2Section from './_components/voucher-v2-section';
@@ -38,6 +39,9 @@ const TABS = [
   { id: 'boost', label: 'PR Boost', icon: <Zap className="w-4 h-4" />, adminOnly: false },
   { id: 'splitter', label: 'Splitter', icon: <Split className="w-4 h-4" />, adminOnly: false },
   { id: 'void', label: 'Void', icon: <Flame className="w-4 h-4" />, adminOnly: false },
+  // Configurable burn contract (any registered ERC-20 / V2 LP token) with its own admin/operator
+  // role model, enforced on-chain — not gated by GameHub walletRole.
+  { id: 'atm-void', label: 'ATM Void', icon: <Flame className="w-4 h-4" />, adminOnly: false },
   // Not gated by GameHub walletRole — this is a standalone contract with its own
   // owner/operator permission model, enforced on-chain and reflected in the tab's own UI.
   { id: 'reward-eligibility-registry', label: 'Reward Eligibility Registry', icon: <IdCard className="w-4 h-4" />, adminOnly: false },
@@ -166,6 +170,7 @@ export default function DashboardPage() {
         {activeTab === 'boost' && <PrBoostSection />}
         {activeTab === 'splitter' && <SplitterSection />}
         {activeTab === 'void' && <TokenVoidSection />}
+        {activeTab === 'atm-void' && <ATMVoidSection />}
         {activeTab === 'reward-eligibility-registry' && <RewardEligibilityRegistrySection />}
         {activeTab === 'atm-vouchers' && <ATMVoucherSection />}
         {activeTab === 'voucher-v2' && <VoucherV2Section />}
