@@ -23,6 +23,8 @@ type ChainDefaults = {
   lucaVoidLpAddress?: string;
   // operators' PaymentSplitters, name -> address (stable - always listed in the Splitter tab)
   splitters?: Record<string, string>;
+  // GameHub operators, name -> operator wallet (shown instantly, then checked on-chain)
+  operators?: Record<string, string>;
   // TokenVoid contracts on this chain, name -> address (Luca Void tab dropdown)
   tokenVoids?: Record<string, string>;
   // Voucher V2 set on this chain (checked live by Voucher V2 -> Overview -> On-chain set)
@@ -47,6 +49,12 @@ const chainDefault = (chainId: number, key: keyof ChainDefaults): string => {
 /** A real 0x address, else ''. Placeholder text in .env (e.g. "your_gamehub_address_here") or a
  *  corrupted saved value must never override the per-chain production defaults in chain.json. */
 export const validAddr = (v?: string | null): string => (v && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? v.trim() : '');
+
+/** chain.json's GameHub operators for this chain, as { name, address }. */
+export const chainOperators = (chainId: number): { name: string; address: string }[] =>
+  Object.entries(CHAIN_DEFAULTS[String(chainId)]?.operators || {})
+    .filter(([, address]) => validAddr(address))
+    .map(([name, address]) => ({ name, address }));
 
 /** chain.json's TokenVoid contracts for this chain, as { label, address } (Luca Void tab dropdown). */
 export const chainTokenVoids = (chainId: number): { label: string; address: string }[] =>

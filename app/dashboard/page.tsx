@@ -22,6 +22,7 @@ import ContributionPoolSection from './_components/contribution-pool-section';
 import RgstSection from './_components/rgst-section';
 import LinkSection from './_components/link-section';
 import ContractOverview from '@/components/contract-overview';
+import OperatorsOverview from '@/components/operators-overview';
 import { sectionContracts } from '@/lib/contracts/section-contracts';
 
 // adminOnly tabs manage platform-wide infra (deploy/upgrade contracts, register
@@ -169,7 +170,11 @@ export default function DashboardPage() {
 
       {/* Tab Content */}
       <div>
-        <ContractOverview items={overviewItems} provider={provider} chainId={chainId || 97} />
+        <ContractOverview items={overviewItems} provider={provider} chainId={chainId || 97}>
+          {['deploy', 'hub', 'admin', 'operators', 'sessions', 'matches', 'explorer', 'daily-points', 'boost', 'splitter'].includes(activeTab) && (
+            <OperatorsOverview provider={provider} chainId={chainId || 97} hubAddress={hubAddress} />
+          )}
+        </ContractOverview>
         {activeTab === 'deploy' && !isPureOperator && <DeploySection />}
         {activeTab === 'hub' && !isPureOperator && <HubSection />}
         {activeTab === 'tokens' && <TokenSection />}

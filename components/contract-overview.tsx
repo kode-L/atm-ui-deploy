@@ -38,8 +38,8 @@ export async function readContractLive(provider: ethers.providers.Provider, addr
   return { code: true, version, implementation };
 }
 
-export default function ContractOverview({ items, provider, chainId, title = 'Overview' }: {
-  items: OverviewItem[]; provider: ethers.providers.Provider | null | undefined; chainId: number; title?: string;
+export default function ContractOverview({ items, provider, chainId, title = 'Overview', children }: {
+  items: OverviewItem[]; provider: ethers.providers.Provider | null | undefined; chainId: number; title?: string; children?: React.ReactNode;
 }) {
   const [live, setLive] = useState<Record<string, Live>>({});
   const [copied, setCopied] = useState('');
@@ -56,7 +56,7 @@ export default function ContractOverview({ items, provider, chainId, title = 'Ov
     return () => { cancelled = true; };
   }, [provider, key, nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!items.length) return null;
+  if (!items.length && !children) return null;
   const copy = (a: string) => { navigator.clipboard?.writeText?.(a); setCopied(a); setTimeout(() => setCopied(''), 1500); };
 
   return (
@@ -94,6 +94,7 @@ export default function ContractOverview({ items, provider, chainId, title = 'Ov
           );
         })}
       </div>
+      {children}
     </div>
   );
 }
