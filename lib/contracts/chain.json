@@ -15,7 +15,24 @@
     "voucherNftAddress": "0xA1010B445db17C3d754B048dd40Cae4471290170",
     "senatorAddress": "0x7fa9AdAfC33cB1a0edFD2ff1178Ed7959F5Cd852",
     "signNum": 1,
-    "voucherAdapterAddress": ""
+    "voucherAdapterAddress": "",
+    "splitters": [
+      {
+        "label": "Internal Splitter",
+        "address": "0x87aaD98f651D8327b90FF73E4C464ad1Cac4C496",
+        "operator": "0x8963b195aBCAeb9700503F5C95BDb4f220ce3639"
+      },
+      {
+        "label": "RK Splitter",
+        "address": "0xEFFD46dc259F7805ee9C9C0F63fc06D6021F9829",
+        "operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
+      },
+      {
+        "label": "BOT Splitter",
+        "address": "0xcF9Eb14b9552216E4a8091B8d25318D5bac8fEaB",
+        "operator": "0x896740977A2278549154dd10E303385bAE5E62cb"
+      }
+    ]
   },
   "56": {
     "chainName": "BNB Smart Chain",
@@ -33,6 +50,14 @@
     "voucherNftAddress": "0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9",
     "senatorAddress": "0x26BA33a62D15Ad5d9d8b31008AAfC1870f6bf2E9",
     "signNum": 18,
-    "voucherAdapterAddress": ""
+    "voucherAdapterAddress": "",
+    "lucaVoidLpAddress": "0x13C6757756A6a0aEdc8EFE0415307334cf93A7FC",
+    "splitters": [
+      {
+        "label": "RSK Operator Splitter",
+        "address": "0x59B44aBA143AE952F3f3666Efea79B4F281B164C",
+        "operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
+      }
+    ]
   }
 }

@@ -375,7 +375,7 @@ export default function TokenVoidSection() {
       )}
 
       {/* Setup */}
-      <Card title="Void" icon={<Skull className="w-5 h-5 text-red-400" />}>
+      <Card title="Luca Void" icon={<Skull className="w-5 h-5 text-red-400" />}>
         <p className="text-xs text-txt-secondary mb-3">
           A burn split routes points to the standard dead address instead of a payee. Void gives users a self-serve way to burn their own points directly (via <code className="text-accent">transferFrom → DEAD_ADDRESS</code>), tagged with a burn type and recorded on-chain for history/leaderboards.
         </p>

@@ -21,6 +21,7 @@ import {
   DEFAULT_RGST_ADDRESS_MAINNET,
   networkStorageKey,
   validAddr,
+  chainSplitters,
 } from '@/lib/contracts/config';
 import { getFallbackProvider } from '@/lib/contracts/rpc-provider';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
@@ -111,13 +112,17 @@ function Web3Provider({ children }: { children: ReactNode }) {
     const savedRgst = localStorage.getItem(networkStorageKey('dg_rgstAddress', netNs));
     setRgstAddressState(validAddr(savedRgst) || (isMainnet ? DEFAULT_RGST_ADDRESS_MAINNET : DEFAULT_RGST_ADDRESS));
 
-    // Load splitters array
+    // Splitters: chain.json's operator splitters (they don't change) + any added in this browser
+    const known = chainSplitters(netNs);
+    let saved: { address: string; label: string }[] = [];
     try {
       const savedSplitters = localStorage.getItem(networkStorageKey('dg_splitters', netNs));
-      setSplitters(savedSplitters ? JSON.parse(savedSplitters) : []);
-    } catch { setSplitters([]); }
-    const savedActive = localStorage.getItem(networkStorageKey('dg_activeSplitter', netNs)) || '';
-    setActiveSplitterState(savedActive);
+      saved = savedSplitters ? JSON.parse(savedSplitters) : [];
+    } catch { saved = []; }
+    const merged = [...known, ...saved.filter(s => validAddr(s.address) && !known.some(k => k.address.toLowerCase() === s.address.toLowerCase()))];
+    setSplitters(merged);
+    const savedActive = validAddr(localStorage.getItem(networkStorageKey('dg_activeSplitter', netNs)));
+    setActiveSplitterState(savedActive || merged[0]?.address || '');
 
     // Avoid showing the previous network's admin/operator status while the hub address
     // above is still catching up.

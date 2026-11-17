@@ -19,6 +19,10 @@ type ChainDefaults = {
   senatorAddress?: string;
   signNum?: number;
   voucherAdapterAddress?: string;
+  // LUCA-LP burner (the "Luca Void" tab manages tokenVoidAddress, which burns LUCA itself)
+  lucaVoidLpAddress?: string;
+  // operators' PaymentSplitters (stable - always listed in the Splitter tab)
+  splitters?: { label: string; address: string; operator?: string }[];
 };
 
 // Per-chainId production addresses (keyed by chainId as a string, e.g. "97", "56"). This
@@ -27,12 +31,18 @@ type ChainDefaults = {
 const CHAIN_DEFAULTS = chainDefaults as Record<string, ChainDefaults>;
 const chainDefault = (chainId: number, key: keyof ChainDefaults): string => {
   const v = CHAIN_DEFAULTS[String(chainId)]?.[key];
-  return v === undefined || v === null ? '' : String(v);
+  return v === undefined || v === null || typeof v === 'object' ? '' : String(v);
 };
 
 /** A real 0x address, else ''. Placeholder text in .env (e.g. "your_gamehub_address_here") or a
  *  corrupted saved value must never override the per-chain production defaults in chain.json. */
 export const validAddr = (v?: string | null): string => (v && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? v.trim() : '');
+
+/** chain.json's PaymentSplitters for this chain (operators' splitters - they don't change). */
+export const chainSplitters = (chainId: number): { address: string; label: string }[] =>
+  (CHAIN_DEFAULTS[String(chainId)]?.splitters || [])
+    .filter(s => validAddr(s.address))
+    .map(s => ({ address: s.address, label: s.label }));
 
 /** A chain.json address for this chain ('' if unset or not a real address). */
 export const chainAddress = (chainId: number, key: keyof ChainDefaults): string => validAddr(chainDefault(chainId, key));

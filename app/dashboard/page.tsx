@@ -38,7 +38,7 @@ const TABS = [
   { id: 'daily-points', label: 'Daily Points', icon: <DollarSign className="w-4 h-4" />, adminOnly: false },
   { id: 'boost', label: 'PR Boost', icon: <Zap className="w-4 h-4" />, adminOnly: false },
   { id: 'splitter', label: 'Splitter', icon: <Split className="w-4 h-4" />, adminOnly: false },
-  { id: 'void', label: 'Void', icon: <Flame className="w-4 h-4" />, adminOnly: false },
+  { id: 'void', label: 'Luca Void', icon: <Flame className="w-4 h-4" />, adminOnly: false },
   // Configurable burn contract (any registered ERC-20 / V2 LP token) with its own admin/operator
   // role model, enforced on-chain — not gated by GameHub walletRole.
   { id: 'atm-void', label: 'ATM Void', icon: <Flame className="w-4 h-4" />, adminOnly: false },

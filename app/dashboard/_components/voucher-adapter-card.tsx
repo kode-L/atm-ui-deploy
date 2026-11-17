@@ -208,19 +208,6 @@ export default function VoucherAdapterCard({
     }
   };
 
-  // ── Load an existing adapter (deployed from the Deploy tab, or elsewhere) ──
-  const [manualLoad, setManualLoad] = useState('');
-
-  const loadExisting = () => {
-    if (!isAddr(manualLoad)) {
-      setTxStatus({ status: 'error', error: 'Invalid address' });
-      return;
-    }
-    setAdapterAddress(ethers.utils.getAddress(manualLoad.trim()));
-    setManualLoad('');
-    setTxStatus({ status: 'idle' });
-  };
-
   // ── Link to the hub (points-manager allowlist) ──
   const linkToHub = (allowed: boolean) => {
     if (!signer || !isAddr(adapterAddress)) return;
@@ -407,16 +394,10 @@ export default function VoucherAdapterCard({
               </div>
             </>
           )}
+          {!isLinked && (
+            <p className="text-[11px] text-yellow-300 pt-1">Not linked yet — Linked Contracts above → Voucher Adapter → Link to GameHub.</p>
+          )}
           <div className="flex gap-2 pt-2">
-            {!isLinked ? (
-              <button onClick={() => linkToHub(true)} disabled={!isConnected || !info || !same(info?.hub, hubAddress)} className={primaryBtn + ' flex items-center gap-1.5'}>
-                <Link2 className="w-4 h-4" /> Link to GameHub
-              </button>
-            ) : (
-              <button onClick={() => linkToHub(false)} disabled={!isConnected} className={secondaryBtn + ' flex items-center gap-1.5'}>
-                <Unlink className="w-4 h-4" /> Unlink from GameHub
-              </button>
-            )}
             {info && (
               <button onClick={togglePause} disabled={!isConnected || !info.isAdmin} className={secondaryBtn + ' flex items-center gap-1.5'}>
                 {info.paused ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />} {info.paused ? 'Unpause' : 'Pause'}
@@ -425,7 +406,7 @@ export default function VoucherAdapterCard({
           </div>
         </div>
       ) : (
-        <p className="text-txt-secondary text-sm text-center py-3">No VoucherAdapter on this hub yet — deploy one in the Deploy tab (Deploy VoucherAdapter), then link it here.</p>
+        <p className="text-txt-secondary text-sm text-center py-3">No VoucherAdapter yet — deploy one in the Deploy tab (Deploy VoucherAdapter), then link it in Linked Contracts above.</p>
       )}
 
       {/* ── Other contracts on GameHub's points-manager list (Link to GameHub uses the same list) ── */}
@@ -454,12 +435,6 @@ export default function VoucherAdapterCard({
           ))}
         </div>
       )}
-
-      {/* ── Load existing (deployment itself is in the Deploy tab) ── */}
-      <div className="flex gap-2 mb-3">
-        <input value={manualLoad} onChange={e => setManualLoad(e.target.value)} placeholder="Load a VoucherAdapter address: 0x..." className={inputCls + ' flex-1'} />
-        <button onClick={loadExisting} disabled={!manualLoad} className={secondaryBtn}>Load</button>
-      </div>
 
       {info && (
         <div className="space-y-3">

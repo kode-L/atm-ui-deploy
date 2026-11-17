@@ -9,7 +9,7 @@ import { decodeError } from '@/lib/contracts/error-decoder';
 import { getExplorerAddressUrl } from '@/lib/contracts/config';
 import { Network, RefreshCw, UserPlus, UserMinus, CheckCircle, Copy, Check, ExternalLink, Link2 } from 'lucide-react';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
-import VoucherAdapterCard from './voucher-adapter-card';
+import VoucherAdapterCard, { loadVoucherAdapterAddress } from './voucher-adapter-card';
 
 interface HubOperator {
   address: string;
@@ -65,6 +65,10 @@ export default function HubSection() {
   // GameHub v1.0.6 points-manager list (contracts allowed to call applyPointsDelta / withdrawRetained
   // on every operator instance) - shown and managed inside the Voucher Adapter card
   const [pointsManagers, setPointsManagers] = useState<string[]>([]);
+  // Voucher Adapter (linked = on GameHub's points-manager list; input pre-filled with the one
+  // deployed in the Deploy tab / chain.json)
+  const [linkedAdapter, setLinkedAdapter] = useState('');
+  const [voucherAdapterInput, setVoucherAdapterInput] = useState('');
 
   const getHub = useCallback((withSigner = false) => {
     if (!hubAddress) return null;
@@ -288,6 +292,53 @@ export default function HubSection() {
       await tx.wait();
       setTxStatus({ status: 'success', hash: tx.hash, message: 'ATM Voucher set ✔' });
       setAtmVoucherInput('');
+      fetchAll();
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+  };
+
+  // which points manager is a VoucherAdapter (has voucherNFT() and points at this hub)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!provider || !hubAddress) return;
+      let found = '';
+      for (const pm of pointsManagers) {
+        const c = new ethers.Contract(pm, ['function hub() view returns (address)', 'function voucherNFT() view returns (address)'], provider);
+        try {
+          if ((await c.hub()).toLowerCase() !== hubAddress.toLowerCase()) continue;
+          await c.voucherNFT();
+          found = pm;
+          break;
+        } catch { /* not a VoucherAdapter */ }
+      }
+      if (!cancelled) setLinkedAdapter(found);
+    })();
+    return () => { cancelled = true; };
+  }, [pointsManagers, provider, hubAddress]);
+  useEffect(() => {
+    if (chainId && !voucherAdapterInput) setVoucherAdapterInput(loadVoucherAdapterAddress(chainId));
+  }, [chainId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const linkVoucherAdapter = async (allowed: boolean) => {
+    const hub = getHub(true);
+    if (!hub) return;
+    const addr = allowed ? voucherAdapterInput.trim() : linkedAdapter;
+    if (!ethers.utils.isAddress(addr)) {
+      setTxStatus({ status: 'error', error: 'Enter the VoucherAdapter address (deployed in the Deploy tab).' });
+      return;
+    }
+    setTxStatus({ status: 'pending', message: allowed ? 'Linking VoucherAdapter to GameHub...' : 'Unlinking VoucherAdapter...' });
+    try {
+      await hub.callStatic.setPointsManager(addr, allowed);
+      const tx = await hub.setPointsManager(addr, allowed);
+      setTxStatus({ status: 'pending', message: 'Waiting for confirmation...', hash: tx.hash });
+      await tx.wait();
+      setTxStatus({
+        status: 'success', hash: tx.hash,
+        message: allowed ? 'VoucherAdapter linked ✔ — every operator DSM now accepts it.' : 'VoucherAdapter unlinked ✔ — it can no longer change points or pay from DSMs.',
+      });
       fetchAll();
     } catch (e: any) {
       setTxStatus({ status: 'error', error: decodeError(e) });
@@ -526,6 +577,18 @@ export default function HubSection() {
             <div className="flex gap-2">
               <button onClick={setAtmVoucher} disabled={!isConnected} className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold px-4 py-2 rounded-lg text-sm transition-colors">Set ATM Voucher</button>
               <button onClick={clearAtmVoucher} disabled={!isConnected || !atmVoucherOnChain || atmVoucherOnChain === ethers.constants.AddressZero} className="flex-1 bg-surface-tertiary hover:bg-accent/20 border border-accent/30 text-accent font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Clear</button>
+            </div>
+          </div>
+
+          {/* Voucher Adapter */}
+          <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
+            <h5 className="text-xs font-semibold text-accent">Voucher Adapter</h5>
+            <p className="text-[11px] text-txt-secondary">Links the VoucherAdapter (deployed in the Deploy tab) to the hub as its points manager, so every operator instance accepts it — Voucher V2 points/payout vouchers and PR-node signed points transfers. Manage it in the Voucher Adapter card below.</p>
+            <p className="text-[11px] text-txt-secondary break-all">Current: <span className="text-accent font-semibold font-mono">{linkedAdapter || 'Not linked'}</span></p>
+            <input value={voucherAdapterInput} onChange={e => setVoucherAdapterInput(e.target.value)} placeholder="0x..." className={inputCls} />
+            <div className="flex gap-2">
+              <button onClick={() => linkVoucherAdapter(true)} disabled={!isConnected || !voucherAdapterInput} className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold px-4 py-2 rounded-lg text-sm transition-colors">Link to GameHub</button>
+              <button onClick={() => linkVoucherAdapter(false)} disabled={!isConnected || !linkedAdapter} className="flex-1 bg-surface-tertiary hover:bg-accent/20 border border-accent/30 text-accent font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Unlink</button>
             </div>
           </div>
         </div>
