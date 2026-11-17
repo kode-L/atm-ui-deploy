@@ -746,6 +746,36 @@ export default function AdminSection() {
     ? rtTotalPositiveDelta > rtCollectedPoints
     : rtTotalBps > rtCollectionBps;
 
+  // the exact checks GameHub._validateRewardType makes - shown live so a create can't revert
+  const rtMinNum = parseInt(rtMinPlayers) || 0, rtMaxNum = parseInt(rtMaxPlayers) || 0;
+  const rtPlacements = rtFixedPoints ? rtPlacementDeltas.filter(d => d.trim() !== '') : rtPlacementBps.filter(b => b.trim() !== '');
+  const rtChecks: { ok: boolean; text: string }[] = [
+    { ok: rtName.trim().length > 0, text: 'Name is set' },
+    { ok: (parseFloat(rtEntryFee) || 0) > 0, text: 'Entry fee is more than 0' },
+    { ok: rtMinNum >= 2, text: 'At least 2 players' },
+    { ok: rtMaxNum >= rtMinNum && rtMaxNum >= 2, text: 'Max players ≥ min players' },
+    { ok: rtCollectionBps > 0 && rtCollectionBps <= 10000, text: 'Collect % is above 0 and at most 100' },
+    { ok: rtPlacements.length > 0, text: rtFixedPoints ? 'At least one placement points value' : 'At least one placement %' },
+    { ok: rtPlacements.length <= rtMaxNum, text: `No more placements than max players (${rtPlacements.length}/${rtMaxNum || '?'})` },
+    ...(rtFixedPoints ? [] : [{ ok: rtTotalBps <= 10000, text: `Placements add up to at most 100% (${(rtTotalBps / 100).toFixed(2)}%)` }]),
+  ];
+  const rtAllOk = rtChecks.every(c => c.ok);
+  const rtSummary = rtFixedPoints
+    ? `Each of ${rtMinNum || '?'}–${rtMaxNum || '?'} players pays ${rtEntryFee || '?'} pts; ${rtCollectionPct || '?'}% of the pot is collected. Points by placement: ${rtPlacementDeltas.map((d, i) => `#${i + 1} ${parseFloat(d) > 0 ? '+' : ''}${d || '0'}`).join(', ')}.`
+    : `Each of ${rtMinNum || '?'}–${rtMaxNum || '?'} players pays ${rtEntryFee || '?'} pts; ${rtCollectionPct || '?'}% of the pot is collected. Pot split by placement: ${rtPlacementBps.map((b, i) => `#${i + 1} ${(toBps(b) / 100).toFixed(2)}%`).join(', ')}${rtTotalBps < 10000 ? ` (${((10000 - rtTotalBps) / 100).toFixed(2)}% retained)` : ''}.`;
+  const copyRewardTypeIntoCreate = (id: string) => {
+    const rt = cachedRewardTypes.find(r => String(r.id) === id);
+    if (!rt) return;
+    setRtName(`${rt.name} (copy)`);
+    setRtEntryFee(rt.entryFee);
+    setRtMinPlayers(String(rt.minPlayers));
+    setRtMaxPlayers(String(rt.maxPlayers));
+    setRtCollectionPct(String((rt.collectionBps ?? 10000) / 100));
+    setRtFixedPoints(!!rt.fixedPoints);
+    if (rt.fixedPoints && rt.placementDeltas?.length) setRtPlacementDeltas(rt.placementDeltas);
+    if (!rt.fixedPoints && rt.placementBps?.length) setRtPlacementBps(rt.placementBps.map(b => String(b)));
+  };
+
   const rtUpdateTotalBps = rtUpdatePlacementBps.reduce((s, b) => s + toBps(b), 0);
   const rtUpdateCollectionBps = Math.max(0, Math.round((parseFloat(rtUpdateCollectionPct) || 0) * 100));
   const rtUpdatePool = (parseFloat(rtUpdateFee) || 0) * (parseInt(rtUpdateMinPlayers) || 2);
@@ -1187,6 +1217,23 @@ export default function AdminSection() {
             {/* Create */}
             <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
               <h5 className="text-xs font-semibold text-accent">Create Reward Type</h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
+                <div className="bg-surface-secondary/60 rounded-lg p-2"><b className="text-accent">① Create it here</b><br />Name, entry fee, players, how the pot is paid out. One GameHub transaction.</div>
+                <div className="bg-surface-secondary/60 rounded-lg p-2">
+                  <b className="text-accent">② Allow it per operator</b><br />A new type is off for every operator until allowed.{' '}
+                  <button onClick={() => setOpenSection('rules')} className="underline hover:text-accent">Open Operator Reward Rules</button>
+                </div>
+                <div className="bg-surface-secondary/60 rounded-lg p-2"><b className="text-accent">③ Use it</b><br />The operator picks it when creating matches.</div>
+              </div>
+              {cachedRewardTypes.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-txt-secondary shrink-0">Start from an existing type</label>
+                  <select defaultValue="" onChange={e => { copyRewardTypeIntoCreate(e.target.value); e.currentTarget.value = ''; }} className={inputCls.replace('font-mono', '')}>
+                    <option value="">— blank —</option>
+                    {cachedRewardTypes.map(rt => <option key={rt.id} value={rt.id}>#{rt.id} {rt.name} — fee {rt.entryFee}, {rt.minPlayers}–{rt.maxPlayers} players{rt.fixedPoints ? ', fixed points' : ''}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <div>
                   <label className="text-xs text-txt-secondary">Name</label>
@@ -1404,7 +1451,15 @@ export default function AdminSection() {
                   </div>
                 ) : null;
               })()}
-              <button onClick={createRewardType} disabled={!isConnected} className={`w-full ${btnCls}`}>Create Reward Type</button>
+              <div className="bg-surface-secondary/60 rounded-lg p-2 space-y-1">
+                <p className="text-[11px] font-semibold text-txt-secondary uppercase tracking-wide">Before creating (same checks as the contract)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+                  {rtChecks.map(c => <p key={c.text} className={`text-[11px] ${c.ok ? 'text-green-400' : 'text-red-400'}`}>{c.ok ? '✓' : '✗'} {c.text}</p>)}
+                </div>
+                <p className="text-[11px] text-txt-primary pt-1">{rtSummary}</p>
+              </div>
+              <button onClick={createRewardType} disabled={!isConnected || !rtAllOk} className={`w-full ${btnCls}`}>Create Reward Type</button>
+              <p className="text-[11px] text-txt-secondary">After it&apos;s created: <b>② Allow it per operator</b> (Operator Reward Rules) — until then no operator can use it.</p>
             </div>
             {/* Update */}
             <div className="bg-surface-tertiary rounded-lg p-3 space-y-2">
