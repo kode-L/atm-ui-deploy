@@ -69,7 +69,7 @@
     "rewardEligibilityRegistryAddress": "0xa2FE46E8AeBbb3fbce8430a217ABb8bb300b7BBD",
     "atmVoucherAddress": "0xb45ab2bA69F8c1eCB18e38201D3AaF5006CFe370",
     "contributionPoolAddress": "0x428dEC87959aE7c806ee21679BbCE3754f469023",
-    "rgstAddress": "0x69ADbBc4587b4946C9980F74E47C3cC36a865022",
+    "rgstAddress": "0x934B1A90580e064cE6169552BbdfaCcf193D4D10",
     "atmVoidAddress": "",
     "voucherNftAddress": "0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9",
     "senatorAddress": "0x26BA33a62D15Ad5d9d8b31008AAfC1870f6bf2E9",
@@ -105,6 +105,7 @@
     "registryOperators": {
       "Admin (Safe)": "0x585EBA5655270D41abE9E76651B17dEd4Cd35bCF",
       "Operator 0xcFC9": "0xcFC94Ca494033aAC5899034B2761C2cAEC5d0f74"
-    }
+    },
+    "rgstRegistorAddress": "0x69ADbBc4587b4946C9980F74E47C3cC36a865022"
   }
 }

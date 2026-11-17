@@ -23,6 +23,8 @@ type ChainDefaults = {
   lucaVoidLpAddress?: string;
   // operators' PaymentSplitters, name -> address (stable - always listed in the Splitter tab)
   splitters?: Record<string, string>;
+  // RGST Registor (the RGST registration contract, not the token - rgstAddress is the RGST token)
+  rgstRegistorAddress?: string;
   // one DailySessionManager per operator: name -> { dsm contract, operator wallet }
   // (shown instantly, then checked against GameHub on-chain)
   operators?: Record<string, { dsm: string; operator: string }>;
