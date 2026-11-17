@@ -132,7 +132,7 @@ export default function VoucherAdapterDeployCard() {
   );
 
   return (
-    <Card title="Deploy VoucherAdapter" icon={<Ticket className="w-5 h-5 text-accent" />}>
+    <Card collapsible title="Deploy VoucherAdapter" icon={<Ticket className="w-5 h-5 text-accent" />}>
       <p className="text-txt-secondary text-sm mb-4">
         One adapter for every operator DSM under the hub at <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code>:
         Voucher V2 points/payout vouchers and PR-node signed points transfers. Deploy it after <b>Upgrade GameHub</b> (v1.0.6) and{' '}

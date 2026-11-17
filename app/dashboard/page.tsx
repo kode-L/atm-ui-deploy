@@ -21,6 +21,8 @@ import VoucherV2Section from './_components/voucher-v2-section';
 import ContributionPoolSection from './_components/contribution-pool-section';
 import RgstSection from './_components/rgst-section';
 import LinkSection from './_components/link-section';
+import ContractOverview from '@/components/contract-overview';
+import { sectionContracts } from '@/lib/contracts/section-contracts';
 
 // adminOnly tabs manage platform-wide infra (deploy/upgrade contracts, register
 // operators, create reward types) — every write call they make is
@@ -66,7 +68,16 @@ const OPERATOR_DEFAULT_TAB = 'sessions';
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<string>('deploy');
-  const { isConnected, hubAddress, walletRole, roleLoading, operatorName, operatorInstance, sessionManagerAddress } = useWeb3();
+  const { isConnected, hubAddress, walletRole, roleLoading, operatorName, operatorInstance, sessionManagerAddress,
+    provider, chainId, tokenAddress, rewardEligibilityRegistryAddress, atmVoucherAddress, contributionPoolAddress, rgstAddress, activeSplitter } = useWeb3();
+  // Overview at the top of every section: its contracts with their on-chain version
+  const [overviewItems, setOverviewItems] = useState<ReturnType<typeof sectionContracts>>([]);
+  useEffect(() => {
+    setOverviewItems(sectionContracts(activeTab, {
+      chainId: chainId || 97, tokenAddress, hubAddress, sessionManagerAddress, rewardEligibilityRegistryAddress,
+      atmVoucherAddress, contributionPoolAddress, rgstAddress, activeSplitter,
+    }));
+  }, [activeTab, chainId, tokenAddress, hubAddress, sessionManagerAddress, rewardEligibilityRegistryAddress, atmVoucherAddress, contributionPoolAddress, rgstAddress, activeSplitter]);
 
   // Pure operator (not also admin): admin-only tabs are hidden since every write call
   // they make would revert on-chain (onlyRole(DEFAULT_ADMIN_ROLE)) for this wallet anyway.
@@ -158,6 +169,7 @@ export default function DashboardPage() {
 
       {/* Tab Content */}
       <div>
+        <ContractOverview items={overviewItems} provider={provider} chainId={chainId || 97} />
         {activeTab === 'deploy' && !isPureOperator && <DeploySection />}
         {activeTab === 'hub' && !isPureOperator && <HubSection />}
         {activeTab === 'tokens' && <TokenSection />}

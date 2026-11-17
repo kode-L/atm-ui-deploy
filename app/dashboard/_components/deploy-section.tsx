@@ -383,7 +383,7 @@ export default function DeploySection() {
   return (
     <div className="space-y-4">
       {/* ── Deploy ── */}
-      <Card title="Deploy Platform (GameHub)" icon={<Rocket className="w-5 h-5 text-accent" />}>
+      <Card collapsible title="Deploy Platform (GameHub)" icon={<Rocket className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
           Deploy the hub stack to whichever network your wallet is connected to (BNB Testnet or BSC Mainnet — switch networks from the wallet button above). The GameHub is the platform registry &amp; factory: registering an operator (Hub tab)
           deploys that operator&apos;s own DailySessionManager instance. All instances share one beacon, so the whole fleet upgrades in a single transaction.
@@ -491,8 +491,58 @@ export default function DeploySection() {
         <TxStatus {...txStatus} chainId={chainId} />
       </Card>
 
+      {/* ── Hub upgrade ── */}
+      <Card collapsible title="Upgrade GameHub" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
+        <p className="text-txt-secondary text-sm mb-4">
+          Push new GameHub logic to <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong> itself — separate from the fleet upgrade above,
+          since GameHub is a UUPS proxy (self-upgrading), not a beacon-based instance. Use this whenever hub-level behavior changes
+          (e.g. reward-type catalog rules, operator registration). Requires DEFAULT_ADMIN_ROLE on the hub. The operator registry, reward-type catalog and schedule config are untouched.
+        </p>
+        <div className="bg-surface-tertiary rounded-lg px-4 py-2.5 mb-4 flex items-center gap-2 text-sm">
+          <span className="text-txt-secondary">Currently deployed GameHub version:</span>
+          <span className="font-mono text-accent">
+            {!hubAddress ? '— no hub loaded —' : currentHubVersion || 'loading...'}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-surface-tertiary rounded-lg p-4">
+            <h4 className="font-medium mb-2">1. Deploy New Implementation</h4>
+            <p className="text-xs text-txt-secondary mb-3">Compile &amp; deploy the updated GameHub code.</p>
+            <button
+              onClick={deployNewHubImplementation}
+              disabled={!isConnected}
+              className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-lg text-sm transition-colors"
+            >
+              Deploy New Implementation
+            </button>
+            {newHubImplAddress && <AddrBadge addr={newHubImplAddress} label="newHubImpl" />}
+          </div>
+          <div className="bg-surface-tertiary rounded-lg p-4">
+            <h4 className="font-medium mb-2">2. Upgrade Hub</h4>
+            <p className="text-xs text-txt-secondary mb-3">Pre-filled from step 1, or paste an already-deployed implementation address to upgrade straight to it.</p>
+            <input
+              value={newHubImplAddress}
+              onChange={e => setNewHubImplAddress(e.target.value)}
+              placeholder="0x..."
+              className="w-full mb-3 bg-surface rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            {newHubImplAddress && ethers.utils.isAddress(newHubImplAddress) && (
+              <p className="text-[11px] text-txt-secondary mb-3">New version: <span className="font-mono text-accent">{newHubImplVersion || 'loading...'}</span></p>
+            )}
+            <button
+              onClick={upgradeHub}
+              disabled={!isConnected || !hubAddress || !newHubImplAddress}
+              className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-lg text-sm transition-colors"
+            >
+              Upgrade Hub
+            </button>
+            {!hubAddress && <p className="text-xs text-yellow-400 mt-2">&#9888; Deploy or load a GameHub first</p>}
+          </div>
+        </div>
+      </Card>
+
       {/* ── Fleet upgrade ── */}
-      <Card title="Upgrade Fleet" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
+      <Card collapsible title="Upgrade Fleet" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
           Push new DailySessionManager logic to <strong>every operator instance at once</strong> via the hub at <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong>
           (<code>upgradeAllInstances</code>). Requires DEFAULT_ADMIN_ROLE on the hub. Existing data (sessions, matches, balances) is untouched.
@@ -556,61 +606,11 @@ export default function DeploySection() {
         </div>
       </Card>
 
-      {/* ── Hub upgrade ── */}
-      <Card title="Upgrade GameHub" icon={<ArrowUpCircle className="w-5 h-5 text-accent" />}>
-        <p className="text-txt-secondary text-sm mb-4">
-          Push new GameHub logic to <code className="text-accent">{hubAddress || '(no GameHub loaded)'}</code> on <strong className="text-accent">{currentChainName}</strong> itself — separate from the fleet upgrade above,
-          since GameHub is a UUPS proxy (self-upgrading), not a beacon-based instance. Use this whenever hub-level behavior changes
-          (e.g. reward-type catalog rules, operator registration). Requires DEFAULT_ADMIN_ROLE on the hub. The operator registry, reward-type catalog and schedule config are untouched.
-        </p>
-        <div className="bg-surface-tertiary rounded-lg px-4 py-2.5 mb-4 flex items-center gap-2 text-sm">
-          <span className="text-txt-secondary">Currently deployed GameHub version:</span>
-          <span className="font-mono text-accent">
-            {!hubAddress ? '— no hub loaded —' : currentHubVersion || 'loading...'}
-          </span>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-surface-tertiary rounded-lg p-4">
-            <h4 className="font-medium mb-2">1. Deploy New Implementation</h4>
-            <p className="text-xs text-txt-secondary mb-3">Compile &amp; deploy the updated GameHub code.</p>
-            <button
-              onClick={deployNewHubImplementation}
-              disabled={!isConnected}
-              className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-lg text-sm transition-colors"
-            >
-              Deploy New Implementation
-            </button>
-            {newHubImplAddress && <AddrBadge addr={newHubImplAddress} label="newHubImpl" />}
-          </div>
-          <div className="bg-surface-tertiary rounded-lg p-4">
-            <h4 className="font-medium mb-2">2. Upgrade Hub</h4>
-            <p className="text-xs text-txt-secondary mb-3">Pre-filled from step 1, or paste an already-deployed implementation address to upgrade straight to it.</p>
-            <input
-              value={newHubImplAddress}
-              onChange={e => setNewHubImplAddress(e.target.value)}
-              placeholder="0x..."
-              className="w-full mb-3 bg-surface rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-            />
-            {newHubImplAddress && ethers.utils.isAddress(newHubImplAddress) && (
-              <p className="text-[11px] text-txt-secondary mb-3">New version: <span className="font-mono text-accent">{newHubImplVersion || 'loading...'}</span></p>
-            )}
-            <button
-              onClick={upgradeHub}
-              disabled={!isConnected || !hubAddress || !newHubImplAddress}
-              className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-lg text-sm transition-colors"
-            >
-              Upgrade Hub
-            </button>
-            {!hubAddress && <p className="text-xs text-yellow-400 mt-2">&#9888; Deploy or load a GameHub first</p>}
-          </div>
-        </div>
-      </Card>
-
       {/* ── VoucherAdapter (after Upgrade GameHub v1.0.6 + Upgrade Fleet v1.0.8; linked in the GameHub tab) ── */}
       <VoucherAdapterDeployCard />
 
       {/* ── Load Existing ── */}
-      <Card title="Load Existing Contracts" icon={<ExternalLink className="w-5 h-5 text-accent" />}>
+      <Card collapsible title="Load Existing Contracts" icon={<ExternalLink className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">Already deployed? Enter contract addresses to load them. The active SessionManager instance is normally selected from the Hub tab.</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>

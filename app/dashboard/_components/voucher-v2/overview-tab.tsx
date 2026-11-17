@@ -9,6 +9,7 @@ import { useVoucherV2 } from './context';
 import { DEPLOY_STEPS, WIRE_STEPS, checkDeployStep, checkWireStep } from './steps';
 import { PreflightCard, RulesCard } from './guide';
 import HealthCard from './health-card';
+import ChainSetCard from './chain-set-card';
 import ChecklistCard from './checklist-card';
 import PermissionsCard from './permissions-card';
 import { Badge, Collapsible, btnCls, btnDangerCls, btnSecondaryCls, inputCls, linkBtnCls } from './ui';
@@ -113,6 +114,7 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
+      <ChainSetCard />
       <ChecklistCard onGo={onGo} />
       {/* nothing deployed yet: the preflight checks are the useful next thing to see */}
       {!hasContracts && <PreflightCard onExport={doExport} onGo={onGo} />}

@@ -23,7 +23,14 @@ type ChainDefaults = {
   lucaVoidLpAddress?: string;
   // operators' PaymentSplitters (stable - always listed in the Splitter tab)
   splitters?: { label: string; address: string; operator?: string }[];
+  // Voucher V2 set on this chain (checked live by Voucher V2 -> Overview -> On-chain set)
+  voucherV2?: VoucherV2Chain;
 };
+
+export interface VoucherV2Chain {
+  contracts: Record<string, string>;
+  pools: { address: string; name?: string; types?: number[]; tokens?: { address: string; symbol: string }[] }[];
+}
 
 // Per-chainId production addresses (keyed by chainId as a string, e.g. "97", "56"). This
 // checked-in manifest is the source of truth - edit it after deploying to a chain. A .env value
@@ -37,6 +44,12 @@ const chainDefault = (chainId: number, key: keyof ChainDefaults): string => {
 /** A real 0x address, else ''. Placeholder text in .env (e.g. "your_gamehub_address_here") or a
  *  corrupted saved value must never override the per-chain production defaults in chain.json. */
 export const validAddr = (v?: string | null): string => (v && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? v.trim() : '');
+
+/** chain.json's Voucher V2 set for this chain (empty if none). */
+export const chainVoucherV2 = (chainId: number): VoucherV2Chain => {
+  const v = CHAIN_DEFAULTS[String(chainId)]?.voucherV2;
+  return { contracts: { ...(v?.contracts || {}) }, pools: [...(v?.pools || [])] };
+};
 
 /** chain.json's PaymentSplitters for this chain (operators' splitters - they don't change). */
 export const chainSplitters = (chainId: number): { address: string; label: string }[] =>
