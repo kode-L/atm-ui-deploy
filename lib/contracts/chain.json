@@ -16,23 +16,31 @@
     "senatorAddress": "0x7fa9AdAfC33cB1a0edFD2ff1178Ed7959F5Cd852",
     "signNum": 1,
     "voucherAdapterAddress": "",
-    "splitters": [
-      {
-        "label": "Internal Splitter",
-        "address": "0x87aaD98f651D8327b90FF73E4C464ad1Cac4C496",
-        "operator": "0x8963b195aBCAeb9700503F5C95BDb4f220ce3639"
+    "splitters": {
+      "Internal": "0x87aaD98f651D8327b90FF73E4C464ad1Cac4C496",
+      "RK": "0xEFFD46dc259F7805ee9C9C0F63fc06D6021F9829",
+      "BOT": "0xcF9Eb14b9552216E4a8091B8d25318D5bac8fEaB"
+    },
+    "voucherV2": {
+      "contracts": {
+        "VoucherNFT": "0xA1010B445db17C3d754B048dd40Cae4471290170",
+        "VoucherNFTViews": "0x79651BfFc770ebc00C356632c2556A41cC1E0F5B",
+        "VoucherDAO": "0x93aAbdcab0006164995822e4DaC689363746EF45",
+        "SourceRegistry": "0x64BE35A20A40e783AB79B0F452577A53dB375644",
+        "RevocationVault": "0x2947E7E7bf2CEAf0E777A76001eC9C6C1b936f51",
+        "AllowlistTransferGate": "0xF4762e6267eAEDC2b596f01dC458894cE30dBcc7",
+        "VoucherTransfer": "0x3cEe9A72B239Ab8372479A9a460880847cf9f83E"
       },
-      {
-        "label": "RK Splitter",
-        "address": "0xEFFD46dc259F7805ee9C9C0F63fc06D6021F9829",
-        "operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
-      },
-      {
-        "label": "BOT Splitter",
-        "address": "0xcF9Eb14b9552216E4a8091B8d25318D5bac8fEaB",
-        "operator": "0x896740977A2278549154dd10E303385bAE5E62cb"
+      "pools": {
+        "AC VoucherSettlement": "0xec5bad08480e8E2108D0a42a53c24f370c538CDf",
+        "AC RewardVault": "0x2A7035cd1dAB7479b4cc8B024AA2266E95fB4a37",
+        "Empty pool (error tests)": "0xC628DF2a815Cf115a904793D3fA8B40e5fc72a37",
+        "Low pool (error tests)": "0x496CA78a9f2471821aff7d3fC14CADA5aE5A4230"
       }
-    ]
+    },
+    "tokenVoids": {
+      "Luca Void": "0x4600Ff32CdFA1EDf46f3eAE75f9e5A5CF90EDb3a"
+    }
   },
   "56": {
     "chainName": "BNB Smart Chain",
@@ -52,12 +60,24 @@
     "signNum": 18,
     "voucherAdapterAddress": "",
     "lucaVoidLpAddress": "0x13C6757756A6a0aEdc8EFE0415307334cf93A7FC",
-    "splitters": [
-      {
-        "label": "RSK Operator Splitter",
-        "address": "0x59B44aBA143AE952F3f3666Efea79B4F281B164C",
-        "operator": "0xF736FeA6157f0A401c0746a48a6865e802F66845"
+    "splitters": {
+      "RSK Operator": "0x59B44aBA143AE952F3f3666Efea79B4F281B164C"
+    },
+    "voucherV2": {
+      "contracts": {
+        "VoucherNFT": "0xE2bf7866A6aCa1abD3eeaCef8e6e1a12F1507bf9",
+        "VoucherNFTViews": "0xD3681f3b5363C9104b4B109B3D95C690DF01e21c",
+        "SourceRegistry": "0x8a045506E31F784f8d5D13AF45E0D19C442447E8"
+      },
+      "pools": {
+        "ActiveUserReward": "0x7901726E76c86D5c7DF7F6cCb448b6253aef5f34",
+        "RGST": "0x05BdD4CA8C7F1e5115C5b226155c8E60eeFb453c"
       }
-    ]
+    },
+    "tokenVoids": {
+      "Luca Void": "0xbA664Eb753bD75cE86EF1F0B651ABF4Ad0D9C30A",
+      "Luca LP Void": "0x13C6757756A6a0aEdc8EFE0415307334cf93A7FC",
+      "Token Void (0x3aB4)": "0x3aB4DF20C29f88fD98Dc88Af139C695682c1ed35"
+    }
   }
 }

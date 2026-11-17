@@ -21,15 +21,18 @@ type ChainDefaults = {
   voucherAdapterAddress?: string;
   // LUCA-LP burner (the "Luca Void" tab manages tokenVoidAddress, which burns LUCA itself)
   lucaVoidLpAddress?: string;
-  // operators' PaymentSplitters (stable - always listed in the Splitter tab)
-  splitters?: { label: string; address: string; operator?: string }[];
+  // operators' PaymentSplitters, name -> address (stable - always listed in the Splitter tab)
+  splitters?: Record<string, string>;
+  // TokenVoid contracts on this chain, name -> address (Luca Void tab dropdown)
+  tokenVoids?: Record<string, string>;
   // Voucher V2 set on this chain (checked live by Voucher V2 -> Overview -> On-chain set)
   voucherV2?: VoucherV2Chain;
 };
 
+// addresses only - types, tokens and versions are always read live from the chain
 export interface VoucherV2Chain {
-  contracts: Record<string, string>;
-  pools: { address: string; name?: string; types?: number[]; tokens?: { address: string; symbol: string }[] }[];
+  contracts: Record<string, string>; // contract name -> address
+  pools: Record<string, string>; // pool name -> address
 }
 
 // Per-chainId production addresses (keyed by chainId as a string, e.g. "97", "56"). This
@@ -45,17 +48,23 @@ const chainDefault = (chainId: number, key: keyof ChainDefaults): string => {
  *  corrupted saved value must never override the per-chain production defaults in chain.json. */
 export const validAddr = (v?: string | null): string => (v && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? v.trim() : '');
 
+/** chain.json's TokenVoid contracts for this chain, as { label, address } (Luca Void tab dropdown). */
+export const chainTokenVoids = (chainId: number): { label: string; address: string }[] =>
+  Object.entries(CHAIN_DEFAULTS[String(chainId)]?.tokenVoids || {})
+    .filter(([, address]) => validAddr(address))
+    .map(([label, address]) => ({ label, address }));
+
 /** chain.json's Voucher V2 set for this chain (empty if none). */
 export const chainVoucherV2 = (chainId: number): VoucherV2Chain => {
   const v = CHAIN_DEFAULTS[String(chainId)]?.voucherV2;
-  return { contracts: { ...(v?.contracts || {}) }, pools: [...(v?.pools || [])] };
+  return { contracts: { ...(v?.contracts || {}) }, pools: { ...(v?.pools || {}) } };
 };
 
 /** chain.json's PaymentSplitters for this chain (operators' splitters - they don't change). */
 export const chainSplitters = (chainId: number): { address: string; label: string }[] =>
-  (CHAIN_DEFAULTS[String(chainId)]?.splitters || [])
-    .filter(s => validAddr(s.address))
-    .map(s => ({ address: s.address, label: s.label }));
+  Object.entries(CHAIN_DEFAULTS[String(chainId)]?.splitters || {})
+    .filter(([, address]) => validAddr(address))
+    .map(([name, address]) => ({ address, label: `${name} Splitter` }));
 
 /** A chain.json address for this chain ('' if unset or not a real address). */
 export const chainAddress = (chainId: number, key: keyof ChainDefaults): string => validAddr(chainDefault(chainId, key));

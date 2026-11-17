@@ -4,7 +4,7 @@
 // RULE: a new section or contract must be added here so its on-chain version is always visible.
 import { OverviewItem } from '@/components/contract-overview';
 import {
-  BSC_MAINNET, networkStorageKey, validAddr, chainAddress,
+  BSC_MAINNET, networkStorageKey, validAddr, chainTokenVoids,
   DEFAULT_TOKEN_VOID_ADDRESS, DEFAULT_TOKEN_VOID_ADDRESS_MAINNET, DEFAULT_ATM_VOID_ADDRESS, DEFAULT_ATM_VOID_ADDRESS_MAINNET,
 } from '@/lib/contracts/config';
 import { loadBook } from '@/lib/contracts/voucher-v2';
@@ -53,9 +53,13 @@ export function sectionContracts(tab: string, c: SectionCtx): OverviewItem[] {
       return [hub, dsm, token];
     case 'splitter':
       return [{ label: 'PaymentSplitter (selected)', address: c.activeSplitter }, hub];
-    case 'void':
-      return [{ label: 'Luca Void (burns LUCA)', address: saved('dg_tokenVoidAddress', ns) || (isMainnet ? DEFAULT_TOKEN_VOID_ADDRESS_MAINNET : DEFAULT_TOKEN_VOID_ADDRESS) },
-        { label: 'Luca LP Void (burns LUCA LP)', address: chainAddress(ns, 'lucaVoidLpAddress') }];
+    case 'void': {
+      const selected = saved('dg_tokenVoidAddress', ns) || (isMainnet ? DEFAULT_TOKEN_VOID_ADDRESS_MAINNET : DEFAULT_TOKEN_VOID_ADDRESS);
+      const known = chainTokenVoids(ns);
+      const items = known.map(v => ({ label: v.label + (v.address.toLowerCase() === selected.toLowerCase() ? ' (selected)' : ''), address: v.address }));
+      if (selected && !known.some(v => v.address.toLowerCase() === selected.toLowerCase())) items.unshift({ label: 'Void (selected)', address: selected });
+      return items;
+    }
     case 'atm-void':
       return [{ label: 'ATM Void', address: saved('dg_atmVoidAddress', ns) || (isMainnet ? DEFAULT_ATM_VOID_ADDRESS_MAINNET : DEFAULT_ATM_VOID_ADDRESS) }];
     case 'reward-eligibility-registry':

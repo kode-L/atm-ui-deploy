@@ -13,6 +13,7 @@ import {
   BNB_TESTNET,
   BSC_MAINNET,
   DEFAULT_TOKEN_VOID_ADDRESS,
+  chainTokenVoids,
   DEFAULT_TOKEN_VOID_ADDRESS_MAINNET,
   DEFAULT_VOID_OWNER_ADDRESS,
   DEFAULT_VOID_OWNER_ADDRESS_MAINNET,
@@ -379,6 +380,26 @@ export default function TokenVoidSection() {
         <p className="text-xs text-txt-secondary mb-3">
           A burn split routes points to the standard dead address instead of a payee. Void gives users a self-serve way to burn their own points directly (via <code className="text-accent">transferFrom → DEAD_ADDRESS</code>), tagged with a burn type and recorded on-chain for history/leaderboards.
         </p>
+
+        {/* pick which void contract to view: the ones in chain.json for this network + the loaded one */}
+        {(() => {
+          const known = chainTokenVoids(netNs);
+          const isKnown = known.some(v => v.address.toLowerCase() === voidAddress.toLowerCase());
+          return known.length > 0 ? (
+            <div className="flex items-center gap-2 mb-3">
+              <label className="text-xs text-txt-secondary shrink-0">Contract</label>
+              <select
+                value={voidAddress}
+                onChange={e => { saveVoidAddress(e.target.value); setOwner(''); setLinkedToken(''); }}
+                className="flex-1 bg-surface-tertiary rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-red-400"
+              >
+                {!voidAddress && <option value="">Select a void contract…</option>}
+                {known.map(v => <option key={v.address} value={v.address}>{v.label} — {v.address}</option>)}
+                {voidAddress && !isKnown && <option value={voidAddress}>Loaded — {voidAddress}</option>}
+              </select>
+            </div>
+          ) : null;
+        })()}
 
         {voidAddress ? (
           <div className="flex items-center gap-3 flex-wrap bg-surface-tertiary rounded-lg px-3 py-2.5 mb-3">

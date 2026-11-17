@@ -101,7 +101,8 @@ export default function ChainSetCard() {
   // ---- compare with chain.json ----
   const listed = new Map<string, string>(); // address -> name in chain.json
   Object.entries(known.contracts).forEach(([k, a]) => a && listed.set(a.toLowerCase(), k));
-  known.pools.forEach(p => listed.set(p.address.toLowerCase(), `pool ${p.name || short(p.address)}`));
+  const knownPools = Object.entries(known.pools).map(([name, address]) => ({ name, address }));
+  knownPools.forEach(p => listed.set(p.address.toLowerCase(), `pool ${p.name}`));
   const onChain = new Map<string, string>();
   if (data) {
     onChain.set(data.voucherNFT.toLowerCase(), 'VoucherNFT');
@@ -115,7 +116,7 @@ export default function ChainSetCard() {
   const newOnChain = data ? Array.from(onChain.entries()).filter(([a]) => !listed.has(a)) : [];
   // contracts VoucherNFT doesn't reference (DAO, Views, VoucherTransfer...) can't be "found" this way -
   // only pools are expected to be referenced by a type
-  const notFound = data ? known.pools.filter(p => !onChain.has(p.address.toLowerCase())).map(p => p.address) : [];
+  const notFound = data ? knownPools.filter(p => !onChain.has(p.address.toLowerCase())).map(p => p.address) : [];
 
   const chainJson = data ? JSON.stringify({
     contracts: {
@@ -123,12 +124,8 @@ export default function ChainSetCard() {
       VoucherNFT: data.voucherNFT,
       ...(data.sourceRegistry !== ZERO ? { SourceRegistry: data.sourceRegistry } : {}),
     },
-    pools: data.pools.map(p => ({
-      address: p.address,
-      name: known.pools.find(k => same(k.address, p.address))?.name || '',
-      types: p.types,
-      tokens: Array.from(p.tokens.entries()).map(([address, symbol]) => ({ address: address === ZERO ? ZERO : ethers.utils.getAddress(address), symbol })),
-    })),
+    // addresses only (types/tokens are read live)
+    pools: Object.fromEntries(data.pools.map(p => [knownPools.find(k => same(k.address, p.address))?.name || `Pool ${short(p.address)}`, p.address])),
   }, null, 2) : '';
 
   const copy = (text: string, k: string) => { navigator.clipboard?.writeText?.(text); setCopied(k); setTimeout(() => setCopied(''), 1500); };
@@ -160,7 +157,7 @@ export default function ChainSetCard() {
               {data.pools.map(p => (
                 <div key={p.address} className="bg-surface-tertiary rounded-lg p-2">
                   <div className="flex justify-between items-center gap-2">
-                    <span>{known.pools.find(k => same(k.address, p.address))?.name || 'Pool'} <span className="text-txt-secondary">· types {p.types.join(', ')} · {Array.from(p.standards).join(' / ')}</span></span>
+                    <span>{knownPools.find(k => same(k.address, p.address))?.name || 'Pool'} <span className="text-txt-secondary">· types {p.types.join(', ')} · {Array.from(p.standards).join(' / ')}</span></span>
                     <span className="flex gap-2">{ver(p.address)}{addr(p.address)}</span>
                   </div>
                   <div className="flex flex-wrap gap-1 mt-1">
