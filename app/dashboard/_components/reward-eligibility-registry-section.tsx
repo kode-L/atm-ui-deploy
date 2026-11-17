@@ -367,6 +367,32 @@ export default function RewardEligibilityRegistrySection() {
     }
   };
 
+  // check one address on-chain (operators(address)) and add it to the Operators list with its status
+  const checkOperator = async (addr: string) => {
+    const reg = getRead();
+    if (!reg || !ethers.utils.isAddress(addr)) return;
+    try {
+      const allowed = await reg.operators(addr);
+      const a = addr.toLowerCase();
+      setKnownOperators(prev => [{ address: a, allowed: !!allowed }, ...prev.filter(r => r.address !== a)]);
+      setTxStatus({ status: allowed ? 'success' : 'error', ...(allowed ? { message: `${addr} is a registry operator.` } : { error: `${addr} is NOT a registry operator (owner can add it in the Operators card).` }) });
+    } catch (e: any) {
+      setTxStatus({ status: 'error', error: decodeError(e) });
+    }
+  };
+
+  // short address with copy, explorer and "check operator" - used in proposal rows
+  const addrChip = (a: string, key: string) => (
+    <span className="inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
+      <span className="font-mono">{fmtAddr(a)}</span>
+      <button onClick={() => copyAddr(a, key)} title="Copy address" className="shrink-0">
+        {copied === key ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-txt-secondary hover:text-txt-primary" />}
+      </button>
+      <a href={getExplorerAddressUrl(chainId, a)} target="_blank" rel="noopener noreferrer" title="Open in explorer"><ExternalLink className="w-3 h-3 text-txt-secondary hover:text-accent" /></a>
+      <button onClick={() => checkOperator(a)} title="Check if this address is a registry operator" className="text-[10px] underline text-txt-secondary hover:text-accent">check</button>
+    </span>
+  );
+
   const handleLookupOperator = async () => {
     const reg = getRead();
     if (!reg || !ethers.utils.isAddress(lookupOperatorAddr.trim())) return;
@@ -1276,7 +1302,7 @@ export default function RewardEligibilityRegistrySection() {
                               const cur = knownTypes.find(t => t.id === tid);
                               return <span key={tid} className="mr-2">type {tid} → <span className="font-mono text-accent">{p.maxPointsList?.[i]}</span> pts{cur ? <span className="text-txt-secondary"> (now {cur.maxClaimablePoints})</span> : <span className="text-txt-secondary"> (new)</span>}</span>;
                             })}
-                            <span className="text-txt-secondary">· approvals {p.approvalCount}/{p.snapshotThreshold}{p.approvedByMe ? ' · you approved' : ''}</span>
+                            <span className="text-txt-secondary">· approvals {p.approvalCount}/{p.snapshotThreshold}{p.approvedByMe ? ' · you approved' : ''} · by </span>{addrChip(p.proposer, `pend-${p.id}`)}
                           </span>
                           <span className="flex gap-2">
                             {isConnectedOperator && !p.approvedByMe && (
@@ -1631,7 +1657,7 @@ export default function RewardEligibilityRegistrySection() {
                             <span>{p.wallets?.length ?? 0} wallet(s)</span>
                           )}
                           <span>Approvals: <span className="text-accent">{p.approvalCount}/{p.snapshotThreshold}</span></span>
-                          <span>By: <span className="font-mono">{fmtAddr(p.proposer)}</span></span>
+                          <span>By: {addrChip(p.proposer, `prop-${p.id}`)}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -1660,7 +1686,7 @@ export default function RewardEligibilityRegistrySection() {
                             <tbody>
                               {p.wallets.map((w, i) => (
                                 <tr key={i} className="border-b border-white/5">
-                                  <td className="py-1 px-2 font-mono">{fmtAddr(w)}</td>
+                                  <td className="py-1 px-2">{addrChip(w, `prop-${p.id}-w${i}`)}</td>
                                   <td className="py-1 px-2 font-mono text-accent">#{p.newTypeIds?.[i]}</td>
                                 </tr>
                               ))}
