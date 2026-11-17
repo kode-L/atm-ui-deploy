@@ -2,7 +2,7 @@
 // Deploy tab: deploy a VoucherAdapter (implementation, then proxy + initialize) for the loaded
 // GameHub. Linking and everything after deployment lives in the GameHub tab (Voucher Adapter card),
 // which picks this address up from the same per-chain saved address.
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import Card from '@/components/card';
@@ -40,26 +40,24 @@ export default function VoucherAdapterDeployCard() {
   const primaryBtn = 'bg-accent hover:bg-accent-dark disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold px-4 py-2.5 rounded-lg text-sm transition-colors';
 
   useEffect(() => { if (chainId) setLastAdapter(loadVoucherAdapterAddress(chainId)); }, [chainId]);
-  useEffect(() => { if (address && !deployAdmin) setDeployAdmin(address); }, [address, deployAdmin]);
+  // Pre-fill once per network (and the admin once a wallet is connected). Only on a network
+  // change - never when a field is emptied, so any field can be edited or cleared freely
+  // (an empty VoucherNFT deploys with none; set it later in the GameHub tab).
+  const prefilledChain = useRef<number | null>(null);
+  const prefilledAdmin = useRef(false);
   useEffect(() => {
-    // the PR-node multisig the legacy Incentive contract uses on this chain
-    if (deploySenator) return;
-    if (chainId === 97) setDeploySenator(DEFAULT_SENATOR_ADDRESS);
-    else if (chainId === 56) setDeploySenator(DEFAULT_SENATOR_ADDRESS_MAINNET);
-  }, [chainId, deploySenator]);
+    if (address && !prefilledAdmin.current) { setDeployAdmin(address); prefilledAdmin.current = true; }
+  }, [address]);
   useEffect(() => {
-    // same required signature count as the legacy Incentive contract on this chain
-    if (deploySignNum) return;
-    if (chainId === 97) setDeploySignNum(String(DEFAULT_SIGN_NUM));
-    else if (chainId === 56) setDeploySignNum(String(DEFAULT_SIGN_NUM_MAINNET));
-  }, [chainId, deploySignNum]);
-  useEffect(() => {
-    // VoucherNFT: the Voucher V2 tab's address book first, else the deployed one per chain (optional)
-    if (deployVoucherNFT || !chainId) return;
-    const nft = loadBook(chainId).contracts.VoucherNFT
-      || (chainId === 56 ? DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET : chainId === 97 ? DEFAULT_VOUCHER_NFT_ADDRESS : '');
-    if (nft) setDeployVoucherNFT(nft);
-  }, [chainId, deployVoucherNFT]);
+    if (!chainId || prefilledChain.current === chainId) return;
+    prefilledChain.current = chainId;
+    // senator + signatures: the same as the legacy Incentive contract on this chain
+    setDeploySenator(chainId === 56 ? DEFAULT_SENATOR_ADDRESS_MAINNET : chainId === 97 ? DEFAULT_SENATOR_ADDRESS : '');
+    setDeploySignNum(chainId === 56 ? String(DEFAULT_SIGN_NUM_MAINNET) : chainId === 97 ? String(DEFAULT_SIGN_NUM) : '');
+    // VoucherNFT: the Voucher V2 tab's address book first, else the deployed one on this chain (optional)
+    setDeployVoucherNFT(loadBook(chainId).contracts.VoucherNFT
+      || (chainId === 56 ? DEFAULT_VOUCHER_NFT_ADDRESS_MAINNET : chainId === 97 ? DEFAULT_VOUCHER_NFT_ADDRESS : ''));
+  }, [chainId]);
 
   const deployImplementation = async () => {
     if (!signer) return;
