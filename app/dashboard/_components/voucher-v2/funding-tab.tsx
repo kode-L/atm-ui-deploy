@@ -2,7 +2,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
-import { NETWORKS } from '@/lib/contracts/config';
+import { NETWORKS, getExplorerAddressUrl } from '@/lib/contracts/config';
+import { Copy, Check, ExternalLink } from 'lucide-react';
 import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import { useAdminOf } from './use-role';
@@ -22,7 +23,10 @@ type Kind = 'native' | 'erc20';
 const OTHER_POOL = '__other__';
 // held = what the pool holds; reserved = set aside by VoucherNFT for minted Reserved-mode vouchers;
 // free = held - reserved (what new mints, On-claim payouts and withdrawals can use)
-interface TokenBal { address: string; label: string; balance: string; reserved: string; free: string }
+interface TokenBal { address: string; label: string; balance: string; reserved: string; free: string; empty: boolean; supported: boolean }
+// one pool contract and every asset it holds
+// supported = tokens the pool pays out: approved tokens of the Reward voucher types whose pool (settlementTarget) is this contract
+interface PoolBal { label: string; address: string; types: number[]; assets: TokenBal[] }
 
 export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const ctx = useVoucherV2();
@@ -34,8 +38,8 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const [token, setToken] = useState('');
   const [amount, setAmount] = useState('');
   const [meta, setMeta] = useState<{ symbol: string; decimals: number; wallet: string } | null>(null);
-  const [native, setNative] = useState<{ balance: string; reserved: string; free: string }>({ balance: '—', reserved: '—', free: '—' });
-  const [balances, setBalances] = useState<TokenBal[]>([]);
+  const [pools, setPools] = useState<PoolBal[]>([]);
+  const [copied, setCopied] = useState('');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -50,47 +54,71 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const tokenOptions: AddressOption[] = Object.entries(ctx.book.tokens).map(([k, v]) => ({ label: k, value: v }));
   const erc20 = useCallback((a: string, s?: ethers.Signer | null) => new ethers.Contract(a, ERC20_ABI, s || reader || undefined), [reader]);
 
+  // every pool contract (named pools + the selected one), each with the balance of every asset
+  const poolKey = poolOptions.map((o) => o.value.toLowerCase()).join(',');
   const loadBalances = useCallback(async () => {
-    if (!isAddr(pool) || !reader) return;
+    if (!reader) return;
+    const list: { label: string; address: string }[] = poolOptions.filter((o) => isAddr(o.value)).map((o) => ({ label: o.label, address: o.value }));
+    if (isAddr(pool) && !list.some((p) => sameAddr(p.address, pool))) list.push({ label: 'Other pool', address: pool });
+    if (!list.length) return;
     setLoading(true);
     try {
       // VoucherNFT.reservedOf(pool, token, 0) is in 18-decimal fixed point (same as availableBalance)
       const nft = ctx.book.contracts.VoucherNFT ? read('VoucherNFT') : null;
-      const reservedOf = async (token: string) => (nft ? await nft.reservedOf(pool, token, 0).catch(() => ethers.BigNumber.from(0)) : ethers.BigNumber.from(0));
-      const nativeHeld = await reader.getBalance(pool);
-      const nativeRes = await reservedOf(ZERO);
-      setNative({ balance: fromUnits(nativeHeld, 18), reserved: fromUnits(nativeRes, 18), free: fromUnits(nativeHeld.sub(nativeRes).lt(0) ? 0 : nativeHeld.sub(nativeRes), 18) });
+      const zero = ethers.BigNumber.from(0);
+      const reservedOf = async (p: string, token: string) => (nft ? await nft.reservedOf(p, token, 0).catch(() => zero) : zero);
+      // token list: ERC20s in the address book plus every approved ERC20 on a Reward type
       const addrs = new Set(Object.values(ctx.book.tokens));
-      if (ctx.book.contracts.VoucherNFT) {
-        const types = await loadVoucherTypes(read('VoucherNFT')).catch(() => []);
-        types.filter((t) => t.mode === VoucherMode.Reward && t.tokenStandard === TokenStandard.ERC20).forEach((t) => t.approvedTokens.forEach((a) => addrs.add(a)));
+      // which tokens each pool supports, from the on-chain Reward voucher types that pay from it
+      const support = new Map<string, { types: number[]; tokens: Set<string> }>();
+      if (nft) {
+        const types = await loadVoucherTypes(nft).catch(() => []);
+        for (const t of types.filter((x) => x.mode === VoucherMode.Reward && isAddr(x.settlementTarget) && !sameAddr(x.settlementTarget, ZERO))) {
+          const k = t.settlementTarget.toLowerCase();
+          if (!support.has(k)) support.set(k, { types: [], tokens: new Set() });
+          const e = support.get(k)!;
+          e.types.push(t.id);
+          if (t.tokenStandard === TokenStandard.ERC20) t.approvedTokens.forEach((a) => { addrs.add(a); e.tokens.add(a.toLowerCase()); });
+          if (t.tokenStandard === TokenStandard.Native) e.tokens.add(ZERO);
+          if (!list.some((p) => sameAddr(p.address, t.settlementTarget))) list.push({ label: nameOf(t.settlementTarget).startsWith('0x') ? 'Reward pool' : nameOf(t.settlementTarget), address: t.settlementTarget });
+        }
       }
-      const out: TokenBal[] = [];
+      const tokens: { address: string; label: string; dec: number; c: ethers.Contract }[] = [];
       for (const a of addrs) {
         try {
           const t = erc20(a);
-          const [sym, dec, bal] = await Promise.all([t.symbol(), t.decimals(), t.balanceOf(pool)]);
+          const [sym, dec] = await Promise.all([t.symbol(), t.decimals()]);
           const known = nameOf(a);
           // "tUSDT" — add the book's label only when it says something the symbol doesn't
-          const held18 = dec <= 18 ? bal.mul(ethers.BigNumber.from(10).pow(18 - dec)) : bal.div(ethers.BigNumber.from(10).pow(dec - 18));
-          const res = await reservedOf(a);
-          const free = held18.sub(res);
-          out.push({
-            address: a,
-            label: known.startsWith('0x') || known.toLowerCase().includes(sym.toLowerCase()) ? sym : `${sym} (${known})`,
-            balance: fromUnits(bal, dec),
-            reserved: fromUnits(res, 18),
-            free: fromUnits(free.lt(0) ? 0 : free, 18),
-          });
+          tokens.push({ address: a, label: known.startsWith('0x') || known.toLowerCase().includes(sym.toLowerCase()) ? sym : `${sym} (${known})`, dec, c: t });
         } catch {
           // not an ERC20 (e.g. an NFT collection saved in the book) — skip
         }
       }
-      setBalances(out);
+      const out = await Promise.all(list.map(async (p): Promise<PoolBal> => {
+        const sup = support.get(p.address.toLowerCase());
+        const isSup = (a: string) => !!sup?.tokens.has(a.toLowerCase());
+        const nativeHeld = await reader.getBalance(p.address);
+        const nativeRes = await reservedOf(p.address, ZERO);
+        const nativeFree = nativeHeld.sub(nativeRes);
+        const assets: TokenBal[] = [{
+          address: ZERO, label: `${symbol} (native)`, balance: fromUnits(nativeHeld, 18), reserved: fromUnits(nativeRes, 18),
+          free: fromUnits(nativeFree.lt(0) ? 0 : nativeFree, 18), empty: nativeHeld.isZero() && nativeRes.isZero(), supported: isSup(ZERO),
+        }];
+        for (const t of tokens) {
+          const bal: ethers.BigNumber = await t.c.balanceOf(p.address).catch(() => zero);
+          const held18 = t.dec <= 18 ? bal.mul(ethers.BigNumber.from(10).pow(18 - t.dec)) : bal.div(ethers.BigNumber.from(10).pow(t.dec - 18));
+          const res = await reservedOf(p.address, t.address);
+          const free = held18.sub(res);
+          assets.push({ address: t.address, label: t.label, balance: fromUnits(bal, t.dec), reserved: fromUnits(res, 18), free: fromUnits(free.lt(0) ? 0 : free, 18), empty: bal.isZero() && res.isZero(), supported: isSup(t.address) });
+        }
+        return { ...p, types: sup?.types || [], assets };
+      }));
+      setPools(out);
     } finally {
       setLoading(false);
     }
-  }, [pool, reader, read, erc20, nameOf, ctx.book]);
+  }, [poolKey, pool, reader, read, erc20, nameOf, ctx.book, symbol]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadBalances(); }, [loadBalances]);
 
@@ -151,6 +179,16 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
             <div className="mt-2"><AddressInput value={pool} onChange={setPool} placeholder="0x… pool address" /></div>
           )}
         </Field>
+        {(() => {
+          const sp = pools.find((x) => sameAddr(x.address, pool));
+          const sup = sp ? sp.assets.filter((a) => a.supported) : [];
+          return sp ? (
+            <p className="text-xs text-txt-secondary mt-2">
+              <span className="font-mono">{pool}</span> · supports{' '}
+              {sup.length ? sup.map((a) => `${a.label.replace(' (native)', '')} (free ${a.free})`).join(', ') : 'no token yet (no Reward voucher type uses this pool)'}
+            </p>
+          ) : null;
+        })()}
         {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
       </Card>
 
@@ -160,16 +198,48 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
             <div className="flex justify-end -mt-10 mb-4">
               <button className={btnSecondaryCls} disabled={loading} onClick={loadBalances}>{loading ? 'Loading…' : 'Reload'}</button>
             </div>
-            <table className="w-full text-xs">
-              <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-2 pr-3">Asset</th><th className="py-2 pr-3">Address</th><th className="py-2 pr-3">Held</th><th className="py-2 pr-3">Reserved</th><th className="py-2">Free</th></tr></thead>
-              <tbody>
-                <tr className="border-b border-white/5"><td className="py-2 pr-3">{symbol} (native)</td><td className="py-2 pr-3 text-txt-secondary">—</td><td className="py-2 pr-3">{native.balance}</td><td className="py-2 pr-3">{native.reserved}</td><td className="py-2 font-semibold">{native.free}</td></tr>
-                {balances.map((b) => (
-                  <tr key={b.address} className="border-b border-white/5"><td className="py-2 pr-3">{b.label}</td><td className="py-2 pr-3 font-mono break-all">{b.address}</td><td className="py-2 pr-3">{b.balance}</td><td className="py-2 pr-3">{b.reserved}</td><td className="py-2 font-semibold">{b.free}</td></tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-[11px] text-txt-secondary mt-2"><b>Reserved</b> = set aside for vouchers already minted in Reserved mode (released on claim, revoke or expiry). <b>Free</b> = what new mints, on-claim payouts and withdrawals can use. Lists ERC20s in the address book plus every approved ERC20 on a type.</p>
+            <p className="text-xs text-txt-secondary mb-3">Every reward pool contract, the tokens it <b>supports</b> (what its voucher types pay out, read from VoucherNFT) and how much of each it holds, read live. Click <b>Select</b> to deposit to / withdraw from that pool.</p>
+            {!pools.length && <p className="text-xs text-txt-secondary">{loading ? 'Loading…' : 'No pools found.'}</p>}
+            <div className="space-y-3">
+              {pools.map((p) => {
+                const sel = sameAddr(p.address, pool);
+                const supported = p.assets.filter((a) => a.supported);
+                const held = p.assets.filter((a) => a.supported || !a.empty);
+                const none = p.assets.filter((a) => a.empty && !a.supported);
+                return (
+                  <div key={p.address} className={`bg-surface-tertiary rounded-lg p-3 ${sel ? 'ring-1 ring-accent/60' : ''}`}>
+                    <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
+                      <span className="font-semibold text-sm text-txt-primary">{p.label}</span>
+                      {sel && <span className="text-[10px] bg-accent/20 text-accent px-1.5 rounded">selected</span>}
+                      <code className="font-mono text-txt-secondary break-all">{p.address}</code>
+                      <button onClick={() => { navigator.clipboard?.writeText?.(p.address); setCopied(p.address); setTimeout(() => setCopied(''), 1500); }}>
+                        {copied === p.address ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-txt-secondary hover:text-txt-primary" />}
+                      </button>
+                      <a href={getExplorerAddressUrl(ctx.chainId, p.address)} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3 text-txt-secondary hover:text-accent" /></a>
+                      {!sel && <button onClick={() => setPool(p.address)} className="ml-auto text-accent hover:underline">Select</button>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1 text-[11px] mb-2">
+                      <span className="text-txt-secondary">Supports:</span>
+                      {supported.length ? supported.map((a) => <span key={a.address} className="bg-accent/15 text-accent px-2 py-0.5 rounded-full">{a.label.replace(' (native)', '')}</span>)
+                        : <span className="text-yellow-400/80">no Reward voucher type pays from this pool yet</span>}
+                      {p.types.length > 0 && <span className="text-txt-secondary ml-1">· voucher types {p.types.join(', ')}</span>}
+                    </div>
+                    {held.length ? (
+                      <table className="w-full text-xs">
+                        <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-1.5 pr-3">Token</th><th className="py-1.5 pr-3">Token address</th><th className="py-1.5 pr-3">Held</th><th className="py-1.5 pr-3">Reserved</th><th className="py-1.5">Free</th></tr></thead>
+                        <tbody>
+                          {held.map((b) => (
+                            <tr key={b.address} className="border-b border-white/5"><td className="py-1.5 pr-3">{b.label}{!b.supported && <span className="ml-1 text-[10px] text-yellow-400/80" title="No voucher type pays this token from this pool">not used</span>}</td><td className="py-1.5 pr-3 font-mono break-all text-txt-secondary">{b.address === ZERO ? '—' : b.address}</td><td className="py-1.5 pr-3">{b.balance}</td><td className="py-1.5 pr-3">{b.reserved}</td><td className="py-1.5 font-semibold">{b.free}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : <p className="text-xs text-txt-secondary">Holds nothing yet.</p>}
+                    {none.length > 0 && held.length > 0 && <p className="text-[10px] text-txt-secondary mt-1">0 held: {none.map((a) => a.label).join(', ')}</p>}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-txt-secondary mt-2"><b>Reserved</b> = set aside for vouchers already minted in Reserved mode (released on claim, revoke or expiry). <b>Free</b> = what new mints, on-claim payouts and withdrawals can use. Tokens checked: ERC20s in the address book plus every approved ERC20 on a type.</p>
           </Card>
 
           <Card title="Deposit">
