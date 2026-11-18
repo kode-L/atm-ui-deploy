@@ -6,6 +6,8 @@ import { NETWORKS, getExplorerAddressUrl, chainVoucherV2 } from '@/lib/contracts
 import { Copy, Check, ExternalLink } from 'lucide-react';
 import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, shortAddr, toUnits } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
+import { useWeb3 } from '@/lib/contracts/use-web3';
+import GameHubArtifact from '@/lib/contracts/GameHub.json';
 import { useAdminOf } from './use-role';
 import { useSourceOptions } from './source-options';
 import ExtraPoolsCard from './extra-pools-card';
@@ -22,6 +24,7 @@ const ERC20_ABI = [
 type Kind = 'native' | 'erc20';
 const OTHER_POOL = '__other__';
 const OTHER_TOKEN = '__other_token__';
+const OTHER_ACL = '__other_acl__';
 // held = what the pool holds; reserved = set aside by VoucherNFT for minted Reserved-mode vouchers;
 // free = held - reserved (what new mints, On-claim payouts and withdrawals can use)
 interface TokenBal { address: string; label: string; balance: string; reserved: string; free: string; empty: boolean; supported: boolean }
@@ -45,6 +48,12 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [w, setW] = useState({ token: ZERO, amount: '', to: account });
+  // pool access control: the current one (accessControl()) + GameHub's ATM access control as the quick pick
+  const { hubAddress } = useWeb3();
+  const [hubAcl, setHubAcl] = useState('');
+  const [poolAcl, setPoolAcl] = useState<string | null>(null);
+  const [aclPick, setAclPick] = useState('');
+  const [aclCheck, setAclCheck] = useState('');
   // withdraw*() needs DEFAULT_ADMIN_ROLE on the selected pool
   const poolAdmin = useAdminOf('RewardVault', isAddr(pool) ? [pool] : [])[pool.toLowerCase()];
 
@@ -136,6 +145,31 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   }, [poolKey, pool, reader, read, erc20, nameOf, ctx.book, symbol]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadBalances(); }, [loadBalances]);
+
+  useEffect(() => {
+    if (!hubAddress || !reader) return setHubAcl('');
+    new ethers.Contract(hubAddress, GameHubArtifact.abi, reader).accessControl()
+      .then((a: string) => setHubAcl(sameAddr(a, ZERO) ? '' : a)).catch(() => setHubAcl(''));
+  }, [hubAddress, reader]);
+
+  const poolKey2 = isAddr(pool) ? (sameAddr(pool, c.VoucherSettlement) || (ctx.book.extraPools || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherSettlement') ? 'VoucherSettlement' : 'RewardVault') : 'RewardVault';
+  const loadAcl = useCallback(async () => {
+    setPoolAcl(null);
+    if (!isAddr(pool) || !reader) return;
+    const a: string = await read(poolKey2, pool).accessControl().catch(() => '');
+    setPoolAcl(a);
+    setAclPick(a && !sameAddr(a, ZERO) ? a : ZERO);
+  }, [pool, reader, read, poolKey2]);
+  useEffect(() => { loadAcl(); }, [loadAcl]);
+
+  // the picked contract must answer redirectTarget(addr), or every payout from this pool would revert
+  useEffect(() => {
+    setAclCheck('');
+    if (!isAddr(aclPick) || sameAddr(aclPick, ZERO) || !reader) return;
+    new ethers.Contract(aclPick, ['function redirectTarget(address) view returns (address)'], reader).redirectTarget(account || ZERO)
+      .then(() => setAclCheck('ok')).catch(() => setAclCheck('bad'));
+  }, [aclPick, reader, account]);
+  const aclName = (a: string) => (!a || sameAddr(a, ZERO) ? 'Off' : sameAddr(a, hubAcl) ? 'ATM Access Control (GameHub)' : shortAddr(a));
 
   // pre-select the selected pool's first supported token for deposit and withdraw
   // (once per pool, so a balance reload after a deposit doesn't undo the user's pick)
@@ -296,6 +330,47 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* access control */}
+              <div className="border border-white/10 rounded-lg p-4 mt-4">
+                <h4 className="font-medium mb-1">Access control of {name} <span className="text-xs text-txt-secondary">(admin)</span></h4>
+                <p className="text-xs text-txt-secondary mb-3">
+                  Checked before every payout from this pool: unrestricted users are paid directly, frozen users&apos; payouts go to their safe wallet, blacklisted users can&apos;t claim. Currently: <span className="text-txt-primary font-medium">{poolAcl === null ? '…' : aclName(poolAcl)}</span>
+                  {poolAcl && !sameAddr(poolAcl, ZERO) && <span className="font-mono"> ({poolAcl})</span>}
+                </p>
+                {poolAdmin === false ? (
+                  <p className="text-xs text-txt-secondary">View only — only this pool&apos;s admin can change it.</p>
+                ) : (
+                  <>
+                    <ContractTag contract={isSettlement ? 'VoucherSettlement' : 'RewardVault'} methods={['setAccessControl']} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                      <Field label="Access control">
+                        <Select
+                          value={sameAddr(aclPick, ZERO) ? ZERO : hubAcl && sameAddr(aclPick, hubAcl) ? hubAcl : OTHER_ACL}
+                          onChange={(v) => setAclPick(v === OTHER_ACL ? '' : v)}
+                          options={[
+                            ...(hubAcl ? [{ label: `ATM Access Control (GameHub) · ${shortAddr(hubAcl)}`, value: hubAcl }] : []),
+                            { label: 'Off (no access control)', value: ZERO },
+                            { label: 'Other contract…', value: OTHER_ACL },
+                          ]}
+                        />
+                        {!sameAddr(aclPick, ZERO) && !(hubAcl && sameAddr(aclPick, hubAcl)) && (
+                          <div className="mt-2"><AddressInput value={aclPick} onChange={setAclPick} placeholder="0x… access control contract" /></div>
+                        )}
+                      </Field>
+                      <button
+                        className={btnSecondaryCls}
+                        disabled={busy || poolAcl === null || (!sameAddr(aclPick, ZERO) && (!isAddr(aclPick) || aclCheck !== 'ok')) || (isAddr(aclPick) && sameAddr(aclPick, poolAcl || ''))}
+                        onClick={() => run(async () => { await ctx.send(`${name}: access control → ${aclName(aclPick)}`, ctx.write(poolKey2, pool), 'setAccessControl', [aclPick]); setTimeout(loadAcl, 2500); }, 'Access control updated')}
+                      >
+                        {isAddr(aclPick) && sameAddr(aclPick, poolAcl || '') ? 'Already set' : 'Set access control'}
+                      </button>
+                    </div>
+                    {aclCheck === 'ok' && <p className="text-[11px] text-green-300 mt-1">✓ Responds to redirectTarget()</p>}
+                    {aclCheck === 'bad' && <p className="text-[11px] text-red-300 mt-1">✗ This contract doesn&apos;t answer redirectTarget(address) — setting it would make every payout revert</p>}
+                  </>
+                )}
               </div>
             </>
           );
