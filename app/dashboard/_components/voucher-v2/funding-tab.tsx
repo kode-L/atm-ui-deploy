@@ -165,9 +165,10 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <Card title="Fund a reward pool">
+      {/* ── One place for the selected pool: which pool, what it pays, and deposit / withdraw on it ── */}
+      <Card title="Manage a reward pool">
         <p className="text-xs text-txt-secondary mb-3">
-          Reward types pay from their pool, and minting checks the pool holds enough. Top it up from the connected wallet.
+          Reward types pay from their pool, and minting checks the pool holds enough. Pick the pool, then deposit to it or (admin) withdraw from it — both act on the pool shown below.
         </p>
         <Field label="Pool">
           <Select
@@ -179,120 +180,143 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
             <div className="mt-2"><AddressInput value={pool} onChange={setPool} placeholder="0x… pool address" /></div>
           )}
         </Field>
-        {(() => {
+
+        {isAddr(pool) ? (() => {
           const sp = pools.find((x) => sameAddr(x.address, pool));
           const sup = sp ? sp.assets.filter((a) => a.supported) : [];
-          return sp ? (
-            <p className="text-xs text-txt-secondary mt-2">
-              <span className="font-mono">{pool}</span> · supports{' '}
-              {sup.length ? sup.map((a) => `${a.label.replace(' (native)', '')} (free ${a.free})`).join(', ') : 'no token yet (no Reward voucher type uses this pool)'}
-            </p>
-          ) : null;
-        })()}
+          const poolName = sp?.label || 'this pool';
+          const isSettlement = sameAddr(pool, c.VoucherSettlement) || (ctx.book.extraPools || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherSettlement');
+          return (
+            <>
+              {/* selected pool */}
+              <div className="mt-3 bg-surface-tertiary rounded-lg p-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-sm text-txt-primary">{poolName}</span>
+                  <code className="font-mono text-txt-secondary break-all">{pool}</code>
+                  <button onClick={() => { navigator.clipboard?.writeText?.(pool); setCopied(pool); setTimeout(() => setCopied(''), 1500); }}>
+                    {copied === pool ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-txt-secondary hover:text-txt-primary" />}
+                  </button>
+                  <a href={getExplorerAddressUrl(ctx.chainId, pool)} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3 text-txt-secondary hover:text-accent" /></a>
+                </div>
+                {sp && sp.types.length > 0 && (
+                  <p className="mt-1 text-txt-secondary">Voucher types: {sp.types.map((t) => `#${t.id} ${t.name}`).join(', ')}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-1 mt-1">
+                  <span className="text-txt-secondary">Supports:</span>
+                  {sup.length ? sup.map((a) => <span key={a.address} className="bg-accent/15 text-accent px-2 py-0.5 rounded-full">{a.label.replace(' (native)', '')} · free {a.free}</span>)
+                    : <span className="text-yellow-400/80">{sp ? 'no Reward voucher type pays from this pool yet' : loading ? 'loading…' : '—'}</span>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                {/* deposit */}
+                <div className="border border-white/10 rounded-lg p-4">
+                  <h4 className="font-medium mb-1">Deposit to {poolName}</h4>
+                  <ContractTag contract="Token" methods={['transfer (ERC20) / send (native) → pool']} label="Sends with" />
+                  <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1 w-fit mb-3">
+                    {(['native', 'erc20'] as Kind[]).map((k) => (
+                      <button key={k} onClick={() => setKind(k)} className={`px-3 py-1.5 rounded text-xs font-medium ${kind === k ? 'bg-accent text-black' : 'text-txt-secondary hover:text-txt-primary'}`}>
+                        {k === 'native' ? symbol : k.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-3">
+                    {kind === 'erc20' && (
+                      <Field label="Token"><AddressInput value={token} onChange={setToken} options={tokenOptions} /></Field>
+                    )}
+                    <Field label="Amount" hint={kind === 'erc20' && meta ? `${meta.symbol} · ${meta.decimals} decimals · you hold ${meta.wallet}` : undefined}>
+                      <input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1000.5" />
+                    </Field>
+                  </div>
+                  <button className={`${btnCls} mt-4`} disabled={busy} onClick={deposit}>{busy ? 'Sending…' : `Deposit to ${poolName}`}</button>
+                </div>
+
+                {/* withdraw */}
+                <div className="border border-white/10 rounded-lg p-4">
+                  <h4 className="font-medium mb-1">Withdraw from {poolName} <span className="text-xs text-txt-secondary">(admin)</span></h4>
+                  {poolAdmin === false ? (
+                    <p className="text-xs text-txt-secondary">View only — only this pool&apos;s admin can withdraw from it.</p>
+                  ) : (
+                    <>
+                      <ContractTag contract={isSettlement ? 'VoucherSettlement' : 'RewardVault'} methods={['withdrawNative', 'withdrawERC20']} />
+                      <p className="text-xs text-txt-secondary mb-3">Only the <b>Free</b> amount can leave; reserved tokens stay for their vouchers. Amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
+                      <div className="space-y-3">
+                        <Field label="Asset">
+                          <Select value={w.token} onChange={(v) => setW({ ...w, token: v })} options={[{ label: `${symbol} (native)`, value: ZERO }, ...tokenOptions]} />
+                        </Field>
+                        <Field label="Amount"><input className={inputCls} value={w.amount} onChange={(e) => setW({ ...w, amount: e.target.value })} /></Field>
+                        <Field label="To"><AddressInput value={w.to} onChange={(v) => setW({ ...w, to: v })} options={[{ label: 'Connected wallet', value: account }]} /></Field>
+                      </div>
+                      <button className={`${btnSecondaryCls} mt-4`} disabled={busy} onClick={withdraw}>Withdraw from {poolName}</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          );
+        })() : (
+          <p className="text-sm text-txt-secondary text-center py-4">Pick a pool (deploy RewardVault first, or paste an address).</p>
+        )}
         {msg && <p className={`text-xs mt-3 break-all ${msg.ok ? 'text-green-300' : 'text-red-300'}`}>{msg.text}</p>}
       </Card>
 
-      {isAddr(pool) ? (
-        <>
-          <Card title="Pool balances">
-            <div className="flex justify-end -mt-10 mb-4">
-              <button className={btnSecondaryCls} disabled={loading} onClick={loadBalances}>{loading ? 'Loading…' : 'Reload'}</button>
-            </div>
-            <p className="text-xs text-txt-secondary mb-3">Every reward pool contract, the tokens it <b>supports</b> (what its voucher types pay out, read from VoucherNFT) and how much of each it holds, read live. Click <b>Select</b> to deposit to / withdraw from that pool.</p>
-            {!pools.length && <p className="text-xs text-txt-secondary">{loading ? 'Loading…' : 'No pools found.'}</p>}
-            <div className="space-y-3">
-              {pools.map((p) => {
-                const sel = sameAddr(p.address, pool);
-                const supported = p.assets.filter((a) => a.supported);
-                const held = p.assets.filter((a) => a.supported || !a.empty);
-                const none = p.assets.filter((a) => a.empty && !a.supported);
-                return (
-                  <div key={p.address} className={`bg-surface-tertiary rounded-lg p-3 ${sel ? 'ring-1 ring-accent/60' : ''}`}>
-                    <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
-                      <span className="font-semibold text-sm text-txt-primary">{p.label}</span>
-                      {sel && <span className="text-[10px] bg-accent/20 text-accent px-1.5 rounded">selected</span>}
-                      <code className="font-mono text-txt-secondary break-all">{p.address}</code>
-                      <button onClick={() => { navigator.clipboard?.writeText?.(p.address); setCopied(p.address); setTimeout(() => setCopied(''), 1500); }}>
-                        {copied === p.address ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-txt-secondary hover:text-txt-primary" />}
-                      </button>
-                      <a href={getExplorerAddressUrl(ctx.chainId, p.address)} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3 text-txt-secondary hover:text-accent" /></a>
-                      {!sel && <button onClick={() => setPool(p.address)} className="ml-auto text-accent hover:underline">Select</button>}
+      <Card title="All reward pools">
+        <div className="flex justify-end -mt-10 mb-4">
+          <button className={btnSecondaryCls} disabled={loading} onClick={loadBalances}>{loading ? 'Loading…' : 'Reload'}</button>
+        </div>
+        <p className="text-xs text-txt-secondary mb-3">Every reward pool contract, the tokens it <b>supports</b> (what its voucher types pay out, read from VoucherNFT) and how much of each it holds, read live. Click <b>Select</b> to manage that pool above.</p>
+        {!pools.length && <p className="text-xs text-txt-secondary">{loading ? 'Loading…' : 'No pools found.'}</p>}
+        <div className="space-y-3">
+          {pools.map((p) => {
+            const sel = sameAddr(p.address, pool);
+            const supported = p.assets.filter((a) => a.supported);
+            const held = p.assets.filter((a) => a.supported || !a.empty);
+            const none = p.assets.filter((a) => a.empty && !a.supported);
+            return (
+              <div key={p.address} className={`bg-surface-tertiary rounded-lg p-3 ${sel ? 'ring-1 ring-accent/60' : ''}`}>
+                <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
+                  <span className="font-semibold text-sm text-txt-primary">{p.label}</span>
+                  {sel && <span className="text-[10px] bg-accent/20 text-accent px-1.5 rounded">selected</span>}
+                  <code className="font-mono text-txt-secondary break-all">{p.address}</code>
+                  <button onClick={() => { navigator.clipboard?.writeText?.(p.address); setCopied(p.address); setTimeout(() => setCopied(''), 1500); }}>
+                    {copied === p.address ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-txt-secondary hover:text-txt-primary" />}
+                  </button>
+                  <a href={getExplorerAddressUrl(ctx.chainId, p.address)} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3 text-txt-secondary hover:text-accent" /></a>
+                  {!sel && <button onClick={() => { setPool(p.address); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="ml-auto text-accent hover:underline">Select</button>}
+                </div>
+                <div className="flex flex-wrap items-center gap-1 text-[11px] mb-2">
+                  <span className="text-txt-secondary">Supports:</span>
+                  {supported.length ? supported.map((a) => <span key={a.address} className="bg-accent/15 text-accent px-2 py-0.5 rounded-full">{a.label.replace(' (native)', '')}</span>)
+                    : <span className="text-yellow-400/80">no Reward voucher type pays from this pool yet</span>}
+                </div>
+                {p.types.length > 0 && (
+                  <div className="text-[11px] mb-2">
+                    <span className="text-txt-secondary">Voucher types paying from this pool:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {p.types.map((t) => {
+                        const toks = t.tokens.map((a) => p.assets.find((x) => sameAddr(x.address, a))?.label.replace(' (native)', '') || shortAddr(a));
+                        return <span key={t.id} className="bg-surface-secondary border border-white/10 px-2 py-0.5 rounded">#{t.id} {t.name}{toks.length ? <span className="text-accent"> · {toks.join(', ')}</span> : null}</span>;
+                      })}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1 text-[11px] mb-2">
-                      <span className="text-txt-secondary">Supports:</span>
-                      {supported.length ? supported.map((a) => <span key={a.address} className="bg-accent/15 text-accent px-2 py-0.5 rounded-full">{a.label.replace(' (native)', '')}</span>)
-                        : <span className="text-yellow-400/80">no Reward voucher type pays from this pool yet</span>}
-                    </div>
-                    {p.types.length > 0 && (
-                      <div className="text-[11px] mb-2">
-                        <span className="text-txt-secondary">Voucher types paying from this pool:</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {p.types.map((t) => {
-                            const toks = t.tokens.map((a) => p.assets.find((x) => sameAddr(x.address, a))?.label.replace(' (native)', '') || shortAddr(a));
-                            return <span key={t.id} className="bg-surface-secondary border border-white/10 px-2 py-0.5 rounded">#{t.id} {t.name}{toks.length ? <span className="text-accent"> · {toks.join(', ')}</span> : null}</span>;
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {held.length ? (
-                      <table className="w-full text-xs">
-                        <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-1.5 pr-3">Token</th><th className="py-1.5 pr-3">Token address</th><th className="py-1.5 pr-3">Held</th><th className="py-1.5 pr-3">Reserved</th><th className="py-1.5">Free</th></tr></thead>
-                        <tbody>
-                          {held.map((b) => (
-                            <tr key={b.address} className="border-b border-white/5"><td className="py-1.5 pr-3">{b.label}{!b.supported && <span className="ml-1 text-[10px] text-yellow-400/80" title="No voucher type pays this token from this pool">not used</span>}</td><td className="py-1.5 pr-3 font-mono break-all text-txt-secondary">{b.address === ZERO ? '—' : b.address}</td><td className="py-1.5 pr-3">{b.balance}</td><td className="py-1.5 pr-3">{b.reserved}</td><td className="py-1.5 font-semibold">{b.free}</td></tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : <p className="text-xs text-txt-secondary">Holds nothing yet.</p>}
-                    {none.length > 0 && held.length > 0 && <p className="text-[10px] text-txt-secondary mt-1">0 held: {none.map((a) => a.label).join(', ')}</p>}
                   </div>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-txt-secondary mt-2"><b>Reserved</b> = set aside for vouchers already minted in Reserved mode (released on claim, revoke or expiry). <b>Free</b> = what new mints, on-claim payouts and withdrawals can use. Tokens checked: ERC20s in the address book plus every approved ERC20 on a type.</p>
-          </Card>
-
-          <Card title="Deposit">
-        <ContractTag contract="Token" methods={['transfer (ERC20) / send (native) → pool']} label="Sends with" />
-            <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1 w-fit mb-4">
-              {(['native', 'erc20'] as Kind[]).map((k) => (
-                <button key={k} onClick={() => setKind(k)} className={`px-3 py-1.5 rounded text-xs font-medium ${kind === k ? 'bg-accent text-black' : 'text-txt-secondary hover:text-txt-primary'}`}>
-                  {k === 'native' ? symbol : k.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {kind === 'erc20' && (
-                <Field label="Token"><AddressInput value={token} onChange={setToken} options={tokenOptions} /></Field>
-              )}
-              <Field label="Amount" hint={kind === 'erc20' && meta ? `${meta.symbol} · ${meta.decimals} decimals · you hold ${meta.wallet}` : undefined}>
-                <input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1000.5" />
-              </Field>
-            </div>
-            <button className={`${btnCls} mt-4`} disabled={busy} onClick={deposit}>{busy ? 'Sending…' : 'Deposit to pool'}</button>
-          </Card>
-
-          {poolAdmin === false ? (
-            <Card title="Withdraw (admin)"><p className="text-xs text-txt-secondary">View only — only this pool&apos;s admin can withdraw from it.</p></Card>
-          ) : (
-          <Card title="Withdraw (admin)">
-        <ContractTag contract={sameAddr(pool, c.VoucherSettlement) || (ctx.book.extraPools || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherSettlement') ? 'VoucherSettlement' : 'RewardVault'} methods={['withdrawNative', 'withdrawERC20']} />
-            <p className="text-xs text-txt-secondary mb-3">RewardVault / VoucherSettlement admin only. Sends from the pool to the given address — only the <b>Free</b> amount (see Pool balances); reserved tokens stay for their vouchers. Enter the amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Field label="Asset">
-                <Select value={w.token} onChange={(v) => setW({ ...w, token: v })} options={[{ label: `${symbol} (native)`, value: ZERO }, ...tokenOptions]} />
-              </Field>
-              <Field label="Amount"><input className={inputCls} value={w.amount} onChange={(e) => setW({ ...w, amount: e.target.value })} /></Field>
-              <Field label="To"><AddressInput value={w.to} onChange={(v) => setW({ ...w, to: v })} options={[{ label: 'Connected wallet', value: account }]} /></Field>
-            </div>
-            <button className={`${btnSecondaryCls} mt-4`} disabled={busy} onClick={withdraw}>Withdraw</button>
-          </Card>
-          )}
-        </>
-      ) : (
-        <Card><p className="text-sm text-txt-secondary text-center py-4">Pick a pool (deploy RewardVault first, or paste an address).</p></Card>
-      )}
-
+                )}
+                {held.length ? (
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-1.5 pr-3">Token</th><th className="py-1.5 pr-3">Token address</th><th className="py-1.5 pr-3">Held</th><th className="py-1.5 pr-3">Reserved</th><th className="py-1.5">Free</th></tr></thead>
+                    <tbody>
+                      {held.map((b) => (
+                        <tr key={b.address} className="border-b border-white/5"><td className="py-1.5 pr-3">{b.label}{!b.supported && <span className="ml-1 text-[10px] text-yellow-400/80" title="No voucher type pays this token from this pool">not used</span>}</td><td className="py-1.5 pr-3 font-mono break-all text-txt-secondary">{b.address === ZERO ? '—' : b.address}</td><td className="py-1.5 pr-3">{b.balance}</td><td className="py-1.5 pr-3">{b.reserved}</td><td className="py-1.5 font-semibold">{b.free}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p className="text-xs text-txt-secondary">Holds nothing yet.</p>}
+                {none.length > 0 && held.length > 0 && <p className="text-[10px] text-txt-secondary mt-1">0 held: {none.map((a) => a.label).join(', ')}</p>}
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-txt-secondary mt-2"><b>Reserved</b> = set aside for vouchers already minted in Reserved mode (released on claim, revoke or expiry). <b>Free</b> = what new mints, on-claim payouts and withdrawals can use. Tokens checked: ERC20s in the address book plus every approved ERC20 on a type.</p>
+      </Card>
     </div>
   );
 }
