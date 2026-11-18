@@ -1,8 +1,8 @@
 'use client';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
-import { NETWORKS, getExplorerAddressUrl } from '@/lib/contracts/config';
+import { NETWORKS, getExplorerAddressUrl, chainVoucherV2 } from '@/lib/contracts/config';
 import { Copy, Check, ExternalLink } from 'lucide-react';
 import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, shortAddr, toUnits } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
@@ -21,6 +21,7 @@ const ERC20_ABI = [
 // ERC721 / ERC1155 deposits left out for now, matching the RewardVault wiring step
 type Kind = 'native' | 'erc20';
 const OTHER_POOL = '__other__';
+const OTHER_TOKEN = '__other_token__';
 // held = what the pool holds; reserved = set aside by VoucherNFT for minted Reserved-mode vouchers;
 // free = held - reserved (what new mints, On-claim payouts and withdrawals can use)
 interface TokenBal { address: string; label: string; balance: string; reserved: string; free: string; empty: boolean; supported: boolean }
@@ -50,7 +51,21 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   useEffect(() => { if (!pool && c.RewardVault) setPool(c.RewardVault); }, [c.RewardVault, pool]);
 
   // every pool by name: main + extra RewardVaults, VoucherSettlement, and anything the registry approved
-  const poolOptions: AddressOption[] = useSourceOptions(null, 0).map((o) => ({ label: o.label, value: o.value }));
+  const sourceOptions = useSourceOptions(null, 0);
+  // a pool's plain name, e.g. "ActiveUserReward" / "RGST": chain.json's pool name, else the address
+  // book's extra-pool name, else the registry / on-chain name - never the address or the voucher types
+  const poolName = useCallback((a: string) => {
+    const fromChain = Object.entries(chainVoucherV2(ctx.chainId).pools).find(([, v]) => sameAddr(v, a))?.[0];
+    if (fromChain) return fromChain;
+    const extra = (ctx.book.extraPools || []).find((x) => sameAddr(x.address, a));
+    if (extra?.name) return extra.name;
+    const o = sourceOptions.find((x) => sameAddr(x.value, a));
+    const first = o?.label.split(' · ')[0];
+    if (first && !first.startsWith('0x')) return first;
+    const k = Object.entries(ctx.book.contracts).find(([, v]) => sameAddr(v, a))?.[0];
+    return k || shortAddr(a);
+  }, [ctx.chainId, ctx.book, sourceOptions]);
+  const poolOptions: AddressOption[] = sourceOptions.map((o) => ({ label: poolName(o.value), value: o.value }));
   const tokenOptions: AddressOption[] = Object.entries(ctx.book.tokens).map(([k, v]) => ({ label: k, value: v }));
   const erc20 = useCallback((a: string, s?: ethers.Signer | null) => new ethers.Contract(a, ERC20_ABI, s || reader || undefined), [reader]);
 
@@ -59,7 +74,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const loadBalances = useCallback(async () => {
     if (!reader) return;
     const list: { label: string; address: string }[] = poolOptions.filter((o) => isAddr(o.value)).map((o) => ({ label: o.label, address: o.value }));
-    if (isAddr(pool) && !list.some((p) => sameAddr(p.address, pool))) list.push({ label: 'Other pool', address: pool });
+    if (isAddr(pool) && !list.some((p) => sameAddr(p.address, pool))) list.push({ label: poolName(pool), address: pool });
     if (!list.length) return;
     setLoading(true);
     try {
@@ -80,7 +95,7 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
           const tt: string[] = t.tokenStandard === TokenStandard.Native ? [ZERO] : t.tokenStandard === TokenStandard.ERC20 ? [...t.approvedTokens] : [];
           e.types.push({ id: t.id, name: t.name, tokens: tt.map((a) => a.toLowerCase()) });
           tt.forEach((a) => { if (a !== ZERO) addrs.add(a); e.tokens.add(a.toLowerCase()); });
-          if (!list.some((p) => sameAddr(p.address, t.settlementTarget))) list.push({ label: nameOf(t.settlementTarget).startsWith('0x') ? 'Reward pool' : nameOf(t.settlementTarget), address: t.settlementTarget });
+          if (!list.some((p) => sameAddr(p.address, t.settlementTarget))) list.push({ label: poolName(t.settlementTarget), address: t.settlementTarget });
         }
       }
       const tokens: { address: string; label: string; dec: number; c: ethers.Contract }[] = [];
@@ -121,6 +136,19 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   }, [poolKey, pool, reader, read, erc20, nameOf, ctx.book, symbol]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadBalances(); }, [loadBalances]);
+
+  // pre-select the selected pool's first supported token for deposit and withdraw
+  // (once per pool, so a balance reload after a deposit doesn't undo the user's pick)
+  const preselected = useRef('');
+  useEffect(() => {
+    const sp = pools.find((x) => sameAddr(x.address, pool));
+    if (!sp || preselected.current === pool.toLowerCase()) return;
+    preselected.current = pool.toLowerCase();
+    const first = sp.assets.find((a) => a.supported) || sp.assets.find((a) => !a.empty);
+    if (!first) return;
+    if (first.address === ZERO) { setKind('native'); setToken(''); } else { setKind('erc20'); setToken(first.address); }
+    setW((x) => ({ ...x, token: first.address }));
+  }, [pool, pools]);
 
   useEffect(() => {
     setMeta(null);
@@ -184,14 +212,16 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
         {isAddr(pool) ? (() => {
           const sp = pools.find((x) => sameAddr(x.address, pool));
           const sup = sp ? sp.assets.filter((a) => a.supported) : [];
-          const poolName = sp?.label || 'this pool';
+          const name = poolName(pool);
+          // withdraw choices: what the pool supports or actually holds
+          const withdrawable = sp ? sp.assets.filter((a) => a.supported || !a.empty) : [];
           const isSettlement = sameAddr(pool, c.VoucherSettlement) || (ctx.book.extraPools || []).some((x) => sameAddr(x.address, pool) && x.kind === 'VoucherSettlement');
           return (
             <>
               {/* selected pool */}
               <div className="mt-3 bg-surface-tertiary rounded-lg p-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-sm text-txt-primary">{poolName}</span>
+                  <span className="font-semibold text-sm text-txt-primary">{name}</span>
                   <code className="font-mono text-txt-secondary break-all">{pool}</code>
                   <button onClick={() => { navigator.clipboard?.writeText?.(pool); setCopied(pool); setTimeout(() => setCopied(''), 1500); }}>
                     {copied === pool ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-txt-secondary hover:text-txt-primary" />}
@@ -211,29 +241,38 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
                 {/* deposit */}
                 <div className="border border-white/10 rounded-lg p-4">
-                  <h4 className="font-medium mb-1">Deposit to {poolName}</h4>
+                  <h4 className="font-medium mb-1">Deposit to {name}</h4>
                   <ContractTag contract="Token" methods={['transfer (ERC20) / send (native) → pool']} label="Sends with" />
-                  <div className="flex gap-1 bg-surface-tertiary rounded-lg p-1 w-fit mb-3">
-                    {(['native', 'erc20'] as Kind[]).map((k) => (
-                      <button key={k} onClick={() => setKind(k)} className={`px-3 py-1.5 rounded text-xs font-medium ${kind === k ? 'bg-accent text-black' : 'text-txt-secondary hover:text-txt-primary'}`}>
-                        {k === 'native' ? symbol : k.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
                   <div className="space-y-3">
-                    {kind === 'erc20' && (
-                      <Field label="Token"><AddressInput value={token} onChange={setToken} options={tokenOptions} /></Field>
-                    )}
+                    {/* the tokens this pool supports; "Other token…" for anything else */}
+                    <Field label="Token">
+                      <Select
+                        value={kind === 'native' ? ZERO : sup.some((a) => sameAddr(a.address, token)) ? sup.find((a) => sameAddr(a.address, token))!.address : OTHER_TOKEN}
+                        onChange={(v) => {
+                          if (v === ZERO) { setKind('native'); setToken(''); }
+                          else if (v === OTHER_TOKEN) { setKind('erc20'); setToken(''); }
+                          else { setKind('erc20'); setToken(v); }
+                        }}
+                        options={[
+                          ...sup.map((a) => ({ label: `${a.label.replace(' (native)', '')} · in pool ${a.balance}`, value: a.address })),
+                          ...(sup.some((a) => a.address === ZERO) ? [] : [{ label: `${symbol} (native, not used by this pool's types)`, value: ZERO }]),
+                          { label: 'Other token…', value: OTHER_TOKEN },
+                        ]}
+                      />
+                      {kind === 'erc20' && !sup.some((a) => sameAddr(a.address, token)) && (
+                        <div className="mt-2"><AddressInput value={token} onChange={setToken} options={tokenOptions} placeholder="0x… token address" /></div>
+                      )}
+                    </Field>
                     <Field label="Amount" hint={kind === 'erc20' && meta ? `${meta.symbol} · ${meta.decimals} decimals · you hold ${meta.wallet}` : undefined}>
                       <input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1000.5" />
                     </Field>
                   </div>
-                  <button className={`${btnCls} mt-4`} disabled={busy} onClick={deposit}>{busy ? 'Sending…' : `Deposit to ${poolName}`}</button>
+                  <button className={`${btnCls} mt-4`} disabled={busy} onClick={deposit}>{busy ? 'Sending…' : `Deposit to ${name}`}</button>
                 </div>
 
                 {/* withdraw */}
                 <div className="border border-white/10 rounded-lg p-4">
-                  <h4 className="font-medium mb-1">Withdraw from {poolName} <span className="text-xs text-txt-secondary">(admin)</span></h4>
+                  <h4 className="font-medium mb-1">Withdraw from {name} <span className="text-xs text-txt-secondary">(admin)</span></h4>
                   {poolAdmin === false ? (
                     <p className="text-xs text-txt-secondary">View only — only this pool&apos;s admin can withdraw from it.</p>
                   ) : (
@@ -242,12 +281,18 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
                       <p className="text-xs text-txt-secondary mb-3">Only the <b>Free</b> amount can leave; reserved tokens stay for their vouchers. Amount in token units (e.g. 100.5) — the pool rescales it to the token&apos;s decimals itself.</p>
                       <div className="space-y-3">
                         <Field label="Asset">
-                          <Select value={w.token} onChange={(v) => setW({ ...w, token: v })} options={[{ label: `${symbol} (native)`, value: ZERO }, ...tokenOptions]} />
+                          <Select
+                            value={w.token}
+                            onChange={(v) => setW({ ...w, token: v })}
+                            options={withdrawable.length
+                              ? withdrawable.map((a) => ({ label: `${a.label.replace(' (native)', '')} · free ${a.free}${a.supported ? '' : ' (not used by its types)'}`, value: a.address }))
+                              : [{ label: `${symbol} (native)`, value: ZERO }, ...tokenOptions]}
+                          />
                         </Field>
                         <Field label="Amount"><input className={inputCls} value={w.amount} onChange={(e) => setW({ ...w, amount: e.target.value })} /></Field>
                         <Field label="To"><AddressInput value={w.to} onChange={(v) => setW({ ...w, to: v })} options={[{ label: 'Connected wallet', value: account }]} /></Field>
                       </div>
-                      <button className={`${btnSecondaryCls} mt-4`} disabled={busy} onClick={withdraw}>Withdraw from {poolName}</button>
+                      <button className={`${btnSecondaryCls} mt-4`} disabled={busy} onClick={withdraw}>Withdraw from {name}</button>
                     </>
                   )}
                 </div>
