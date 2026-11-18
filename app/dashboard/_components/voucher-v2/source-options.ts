@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { ContractKey, VoucherMode, ZERO, poolKind, sameAddr, shortAddr } from '@/lib/contracts/voucher-v2';
+import { ContractKey, VoucherMode, ZERO, loadVoucherTypes, poolKind, sameAddr, shortAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 
 export interface SourceOption {
@@ -9,6 +9,8 @@ export interface SourceOption {
   label: string;
   // approved in the linked SourceRegistry for the asked mode/standard (null = no registry linked)
   approved: boolean | null;
+  // voucher types that use this contract as their source pool / ledger (settlementTarget), read on-chain
+  types: { id: number; name: string }[];
 }
 
 const NAME_ABI = ['function name() view returns (string)'];
@@ -59,7 +61,10 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
       for (const a of [...approved, ...BOOK_POOLS.map((k) => c[k]).filter(Boolean) as string[], ...extras]) {
         if (!all.some((x) => sameAddr(x, a))) all.push(a);
       }
+      // which voucher types use each source (VoucherNFT.voucherTypes(i).settlementTarget)
+      const types = c.VoucherNFT ? await loadVoucherTypes(ctx.read('VoucherNFT')).catch(() => []) : [];
       const out = await Promise.all(all.map(async (a) => {
+        const used = types.filter((t) => sameAddr(t.settlementTarget, a)).map((t) => ({ id: t.id, name: t.name }));
         const [onChain, label] = await Promise.all([
           new ethers.Contract(a, NAME_ABI, ctx.reader!).name().catch(() => ''),
           reg ? reg.labelOf(a).catch(() => '') : Promise.resolve(''),
@@ -67,9 +72,10 @@ export function useSourceOptions(mode: number | null, tokenStandard: number) {
         const bookKey = BOOK_POOLS.find((k) => sameAddr(c[k], a)) || (() => { const x = extraList.find((e) => sameAddr(e.address, a)); return x ? `${poolKind(x)} (extra)` : undefined; })();
         const name = label || onChain;
         // skip the contract name when the pool's own name already is it ("VoucherSettlement")
-        const parts = [name, bookKey && bookKey !== name ? bookKey : '', shortAddr(a)].filter(Boolean);
+        const parts = [name, bookKey && bookKey !== name ? bookKey : '', shortAddr(a),
+          used.length ? `types ${used.map((t) => `#${t.id} ${t.name}`).join(', ')}` : 'no voucher type yet'].filter(Boolean);
         const isApproved = showApproval ? approved.some((x) => sameAddr(x, a)) : null;
-        return { value: a, label: parts.join(' · '), approved: isApproved };
+        return { value: a, label: parts.join(' · '), approved: isApproved, types: used };
       }));
       if (!cancelled) setOptions(out);
     })();

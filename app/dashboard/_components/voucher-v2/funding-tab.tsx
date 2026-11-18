@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { NETWORKS, getExplorerAddressUrl } from '@/lib/contracts/config';
 import { Copy, Check, ExternalLink } from 'lucide-react';
-import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, toUnits } from '@/lib/contracts/voucher-v2';
+import { TokenStandard, VoucherMode, ZERO, fromUnits, isAddr, loadVoucherTypes, sameAddr, shortAddr, toUnits } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import { useAdminOf } from './use-role';
 import { useSourceOptions } from './source-options';
@@ -26,7 +26,7 @@ const OTHER_POOL = '__other__';
 interface TokenBal { address: string; label: string; balance: string; reserved: string; free: string; empty: boolean; supported: boolean }
 // one pool contract and every asset it holds
 // supported = tokens the pool pays out: approved tokens of the Reward voucher types whose pool (settlementTarget) is this contract
-interface PoolBal { label: string; address: string; types: number[]; assets: TokenBal[] }
+interface PoolBal { label: string; address: string; types: { id: number; name: string; tokens: string[] }[]; assets: TokenBal[] }
 
 export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
   const ctx = useVoucherV2();
@@ -70,16 +70,16 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
       // token list: ERC20s in the address book plus every approved ERC20 on a Reward type
       const addrs = new Set(Object.values(ctx.book.tokens));
       // which tokens each pool supports, from the on-chain Reward voucher types that pay from it
-      const support = new Map<string, { types: number[]; tokens: Set<string> }>();
+      const support = new Map<string, { types: { id: number; name: string; tokens: string[] }[]; tokens: Set<string> }>();
       if (nft) {
         const types = await loadVoucherTypes(nft).catch(() => []);
         for (const t of types.filter((x) => x.mode === VoucherMode.Reward && isAddr(x.settlementTarget) && !sameAddr(x.settlementTarget, ZERO))) {
           const k = t.settlementTarget.toLowerCase();
           if (!support.has(k)) support.set(k, { types: [], tokens: new Set() });
           const e = support.get(k)!;
-          e.types.push(t.id);
-          if (t.tokenStandard === TokenStandard.ERC20) t.approvedTokens.forEach((a) => { addrs.add(a); e.tokens.add(a.toLowerCase()); });
-          if (t.tokenStandard === TokenStandard.Native) e.tokens.add(ZERO);
+          const tt: string[] = t.tokenStandard === TokenStandard.Native ? [ZERO] : t.tokenStandard === TokenStandard.ERC20 ? [...t.approvedTokens] : [];
+          e.types.push({ id: t.id, name: t.name, tokens: tt.map((a) => a.toLowerCase()) });
+          tt.forEach((a) => { if (a !== ZERO) addrs.add(a); e.tokens.add(a.toLowerCase()); });
           if (!list.some((p) => sameAddr(p.address, t.settlementTarget))) list.push({ label: nameOf(t.settlementTarget).startsWith('0x') ? 'Reward pool' : nameOf(t.settlementTarget), address: t.settlementTarget });
         }
       }
@@ -222,8 +222,18 @@ export default function FundingTab({ onGo }: { onGo: (t: string) => void }) {
                       <span className="text-txt-secondary">Supports:</span>
                       {supported.length ? supported.map((a) => <span key={a.address} className="bg-accent/15 text-accent px-2 py-0.5 rounded-full">{a.label.replace(' (native)', '')}</span>)
                         : <span className="text-yellow-400/80">no Reward voucher type pays from this pool yet</span>}
-                      {p.types.length > 0 && <span className="text-txt-secondary ml-1">· voucher types {p.types.join(', ')}</span>}
                     </div>
+                    {p.types.length > 0 && (
+                      <div className="text-[11px] mb-2">
+                        <span className="text-txt-secondary">Voucher types paying from this pool:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {p.types.map((t) => {
+                            const toks = t.tokens.map((a) => p.assets.find((x) => sameAddr(x.address, a))?.label.replace(' (native)', '') || shortAddr(a));
+                            return <span key={t.id} className="bg-surface-secondary border border-white/10 px-2 py-0.5 rounded">#{t.id} {t.name}{toks.length ? <span className="text-accent"> · {toks.join(', ')}</span> : null}</span>;
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {held.length ? (
                       <table className="w-full text-xs">
                         <thead><tr className="text-left text-txt-secondary border-b border-white/10"><th className="py-1.5 pr-3">Token</th><th className="py-1.5 pr-3">Token address</th><th className="py-1.5 pr-3">Held</th><th className="py-1.5 pr-3">Reserved</th><th className="py-1.5">Free</th></tr></thead>
