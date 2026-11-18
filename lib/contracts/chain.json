@@ -106,6 +106,8 @@
       "Admin (Safe)": "0x585EBA5655270D41abE9E76651B17dEd4Cd35bCF",
       "Operator 0xcFC9": "0xcFC94Ca494033aAC5899034B2761C2cAEC5d0f74"
     },
-    "rgstRegistorAddress": "0x69ADbBc4587b4946C9980F74E47C3cC36a865022"
+    "rewardEligibilityRegistries": {
+      "RGST Registor": "0x69ADbBc4587b4946C9980F74E47C3cC36a865022"
+    }
   }
 }

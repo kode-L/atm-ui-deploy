@@ -4,7 +4,7 @@
 // RULE: a new section or contract must be added here so its on-chain version is always visible.
 import { OverviewItem } from '@/components/contract-overview';
 import {
-  BSC_MAINNET, networkStorageKey, validAddr, chainTokenVoids,
+  BSC_MAINNET, networkStorageKey, validAddr, chainTokenVoids, registryName,
   DEFAULT_TOKEN_VOID_ADDRESS, DEFAULT_TOKEN_VOID_ADDRESS_MAINNET, DEFAULT_ATM_VOID_ADDRESS, DEFAULT_ATM_VOID_ADDRESS_MAINNET,
 } from '@/lib/contracts/config';
 import { loadBook } from '@/lib/contracts/voucher-v2';
@@ -62,7 +62,7 @@ export function sectionContracts(tab: string, c: SectionCtx): OverviewItem[] {
     case 'atm-void':
       return [{ label: 'ATM Void', address: saved('dg_atmVoidAddress', ns) || (isMainnet ? DEFAULT_ATM_VOID_ADDRESS_MAINNET : DEFAULT_ATM_VOID_ADDRESS) }];
     case 'reward-eligibility-registry':
-      return [{ label: 'Reward Eligibility Registry', address: c.rewardEligibilityRegistryAddress }, hub];
+      return [{ label: registryName(c.chainId, c.rewardEligibilityRegistryAddress) || 'Reward Eligibility Registry', address: c.rewardEligibilityRegistryAddress }, hub];
     case 'atm-vouchers':
       return [{ label: 'ATM Voucher', address: c.atmVoucherAddress }, hub];
     case 'voucher-v2': {

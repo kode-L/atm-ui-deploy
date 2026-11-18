@@ -5,7 +5,7 @@ import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
-import { getExplorerAddressUrl, REWARD_ELIGIBILITY_REGISTRY_PROPOSAL_TYPE_LABELS, chainRegistryOperators } from '@/lib/contracts/config';
+import { getExplorerAddressUrl, REWARD_ELIGIBILITY_REGISTRY_PROPOSAL_TYPE_LABELS, chainRegistryOperators, chainRewardEligibilityRegistries, GAMEHUB_REGISTRY_NAME, registryName } from '@/lib/contracts/config';
 import RegistryArtifact from '@/lib/contracts/RewardEligibilityRegistry.json';
 import RegistryProxyArtifact from '@/lib/contracts/RewardEligibilityRegistryProxy.json';
 import {
@@ -329,7 +329,9 @@ export default function RewardEligibilityRegistrySection() {
     setOperatorsLoading(true);
     try {
       // 1. chain.json's known operators, each checked live with operators(address) - always complete
-      const known = chainRegistryOperators(chainId || 97);
+      // (chain.json's registryOperators belong to the GameHub registry; other registries rely on events)
+      const isGameHubRegistry = registryName(chainId || 97, rewardEligibilityRegistryAddress || '') === GAMEHUB_REGISTRY_NAME;
+      const known = isGameHubRegistry ? chainRegistryOperators(chainId || 97) : [];
       const latest = new Map<string, { allowed: boolean; name?: string }>();
       const checks = await Promise.all(known.map(k => reg.operators(k.address).then((ok: boolean) => !!ok).catch(() => false)));
       known.forEach((k, i) => latest.set(k.address.toLowerCase(), { allowed: checks[i], name: k.name }));
@@ -351,7 +353,7 @@ export default function RewardEligibilityRegistrySection() {
     } finally {
       setOperatorsLoading(false);
     }
-  }, [getRead, chainId]);
+  }, [getRead, chainId, rewardEligibilityRegistryAddress]);
 
   useEffect(() => { fetchOperators(); }, [fetchOperators]);
 
@@ -1087,8 +1089,34 @@ export default function RewardEligibilityRegistrySection() {
     <div className="space-y-4">
       <TxStatus {...txStatus} chainId={chainId} />
 
+      {/* ── Which registry ── */}
+      {(() => {
+        const known = chainRewardEligibilityRegistries(chainId || 97);
+        const cur = rewardEligibilityRegistryAddress || '';
+        const sel = known.find(r => r.address.toLowerCase() === cur.toLowerCase());
+        return known.length > 0 ? (
+          <Card>
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <label className="text-sm font-medium shrink-0">Registry</label>
+              <select
+                value={sel ? sel.address : cur}
+                onChange={e => setRewardEligibilityRegistryAddress(e.target.value)}
+                className="flex-1 bg-surface-tertiary rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {!cur && <option value="">Select a registry…</option>}
+                {known.map(r => <option key={r.address} value={r.address}>{r.label} — {r.address}</option>)}
+                {cur && !sel && <option value={cur}>Loaded — {cur}</option>}
+              </select>
+            </div>
+            <p className="text-xs text-txt-secondary mt-2">
+              {sel ? <><span className="text-accent font-medium">{sel.label}</span> · {sel.note}</> : cur ? 'A registry loaded by address (not listed in chain.json).' : 'Pick which RewardEligibilityRegistry to manage.'}
+            </p>
+          </Card>
+        ) : null;
+      })()}
+
       {/* ── Deploy / Load ── */}
-      <Card title="Deploy Reward Eligibility Registry" icon={<Rocket className="w-5 h-5 text-accent" />}>
+      <Card title="Deploy Reward Eligibility Registry" collapsible icon={<Rocket className="w-5 h-5 text-accent" />}>
         <p className="text-txt-secondary text-sm mb-4">
           Standalone registry mapping wallets → a reward type &amp; max claimable points, governed by a small operator multisig (type changes need approvals from &ge; the proposal threshold, currently&nbsp;
           <span className="text-accent font-semibold">{thresholdVal || '—'}</span>). This is independent of GameHub/DailySessionManager — deploying it does not affect the rest of the fleet.

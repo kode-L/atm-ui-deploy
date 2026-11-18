@@ -24,7 +24,9 @@ type ChainDefaults = {
   // operators' PaymentSplitters, name -> address (stable - always listed in the Splitter tab)
   splitters?: Record<string, string>;
   // RGST Registor (the RGST registration contract, not the token - rgstAddress is the RGST token)
-  rgstRegistorAddress?: string;
+  // other RewardEligibilityRegistry contracts on this chain (besides rewardEligibilityRegistryAddress,
+  // the one GameHub uses), name -> address; shown in the Reward Eligibility Registry tab dropdown
+  rewardEligibilityRegistries?: Record<string, string>;
   // one DailySessionManager per operator: name -> { dsm contract, operator wallet }
   // (shown instantly, then checked against GameHub on-chain)
   operators?: Record<string, { dsm: string; operator: string }>;
@@ -66,6 +68,27 @@ export const chainRegistryOperators = (chainId: number): { name: string; address
   Object.entries(CHAIN_DEFAULTS[String(chainId)]?.registryOperators || {})
     .filter(([, address]) => validAddr(address))
     .map(([name, address]) => ({ name, address }));
+
+/** Name of the registry GameHub uses (chain.json's rewardEligibilityRegistryAddress). */
+export const GAMEHUB_REGISTRY_NAME = 'GameHub Reward Eligibility Registry';
+
+/** Every RewardEligibilityRegistry on this chain, as { label, address, note }: GameHub's first, then
+ *  chain.json's rewardEligibilityRegistries (e.g. "RGST Registor"). Registry tab dropdown + Overview. */
+export const chainRewardEligibilityRegistries = (chainId: number): { label: string; address: string; note: string }[] => {
+  const c = CHAIN_DEFAULTS[String(chainId)];
+  const list: { label: string; address: string; note: string }[] = [];
+  if (validAddr(c?.rewardEligibilityRegistryAddress)) {
+    list.push({ label: GAMEHUB_REGISTRY_NAME, address: c!.rewardEligibilityRegistryAddress!, note: 'PR boost eligibility - the registry GameHub uses' });
+  }
+  for (const [label, address] of Object.entries(c?.rewardEligibilityRegistries || {})) {
+    if (validAddr(address)) list.push({ label, address, note: label.startsWith('RGST') ? 'RGST registration - not used by GameHub' : 'not used by GameHub' });
+  }
+  return list;
+};
+
+/** The chain.json name of a registry address ('' if it isn't listed). */
+export const registryName = (chainId: number, address: string): string =>
+  chainRewardEligibilityRegistries(chainId).find(r => r.address.toLowerCase() === (address || '').toLowerCase())?.label || '';
 
 /** chain.json's TokenVoid contracts for this chain, as { label, address } (Luca Void tab dropdown). */
 export const chainTokenVoids = (chainId: number): { label: string; address: string }[] =>
