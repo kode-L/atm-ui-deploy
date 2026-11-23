@@ -22,3 +22,20 @@ body {
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* A button whose transaction is pending (set by components/tx-status.tsx): spinner, no double-send. */
+button[data-tx-busy] { pointer-events: none; opacity: 0.75; cursor: progress; }
+button[data-tx-busy]::before {
+  content: '';
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.5em;
+  vertical-align: -0.125em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  animation: tx-busy-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes tx-busy-spin { to { transform: rotate(360deg); } }

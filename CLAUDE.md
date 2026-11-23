@@ -31,6 +31,16 @@
 - Naming: say **DSM**, never "fleet", for the operators' DailySessionManagers — render it as
   `<abbr title="DailySessionManager">DSM</abbr>` so hovering shows the full name.
 
+## 5. Transaction feedback stays with the action
+- While a tx is pending, the **button that sent it** shows a spinner and can't be clicked again.
+  `components/tx-status.tsx` does this for any button: render `<TxStatus>` (or call `useBusyButton(pending)`).
+- Status, tx hash and error appear as a **toast in the bottom-right stack** (`TxStatus` / `ToastPortal`),
+  never as a block at the end of a long section or somewhere else on the page. Each toast has
+  copy buttons (hash, error, "Copy all") and a close (×). It stays open until the user closes it
+  or the next tx replaces it.
+- Multi-step actions (Voucher V2 `FlowPanel`) use the same stack, so toasts never overlap.
+- Don't add new inline status blocks, `alert()`s or separate toast libraries for tx results.
+
 ## Tooling
 - Yarn PnP or `node_modules` depending on the last install. Typecheck: `./node_modules/.bin/tsc --noEmit -p .`
   (or `yarn tsc --noEmit -p .` under PnP), then `git checkout -- tsconfig.tsbuildinfo`.

@@ -2,16 +2,19 @@
 import React, { useEffect } from 'react';
 import { CheckCircle2, Circle, Loader2, X, XCircle } from 'lucide-react';
 import { getExplorerTxUrl } from '@/lib/contracts/config';
+import { CopyButton, ToastPortal, useBusyButton } from '@/components/tx-status';
 import { useVoucherV2 } from './context';
 
 /**
- * Bottom-right panel for an action that sends several transactions: numbered steps with their
+ * Bottom-right panel (in the shared tx toast stack) for an action that sends transactions: numbered steps with their
  * state (waiting for the wallet, confirming, done, failed). Closes itself shortly after
  * everything succeeded; stays open on an error.
  */
 export default function FlowPanel() {
   const { flow, closeFlow, chainId, stepAction } = useVoucherV2();
   const allDone = !!flow && flow.steps.length > 0 && flow.steps.every((s) => s.status === 'done');
+  // spinner on the button that started the action until no step is left to run
+  useBusyButton(!!flow && flow.steps.some((s) => s.status === 'pending' || s.status === 'todo') && !flow.steps.some((s) => s.status === 'error'));
 
   useEffect(() => {
     if (!allDone) return;
@@ -24,7 +27,8 @@ export default function FlowPanel() {
   const failed = flow.steps.some((s) => s.status === 'error');
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[380px] max-w-[calc(100vw-32px)] rounded-xl border border-white/10 bg-surface-secondary shadow-2xl p-4 space-y-3">
+    <ToastPortal>
+    <div className="rounded-xl border border-white/10 bg-surface-secondary shadow-2xl p-4 space-y-3">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">{flow.title}</div>
@@ -59,11 +63,18 @@ export default function FlowPanel() {
               )}
               {s.status === 'pending' && s.note && <div className="text-txt-secondary mt-1">{s.note}</div>}
               {s.status === 'done' && s.hash && <a className="text-accent" href={getExplorerTxUrl(chainId, s.hash)} target="_blank" rel="noopener noreferrer">view tx</a>}
-              {s.status === 'error' && <div className="text-red-300 break-all">{s.error}</div>}
+              {s.hash && <span className="ml-2 align-middle"><CopyButton text={s.hash} title="Copy tx hash" /></span>}
+              {s.status === 'error' && (
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0 text-red-300 break-all max-h-32 overflow-y-auto">{s.error}</div>
+                  {s.error && <CopyButton text={s.error} title="Copy error" />}
+                </div>
+              )}
             </div>
           </li>
         ))}
       </ol>
     </div>
+    </ToastPortal>
   );
 }
