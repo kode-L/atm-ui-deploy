@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import { ethers } from 'ethers';
 import { useWeb3 } from '@/lib/contracts/use-web3';
 import { decodeError } from '@/lib/contracts/error-decoder';
@@ -814,7 +815,17 @@ export default function ContributionPoolSection() {
     const pool = getWrite();
     const poolId = parseInt(selectedPoolId);
     if (!pool || isNaN(poolId)) return fail('Select a pool');
-    if (!window.confirm(`Start refund on pool #${poolId}? This is final: contributions and releases stop for good.`)) return;
+    if (!(await confirmDialog({
+      title: `Propose refund for pool #${poolId}?`,
+      details: [
+        { label: 'Contract', value: contributionPoolAddress, copy: contributionPoolAddress, mono: true },
+        { label: 'Call', value: `proposeStartRefund(${poolId})`, mono: true },
+        { label: 'Signer', value: address, mono: true },
+      ],
+      warning: 'Once executed this is final: contributions and releases stop for good and contributors can claim refunds.',
+      danger: true,
+      confirmLabel: 'Propose refund',
+    }))) return;
     await propose(`Proposing refund for pool #${poolId}...`, () => pool.proposeStartRefund(poolId));
   };
 

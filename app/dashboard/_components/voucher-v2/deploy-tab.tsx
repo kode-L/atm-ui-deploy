@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import Card from '@/components/card';
 import { getExplorerAddressUrl } from '@/lib/contracts/config';
 import { BSC_MAINNET } from '@/lib/contracts/config';
@@ -61,9 +62,20 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
   };
 
   // Real money + production addresses: make the operator say so explicitly, every time.
-  const confirmMainnet = () =>
+  const confirmMainnet = async (what: string) =>
     ctx.chainId !== BSC_MAINNET.chainId ||
-    window.confirm('You are about to deploy on BSC MAINNET. This spends real BNB and creates production contracts. Continue?');
+    confirmDialog({
+      title: `Deploy on BSC MAINNET?`,
+      message: 'This spends real BNB and creates production contracts.',
+      details: [
+        { label: 'Network', value: `BSC mainnet (chainId ${BSC_MAINNET.chainId})` },
+        { label: 'Deploying', value: what },
+        { label: 'From', value: ctx.account, copy: ctx.account, mono: true },
+        { label: 'Admin', value: admin, copy: admin, mono: true },
+      ],
+      danger: true,
+      confirmLabel: 'Deploy on mainnet',
+    });
 
   const run = async (s: DeployStep, impl?: string) => {
     setBusy(s.key);
@@ -86,11 +98,15 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
     } catch (e: any) {
       return setError(e.message);
     }
-    if (!confirmMainnet()) return;
-    if (ctx.getBook().contracts[s.key] && !window.confirm(
-      `${s.key} already has an address in this book. Redeploying replaces it here, and anything already pointing at the old one ` +
-      '(other contracts, backends, roles) will NOT follow automatically. Continue?'
-    )) return;
+    if (!(await confirmMainnet(s.key))) return;
+    if (ctx.getBook().contracts[s.key] && !(await confirmDialog({
+      title: `Redeploy ${s.key}?`,
+      message: `${s.key} already has an address in this book. Redeploying replaces it here.`,
+      details: [{ label: `Current ${s.key}`, value: ctx.getBook().contracts[s.key]!, copy: ctx.getBook().contracts[s.key], mono: true }],
+      warning: 'Anything already pointing at the old one (other contracts, backends, roles) will NOT follow automatically.',
+      danger: true,
+      confirmLabel: 'Redeploy',
+    }))) return;
     const hasImpl = !!impl || !!ctx.getBook().pendingImpl[s.key];
     ctx.beginFlow(`Deploy ${s.key}`, s.proxy ? [...(hasImpl ? [] : [`Deploy ${s.key} implementation`]), `Deploy ${s.key} proxy`] : [`Deploy ${s.key}`]);
     await run(s, impl);
@@ -99,7 +115,7 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
 
   // Step 1 only: deploys the logic contract; its address auto-fills the proxy step below.
   const deployImplOnly = async (s: DeployStep) => {
-    if (!confirmMainnet()) return;
+    if (!(await confirmMainnet(`${s.key} implementation`))) return;
     setBusy(s.key);
     setError('');
     try {
@@ -118,7 +134,7 @@ export default function DeployTab({ onGo }: { onGo: (t: string) => void }) {
     } catch (e: any) {
       return setError(e.message);
     }
-    if (!confirmMainnet()) return;
+    if (!(await confirmMainnet(remaining.map((s) => s.key).join(', ')))) return;
     let allOk = true;
     ctx.beginFlow('Deploy all contracts', remaining.filter((s) => !missingDeps(s).length || s.needs.every((n) => remaining.some((r) => r.key === n) || ctx.getBook().contracts[n])).flatMap((s) =>
       s.proxy ? [...(ctx.getBook().pendingImpl[s.key] ? [] : [`Deploy ${s.key} implementation`]), `Deploy ${s.key} proxy`] : [`Deploy ${s.key}`]));

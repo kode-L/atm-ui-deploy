@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useWeb3 } from '@/lib/contracts/use-web3';
-import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp, Layers, Link2 } from 'lucide-react';
+import { Wallet, Shield, Gamepad2, Swords, Coins, Zap, DollarSign, Users, Split, Search, Network, Loader2, HelpCircle, Flame, IdCard, Ticket, PiggyBank, TrendingUp, Layers, Link2, Landmark, Rocket } from 'lucide-react';
 import DeploySection from './_components/deploy-section';
 import HubSection from './_components/hub-section';
 import TokenSection from './_components/token-section';
@@ -21,6 +21,8 @@ import VoucherV2Section from './_components/voucher-v2-section';
 import ContributionPoolSection from './_components/contribution-pool-section';
 import RgstSection from './_components/rgst-section';
 import LinkSection from './_components/link-section';
+import ManagementSection from './_components/management-section';
+import AtmUpgraderSection from './_components/atm-upgrader-section';
 import ContractOverview from '@/components/contract-overview';
 import OperatorsOverview from '@/components/operators-overview';
 import { sectionContracts } from '@/lib/contracts/section-contracts';
@@ -31,6 +33,13 @@ import { sectionContracts } from '@/lib/contracts/section-contracts';
 // anyway. Hidden for 'operator' role; still shown for 'admin' / 'admin+operator'.
 const TABS = [
   { id: 'deploy', label: 'Deploy', icon: <Wallet className="w-4 h-4" />, adminOnly: true },
+  // ACL set (ATMAccessControl, ATMAccessControlDAO, Factory) + Management multisig: deploy, upgrade,
+  // proposals. Its own permission model (proxy admin / owner / Management nodes), read live and shown
+  // per action — not gated by GameHub walletRole.
+  // ACL v1.1.0 upgrade only, as one checklist (ACL → DAO → link → rules → Factory → Trader). Who signs
+  // each step is read live: a wallet sends it, a Management multisig gets a proposal + votes.
+  { id: 'upgrader', label: 'ATM Upgrader', icon: <Rocket className="w-4 h-4" />, adminOnly: false },
+  { id: 'management', label: 'ACL & Management', icon: <Landmark className="w-4 h-4" />, adminOnly: false },
   { id: 'hub', label: 'Hub', icon: <Network className="w-4 h-4" />, adminOnly: true },
   { id: 'tokens', label: 'Points', icon: <Coins className="w-4 h-4" />, adminOnly: false },
   { id: 'admin', label: 'Admin', icon: <Shield className="w-4 h-4" />, adminOnly: true },
@@ -194,6 +203,8 @@ export default function DashboardPage() {
         {activeTab === 'contribution-pool' && <ContributionPoolSection />}
         {activeTab === 'rgst' && <RgstSection />}
         {activeTab === 'link' && <LinkSection />}
+        {activeTab === 'upgrader' && <AtmUpgraderSection onOpenManagement={(sub) => { try { localStorage.setItem('dg_managementSubTab', sub); } catch { /* opens on its last sub-tab */ } setActiveTab('management'); }} />}
+        {activeTab === 'management' && <ManagementSection />}
       </div>
     </div>
   );

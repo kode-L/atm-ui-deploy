@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import Card from '@/components/card';
 import {
   FundingMode, PayoutMode, VoucherMode, VoucherType, ZERO, enumName, isAddr, loadVoucherTypes, sameAddr, typeLabel,
@@ -130,7 +131,16 @@ export function EditTypeCard() {
       {t && canEdit && (
         <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-white/10">
           <span className="text-xs text-txt-secondary flex-1 min-w-[220px]">Emergency: stop both minting and claiming for this type at once (or turn both back on).</span>
-          <button className={btnDangerCls} disabled={busy} onClick={() => window.confirm(`Shut down type #${t.id}? Minting and claiming both stop until reactivated.`) && run(`Type ${t.id}: emergency shutdown`, 'VoucherNFT', 'emergencyShutdownType', [t.id])}>Emergency shut down</button>
+          <button className={btnDangerCls} disabled={busy} onClick={async () => (await confirmDialog({
+            title: `Emergency shut down type #${t.id}?`,
+            message: 'Minting and claiming both stop for this type until it is reactivated.',
+            details: [
+              { label: 'Contract', value: `VoucherNFT ${c.VoucherNFT}`, copy: c.VoucherNFT, mono: true },
+              { label: 'Call', value: `emergencyShutdownType(${t.id})`, mono: true },
+            ],
+            danger: true,
+            confirmLabel: 'Shut down',
+          })) && run(`Type ${t.id}: emergency shutdown`, 'VoucherNFT', 'emergencyShutdownType', [t.id])}>Emergency shut down</button>
           <button className={btnSecondaryCls} disabled={busy} onClick={() => run(`Type ${t.id}: reactivate`, 'VoucherNFT', 'reactivateType', [t.id])}>Reactivate</button>
         </div>
       )}
@@ -164,7 +174,16 @@ export function NftAdminCard() {
         <span>All minting: {paused === null ? '…' : paused ? <Badge tone="bad">paused</Badge> : <Badge tone="good">running</Badge>}</span>
         {isAdmin && (paused
           ? <button className={btnSecondaryCls} disabled={busy} onClick={() => run('VoucherNFT: unpause', 'VoucherNFT', 'unpause', [])}>Unpause</button>
-          : <button className={btnDangerCls} disabled={busy} onClick={() => window.confirm('Pause VoucherNFT? All minting stops for every type until unpaused.') && run('VoucherNFT: pause', 'VoucherNFT', 'pause', [])}>Pause all minting</button>)}
+          : <button className={btnDangerCls} disabled={busy} onClick={async () => (await confirmDialog({
+            title: 'Pause all minting?',
+            message: 'All minting stops for every voucher type until VoucherNFT is unpaused.',
+            details: [
+              { label: 'Contract', value: `VoucherNFT ${ctx.book.contracts.VoucherNFT}`, copy: ctx.book.contracts.VoucherNFT, mono: true },
+              { label: 'Call', value: 'pause()', mono: true },
+            ],
+            danger: true,
+            confirmLabel: 'Pause minting',
+          })) && run('VoucherNFT: pause', 'VoucherNFT', 'pause', [])}>Pause all minting</button>)}
       </div>
       <Field label="Metadata base URI" hint={`Each voucher's tokenURI = base URI + its id.${sampleUri ? ` Current example: ${sampleUri}` : ''}`}>
         <div className="flex gap-2">

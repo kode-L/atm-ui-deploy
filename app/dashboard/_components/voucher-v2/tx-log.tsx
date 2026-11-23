@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { confirmDialog, copyDialog } from '@/components/confirm-dialog';
 import { UtcTime } from '@/components/utc-datetime';
 import { fmtUtc, isoToUnix } from '@/lib/utc-time';
 import { Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
@@ -27,7 +28,7 @@ export default function TxLogCard() {
       setCopied(key);
       setTimeout(() => setCopied(''), 1500);
     } catch {
-      window.prompt('Copy this:', text);
+      copyDialog(text);
     }
   };
 
@@ -66,8 +67,15 @@ export default function TxLogCard() {
     URL.revokeObjectURL(url);
   };
 
-  const clear = () => {
-    if (window.confirm(`Delete all ${ctx.txLog.length} saved transactions for ${networkName} from this browser? Export them first if you need the hashes.`)) ctx.clearTxLog();
+  const clear = async () => {
+    if (await confirmDialog({
+      title: `Delete all saved transactions for ${networkName}?`,
+      message: 'Removes them from this browser only. Nothing on-chain changes.',
+      details: [{ label: 'Saved transactions', value: String(ctx.txLog.length) }],
+      warning: 'Export them first if you need the hashes.',
+      danger: true,
+      confirmLabel: 'Delete all',
+    })) ctx.clearTxLog();
   };
 
   const CopyBtn = ({ text, id }: { text: string; id: string }) => (

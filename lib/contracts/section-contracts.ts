@@ -69,6 +69,11 @@ export function sectionContracts(tab: string, c: SectionCtx): OverviewItem[] {
       // the Voucher V2 tab has its own Overview (contracts + pools + tokens + chain.json check)
       return [];
     }
+    case 'upgrader':
+    case 'management':
+      // the tab renders its own Overview: ACL / DAO / Factory / File / Management are resolved from the
+      // chain (File.accessControl(), ACL.dao(), proxy admins), which this sync helper can't do
+      return [];
     case 'contribution-pool':
       return [{ label: 'Contribution Pool', address: c.contributionPoolAddress }];
     case 'rgst':

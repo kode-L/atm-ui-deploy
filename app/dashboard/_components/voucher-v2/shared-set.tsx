@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
+import { confirmDialog, promptDialog } from '@/components/confirm-dialog';
 import { Book, emptyBook, parseBookImport, sameAddr, shortAddr } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
 import { btnCls, btnDangerCls, btnSecondaryCls, inputCls } from './ui';
@@ -73,9 +74,19 @@ export function TestSetsBar() {
     return next;
   };
 
-  const doSave = () => {
+  const doSave = async () => {
     if (!nft) return setMsg({ ok: false, text: 'Nothing to save: the address book has no contracts.' });
-    const name = window.prompt('Name for this test set:', activeSaved?.name || `My test set ${new Date().toLocaleDateString()}`);
+    const name = await promptDialog({
+      title: 'Save this test set',
+      message: 'Saves the current Voucher V2 addresses in this browser so you can load them again later.',
+      details: [
+        { label: 'VoucherNFT', value: nft, copy: nft, mono: true },
+        { label: 'Contracts', value: String(Object.keys(ctx.book.contracts).length) },
+      ],
+      label: 'Name',
+      defaultValue: activeSaved?.name || `My test set ${new Date().toLocaleDateString()}`,
+      required: true,
+    });
     if (!name?.trim()) return;
     save(name.trim(), ctx.book);
     setMsg({ ok: true, text: `Saved "${name.trim()}".` });
@@ -95,9 +106,18 @@ export function TestSetsBar() {
     }
   };
 
-  const doDelete = () => {
+  const doDelete = async () => {
     const s = sets.find((x) => x.id === selected);
-    if (!s || !window.confirm(`Delete the saved set "${s.name}" from this browser? The contracts on-chain are not affected.`)) return;
+    if (!s || !(await confirmDialog({
+      title: `Delete the saved set "${s.name}"?`,
+      message: 'Removes it from this browser only. The contracts on-chain are not affected.',
+      details: [
+        { label: 'VoucherNFT', value: s.book.contracts.VoucherNFT || '—', copy: s.book.contracts.VoucherNFT, mono: true },
+        { label: 'Saved', value: new Date(s.savedAt).toLocaleString() },
+      ],
+      danger: true,
+      confirmLabel: 'Delete set',
+    }))) return;
     const next = sets.filter((x) => x.id !== s.id);
     storeSets(ctx.chainId, next);
     setSets(next);

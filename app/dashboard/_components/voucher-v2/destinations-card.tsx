@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
+import { promptDialog } from '@/components/confirm-dialog';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { isAddr } from '@/lib/contracts/voucher-v2';
@@ -80,7 +81,14 @@ export default function DestinationsCard({ only }: { only?: string } = {}) {
   };
 
   const editLabel = async (a: string) => {
-    const label = window.prompt(`Label for ${a} (shown next to it in the registry; empty clears it):`, labels[a] || '');
+    const label = await promptDialog({
+      title: labels[a] ? 'Change label' : 'Add label',
+      message: 'Shown next to this address in the registry. Leave it empty to clear the label. Saved on-chain (SourceRegistry.setLabel).',
+      details: [{ label: 'Address', value: a, copy: a, mono: true }, ...(labels[a] ? [{ label: 'Current label', value: labels[a] }] : [])],
+      label: 'Label',
+      defaultValue: labels[a] || '',
+      confirmLabel: 'Save label',
+    });
     if (label === null) return;
     setBusy(true);
     setMsg(null);

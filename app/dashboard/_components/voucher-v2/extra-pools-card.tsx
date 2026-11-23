@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import Card from '@/components/card';
 import { getExplorerAddressUrl, BSC_MAINNET } from '@/lib/contracts/config';
 import { PoolKind, TokenStandard, ZERO, isAddr, poolKind, sameAddr } from '@/lib/contracts/voucher-v2';
@@ -108,7 +109,7 @@ export default function ExtraPoolsCard({ admin, onGo, mode = 'deploy' }: { admin
     }
   };
 
-  const deploy = () => {
+  const deploy = async () => {
     const n = name.trim();
     if (!n) return setMsg({ ok: false, text: 'Give the pool a name, e.g. "USDT payouts" — it is stored on-chain so pools are easy to tell apart' });
     if (extras.some((x) => x.name.toLowerCase() === n.toLowerCase())) return setMsg({ ok: false, text: `A pool named "${n}" already exists in this book` });
@@ -116,12 +117,29 @@ export default function ExtraPoolsCard({ admin, onGo, mode = 'deploy' }: { admin
     if (!isAddr(impl)) return setMsg({ ok: false, text: 'Step 1: deploy an implementation or paste one' });
     if (type.acl && !isAddr(acl)) return setMsg({ ok: false, text: 'This pool type needs the access control contract address' });
     if (acl && !isAddr(acl)) return setMsg({ ok: false, text: 'Access control is not a valid address (leave it blank for none)' });
-    if (ctx.chainId === BSC_MAINNET.chainId && !window.confirm(`Deploy ${type.kind} "${n}" on BSC MAINNET? This spends real BNB.`)) return;
+    if (ctx.chainId === BSC_MAINNET.chainId && !(await confirmDialog({
+      title: `Deploy ${type.kind} "${n}" on BSC MAINNET?`,
+      message: 'This spends real BNB.',
+      details: [
+        { label: 'Pool name', value: n },
+        { label: 'Implementation', value: impl, copy: impl, mono: true },
+        { label: 'Admin', value: admin, copy: admin, mono: true },
+        ...(acl ? [{ label: 'Access control', value: acl, copy: acl, mono: true }] : []),
+      ],
+      danger: true,
+      confirmLabel: 'Deploy on mainnet',
+    }))) return;
     run(async () => { await ctx.deployExtraPool(n, admin, impl, acl, type.kind); setName(''); setAcl(''); }, `${type.kind} "${n}" deployed — approve it below for what it will pay out`);
   };
 
-  const deployImpl = () => {
-    if (ctx.chainId === BSC_MAINNET.chainId && !window.confirm(`Deploy a ${type.kind} implementation on BSC MAINNET? This spends real BNB.`)) return;
+  const deployImpl = async () => {
+    if (ctx.chainId === BSC_MAINNET.chainId && !(await confirmDialog({
+      title: `Deploy a ${type.kind} implementation on BSC MAINNET?`,
+      message: 'This spends real BNB. Its address fills step 2.',
+      details: [{ label: 'Network', value: `BSC mainnet (chainId ${BSC_MAINNET.chainId})` }, { label: 'From', value: ctx.account, copy: ctx.account, mono: true }],
+      danger: true,
+      confirmLabel: 'Deploy on mainnet',
+    }))) return;
     run(async () => { const a = await ctx.deployExtraPoolImpl(type.kind); setImpl(a); setImplSource('new'); }, 'Implementation deployed — it is filled in step 2');
   };
 

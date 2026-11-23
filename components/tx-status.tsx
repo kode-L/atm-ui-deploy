@@ -3,6 +3,7 @@ import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, CheckCircle, Copy, ExternalLink, Loader2, X, XCircle } from 'lucide-react';
 import { getExplorerTxUrl } from '@/lib/contracts/config';
+import { copyDialog } from '@/components/confirm-dialog';
 
 interface TxStatusProps {
   status?: 'idle' | 'pending' | 'success' | 'error';
@@ -47,7 +48,7 @@ export function CopyButton({ text, title = 'Copy', label }: { text: string; titl
       setDone(true);
       setTimeout(() => setDone(false), 1500);
     } catch {
-      window.prompt('Copy this:', text);
+      copyDialog(text);
     }
   };
   return (
@@ -68,10 +69,15 @@ function trackClicks() {
   clickTrackerOn = true;
   document.addEventListener('click', (e) => {
     const btn = (e.target as Element | null)?.closest?.('button');
-    if (btn && !btn.closest(`#${STACK_ID}`)) lastClick = { btn: btn as HTMLButtonElement, at: Date.now() };
+    if (btn && !btn.closest(`#${STACK_ID}, [data-tx-ignore-click]`)) lastClick = { btn: btn as HTMLButtonElement, at: Date.now() };
   }, true);
 }
 const CLICK_WINDOW_MS = 15_000;
+
+/** Restart the click window — called when the user confirms a dialog the clicked button opened. */
+export function refreshLastClick() {
+  if (lastClick) lastClick = { ...lastClick, at: Date.now() };
+}
 
 /** While `pending`, the button the user last clicked shows a spinner and ignores clicks. */
 export function useBusyButton(pending: boolean) {

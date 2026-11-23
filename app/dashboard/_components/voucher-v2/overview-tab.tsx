@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import { ethers } from 'ethers';
 import { ExternalLink } from 'lucide-react';
 import Card from '@/components/card';
@@ -97,8 +98,19 @@ export default function OverviewTab({ onGo }: { onGo: (t: string) => void }) {
     ctx.markExported();
   };
 
-  const doClear = () => {
-    if (!window.confirm('Start fresh: forget every Voucher V2 address, extra pool, saved token and saved transaction for this network in this browser? Deployed contracts are not affected. Export first if you need them.')) return;
+  const doClear = async () => {
+    if (!(await confirmDialog({
+      title: 'Start fresh?',
+      message: 'Forgets every Voucher V2 address, extra pool, saved token and saved transaction for this network in this browser. Deployed contracts are not affected.',
+      details: [
+        { label: 'Saved contracts', value: String(Object.keys(ctx.book.contracts).length) },
+        { label: 'Extra pools', value: String((ctx.book.extraPools || []).length) },
+        { label: 'Saved transactions', value: String(ctx.txLog.length) },
+      ],
+      warning: 'Export first if you need them.',
+      danger: true,
+      confirmLabel: 'Start fresh',
+    }))) return;
     ctx.replaceBook(emptyBook());
     ctx.clearTxLog();
     ctx.setTypeId(-1);

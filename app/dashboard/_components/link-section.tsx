@@ -18,6 +18,7 @@ import { usePager, Pager } from './link-pager';
 import { useLinkIndex, LinkIndexPanel, type LinkIndex } from './link-index-panel';
 import LinkConnections from './link-connections';
 import { useLinkRequests } from './link-requests';
+import { confirmDialog } from '@/components/confirm-dialog';
 
 // ─── shared ──────────────────────────────────────────────────────────────────
 
@@ -305,7 +306,19 @@ function ConnectTab({ net, minLock, maxLock, active, batch, onDone }: { net: { f
   const execute = async () => {
     const todo = valid.filter((c) => runs[key(c)]?.state !== 'done');
     const pay = token ? `${fmt(todo.reduce((t, c) => t.add(c.amountA), ethers.constants.Zero), token.decimals)} ${symbol}` : '';
-    if (!confirm(`Create ${todo.length} link${todo.length === 1 ? '' : 's'} (createLink) from ${short(address)} on ${NETWORKS[netChainId]?.chainName || netChainId}?\n\nYou deposit: ${pay}\nAuto-connected (percentA 100): ${todo.filter((c) => c.auto).length}`)) return;
+    if (!(await confirmDialog({
+      title: `Create ${todo.length} link${todo.length === 1 ? '' : 's'}?`,
+      message: `Each row is a Factory.createLink transaction${batch.on ? ' (sent in batches)' : ''}.`,
+      details: [
+        { label: 'Network', value: NETWORKS[netChainId]?.chainName || String(netChainId) },
+        { label: 'From', value: address, copy: address, mono: true },
+        { label: 'Factory', value: net.factory, copy: net.factory, mono: true },
+        { label: 'You deposit', value: pay },
+        { label: 'Links', value: String(todo.length) },
+        { label: 'Auto-connected', value: `${todo.filter((c) => c.auto).length} (percentA 100)` },
+      ],
+      confirmLabel: `Create ${todo.length} link${todo.length === 1 ? '' : 's'}`,
+    }))) return;
     await executeRows(); onDone?.();
   };
   const executeRows = async () => {
@@ -566,8 +579,17 @@ function LinkListTab({ mode, net, batch, index }: { mode: Mode; net: { factory: 
   const execute = async () => {
     if (!signer || !provider) return;
     const items = chosen;
-    const msg = `Send ${items.length} transaction${items.length === 1 ? '' : 's'} from ${short(address)} on ${NETWORKS[netChainId]?.chainName || netChainId}?\n\n${plan.parts.join('\n')}${plan.deposit ? `\n\nYou deposit: ${plan.deposit}` : ''}`;
-    if (!confirm(msg)) return;
+    if (!(await confirmDialog({
+      title: `Send ${items.length} transaction${items.length === 1 ? '' : 's'}?`,
+      details: [
+        { label: 'Network', value: NETWORKS[netChainId]?.chainName || String(netChainId) },
+        { label: 'From', value: address, copy: address, mono: true },
+        ...(plan.deposit ? [{ label: 'You deposit', value: plan.deposit }] : []),
+      ],
+      items: plan.parts,
+      danger: mode === 'disconnect',
+      confirmLabel: `Send ${items.length}`,
+    }))) return;
     if (batch.on) {
       let prefix: BatchCall[] = [];
       if (mode !== 'disconnect') {

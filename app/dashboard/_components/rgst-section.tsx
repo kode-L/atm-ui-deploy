@@ -21,6 +21,7 @@ import {
   Rocket, ExternalLink, Copy, Check, RefreshCw, TrendingUp, ArrowUpCircle, ShieldCheck, KeyRound,
   Send, Coins, Timer, FileCode2, Download, Settings2, Search, BadgeCheck,
 } from 'lucide-react';
+import { confirmDialog } from '@/components/confirm-dialog';
 
 type TxState = { status: 'idle' | 'pending' | 'success' | 'error'; hash?: string; error?: string; message?: string };
 type BN = ethers.BigNumber;
@@ -218,7 +219,21 @@ export default function RgstSection() {
     const owner = (initOwner.trim() || address);
     if (!ethers.utils.isAddress(owner) || isZero(owner)) return fail('Invalid owner address');
     // every power goes to this address at once, so a typo would lose control of the token
-    if (!sameAddr(owner, address) && !window.confirm(`Owner ${owner} will get proxy admin, every token role and the initial supply. Your wallet keeps nothing. Continue?`)) return;
+    if (!sameAddr(owner, address) && !(await confirmDialog({
+      title: 'Deploy RGST to another owner?',
+      message: 'The owner gets every power over the token in the deploy transaction. Your wallet keeps nothing.',
+      details: [
+        { label: 'Owner', value: owner, copy: owner, mono: true },
+        { label: 'Your wallet', value: address, mono: true },
+        { label: 'Implementation', value: implAddress.trim(), copy: implAddress.trim(), mono: true },
+        { label: 'Token', value: `${initName.trim()} (${initSymbol.trim()})` },
+        { label: 'Initial supply', value: `${initSupply.trim()} → owner` },
+      ],
+      items: ['Proxy admin (upgrades)', 'Token owner, minter, rebaser and receiver', 'The whole initial supply'],
+      warning: 'Check the owner address: a typo loses control of the token for good.',
+      danger: true,
+      confirmLabel: 'Deploy',
+    }))) return;
     setTxStatus({ status: 'pending', message: 'Deploying RGST proxy + initializing...' });
     try {
       const factory = new ethers.ContractFactory(PROXY_ABI, RGSTProxyArtifact.bytecode, signer);

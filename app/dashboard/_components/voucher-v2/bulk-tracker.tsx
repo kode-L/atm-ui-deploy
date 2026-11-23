@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { confirmDialog, promptDialog } from '@/components/confirm-dialog';
 import { ethers } from 'ethers';
 import Card from '@/components/card';
 import { UtcTime } from '@/components/utc-datetime';
@@ -957,7 +958,18 @@ export default function BulkTracker({ type, focus, version, params, onChange, ki
         return !b.completedAt && !recent(b) && (only !== undefined || !b.submittedAt);
       });
       if (!todo.length) { setMsg({ ok: true, text: only === undefined ? `Every batch is already ${isDao ? 'proposed' : 'sent'}.` : 'That batch is already on-chain (or was just sent — it is being looked up).' }); return; }
-      if (only !== undefined && x.batches[only].submittedAt && !window.confirm('This batch was already sent to the Safe and is not on-chain yet. Send it again? (Reject the old one in Safe{Wallet} if you do.)')) return;
+      if (only !== undefined && x.batches[only].submittedAt && !(await confirmDialog({
+        title: 'Send this batch to the Safe again?',
+        message: 'It was already sent to the Safe and is not on-chain yet.',
+        details: [
+          { label: 'Batch', value: x.batches[only].file ?? `batch ${only + 1}` },
+          { label: 'Vouchers', value: String(x.batches[only].end - x.batches[only].start) },
+          { label: 'First sent', value: new Date(x.batches[only].submittedAt! * 1000).toUTCString() },
+        ],
+        warning: 'Reject the old one in Safe{Wallet} if you send it again, or the batch can be minted twice.',
+        danger: true,
+        confirmLabel: 'Send again',
+      }))) return;
       const n = todo.reduce((s2, i) => s2 + x.batches[i].end - x.batches[i].start, 0);
       const utc = (ts: number) => `${new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC${new Date(ts * 1000).getTimezoneOffset() !== 0 ? ` · your local time: ${fmtLocal(ts)}` : ' (same as your local time)'}`;
       // ATM v1 has no payout token: the face value is the amount
@@ -1188,12 +1200,28 @@ export default function BulkTracker({ type, focus, version, params, onChange, ki
       const bad = picked.flatMap((g) => g.files.filter((f) => f.errors.length || f.sha === 'bad').map((f) => `${g.name}/${f.file}`));
       if (bad.length) throw new Error(`Fix or untick these files first: ${bad.slice(0, 5).join(', ')}${bad.length > 5 ? '…' : ''}`);
       const flagged = picked.flatMap((g) => g.files.filter((f) => f.dup).map((f) => `• ${g.name}/${f.file} — ${f.dup!.kind === 'same' ? 'already imported' : f.dup!.note}: ${f.dup!.where}`));
-      if (flagged.length && !window.confirm(`${flagged.length} file${flagged.length === 1 ? ' looks' : 's look'} already imported:\n\n${flagged.slice(0, 12).join('\n')}${flagged.length > 12 ? `\n… and ${flagged.length - 12} more` : ''}\n\nImport ${flagged.length === 1 ? 'it' : 'them'} anyway? They are added as a NEW upload — existing uploads and their batches are not changed.`)) return;
+      if (flagged.length && !(await confirmDialog({
+        title: `${flagged.length} file${flagged.length === 1 ? ' looks' : 's look'} already imported`,
+        message: `Import ${flagged.length === 1 ? 'it' : 'them'} anyway? They are added as a NEW upload — existing uploads and their batches are not changed.`,
+        items: [...flagged.slice(0, 12).map((f) => f.replace(/^• /, '')), ...(flagged.length > 12 ? [`… and ${flagged.length - 12} more`] : [])],
+        warning: 'Importing the same wallets twice can mint their vouchers twice.',
+        confirmLabel: 'Import anyway',
+      }))) return;
       const existing = await listUploads(ctx.chainId, dao);
       let first: StoredUpload | null = null;
       for (const g of picked) {
         const name = `${preview.source} · ${g.name}`;
-        if (existing.some((u) => u.name === name) && !window.confirm(`"${name}" was imported before. Import it again as a separate upload?`)) continue;
+        if (existing.some((u) => u.name === name) && !(await confirmDialog({
+          title: 'Import this folder again?',
+          message: 'It was imported before. Importing again adds a separate upload; the existing one is not changed.',
+          details: [
+            { label: 'Upload', value: name },
+            { label: 'Files', value: String(g.files.length) },
+            { label: 'Rows', value: String(g.files.reduce((n, f) => n + f.rows.length, 0)) },
+          ],
+          confirmLabel: 'Import again',
+          cancelLabel: 'Skip it',
+        }))) continue;
         const rows: StoredRow[] = [];
         const batches: StoredBatch[] = [];
         for (const f of g.files) {
@@ -1223,7 +1251,17 @@ export default function BulkTracker({ type, focus, version, params, onChange, ki
     if (!current) return;
     const b = current.batches[idx];
     if (b.proposalId !== null || b.submittedAt || b.completedAt || (!isDao && b.fromTs)) return;
-    if (!window.confirm(`Remove ${b.file ?? `batch ${idx + 1}`} (${b.end - b.start} rows) from this upload?`)) return;
+    if (!(await confirmDialog({
+      title: 'Remove this batch from the upload?',
+      message: 'It was never sent, so nothing on-chain refers to it.',
+      details: [
+        { label: 'Batch', value: b.file ?? `batch ${idx + 1}` },
+        { label: 'Rows', value: String(b.end - b.start) },
+        { label: 'Upload', value: current.name },
+      ],
+      danger: true,
+      confirmLabel: 'Remove batch',
+    }))) return;
     const size = b.end - b.start;
     const next = clone(current);
     next.rows = [...current.rows.slice(0, b.start), ...current.rows.slice(b.end)];
@@ -1421,7 +1459,14 @@ export default function BulkTracker({ type, focus, version, params, onChange, ki
                 onClick={() => downloadRows(isCur && current ? current : u)}>⤓ Download</button>
               <button className={linkBtnCls} onClick={async () => {
                 // only the label changes: batches, proposals and minted ids stay as they are
-                const name = window.prompt('New name for this upload', u.name)?.trim();
+                const name = (await promptDialog({
+                  title: 'Rename upload',
+                  message: 'Only the label changes: batches, proposals and minted ids stay as they are.',
+                  label: 'Name',
+                  defaultValue: u.name,
+                  required: true,
+                  confirmLabel: 'Rename',
+                }))?.trim();
                 if (!name || name === u.name) return;
                 // rename the latest saved copy, never an older one from this list (would undo progress)
                 const fresh = (await listUploads(ctx.chainId, u.dao)).find((x) => x.id === u.id);
@@ -1476,7 +1521,16 @@ export default function BulkTracker({ type, focus, version, params, onChange, ki
             })()}
             <button className={linkBtnCls} disabled={busy} onClick={() => refresh()}>Re-check now</button>
             <button className={linkBtnCls} disabled={busy} title="Forget the saved minted / complete state of this upload and read it all from the chain again" onClick={async () => {
-              if (!window.confirm('Rescan this upload from the chain? Saved voucher ids, "complete" marks and claim results are cleared and looked up again.')) return;
+              if (!(await confirmDialog({
+                title: 'Rescan this upload from the chain?',
+                message: 'Saved voucher ids, "complete" marks and claim results are cleared and looked up again from the chain.',
+                details: [
+                  { label: 'Upload', value: current.name },
+                  { label: 'Batches', value: String(current.batches.length) },
+                  { label: 'Rows', value: String(current.rows.length) },
+                ],
+                confirmLabel: 'Rescan',
+              }))) return;
               const fresh = clone(current);
               fresh.minted = {};
               fresh.claims = {};

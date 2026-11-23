@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import { ethers } from 'ethers';
 import { Database, RefreshCw, Upload, Download, Trash2, Loader2, CalendarRange } from 'lucide-react';
 import { UtcTime } from '@/components/utc-datetime';
@@ -289,7 +290,7 @@ export function LinkIndexPanel({ ctl, chainId, factory, address }: { ctl: Return
             <button className="flex items-center gap-1 text-accent hover:underline disabled:opacity-40" disabled={!records.length} onClick={() => exportCsv('connections')}><Download className="w-3.5 h-3.5" /> connections CSV</button>
             <button className="flex items-center gap-1 text-accent hover:underline disabled:opacity-40" disabled={!records.length} onClick={() => exportCsv('activity')}><Download className="w-3.5 h-3.5" /> activity CSV</button>
             <button className="flex items-center gap-1 text-accent hover:underline disabled:opacity-40" disabled={!mine.length} onClick={() => exportCsv('mine')}><Download className="w-3.5 h-3.5" /> my links CSV</button>
-            <button className={`${btnDangerCls} ml-auto py-1`} disabled={syncing} onClick={() => { if (confirm(`Delete the stored link index for ${netName}?`)) clear(); }}>
+            <button className={`${btnDangerCls} ml-auto py-1`} disabled={syncing} onClick={async () => { if (await confirmDialog({ title: `Clear the link index for ${netName}?`, message: 'Deletes the links and activity stored in this browser for this network. Nothing on-chain changes; a new sync fetches them again.', details: [{ label: 'Stored links', value: String(records.length) }], danger: true, confirmLabel: 'Clear index' })) clear(); }}>
               <span className="flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Clear</span>
             </button>
           </div>

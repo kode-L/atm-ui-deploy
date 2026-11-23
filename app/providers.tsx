@@ -24,6 +24,7 @@ import {
   chainSplitters,
 } from '@/lib/contracts/config';
 import { getFallbackProvider } from '@/lib/contracts/rpc-provider';
+import { DialogHost } from '@/components/confirm-dialog';
 import GameHubArtifact from '@/lib/contracts/GameHub.json';
 // Side-effect import: lib/reown/appkit.ts calls createAppKit() at module scope, and this is
 // the only place that module gets imported. Without it, createAppKit() never runs and every
@@ -342,5 +343,5 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
-  return <Web3Provider>{children}</Web3Provider>;
+  return <Web3Provider>{children}<DialogHost /></Web3Provider>;
 }

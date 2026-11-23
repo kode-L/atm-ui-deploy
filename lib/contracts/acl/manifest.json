@@ -1,0 +1,47 @@
+{
+  "from": "atm-smart-contract",
+  "contracts": {
+    "ATMAccessControl": {
+      "source": "contracts/ATMAccessControl.sol",
+      "build": "1c07cc93bacb783dad9c3832b8137754.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 2
+    },
+    "ATMAccessControlProxy": {
+      "source": "contracts/proxy/access_control_proxy.sol",
+      "build": "5f1862592eeed8c31dc097d4436a8454.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 2
+    },
+    "FactoryPorxy": {
+      "source": "contracts/proxy/factory_proxy.sol",
+      "build": "c8f7c1bc83f29e6af0dc0fbe01d68eeb.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 2
+    },
+    "ATMAccessControlDAO": {
+      "source": "contracts/acl/ATMAccessControlDAO.sol",
+      "build": "1c07cc93bacb783dad9c3832b8137754.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 2
+    },
+    "ATMAccessControlDAOProxy": {
+      "source": "contracts/proxy/acl_dao_proxy.sol",
+      "build": "1987e547c7de16a3d6a8abe6521a5158.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 2
+    },
+    "Factory": {
+      "source": "contracts/factory.sol",
+      "build": "1c07cc93bacb783dad9c3832b8137754.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 2
+    },
+    "Trader": {
+      "source": "contracts/traderV6.sol",
+      "build": "d73287d91f398f654daa86e993dbb42a.json",
+      "compiler": "0.8.15+commit.e14f2714",
+      "sources": 1
+    }
+  }
+}

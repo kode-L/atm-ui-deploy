@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { promptDialog } from '@/components/confirm-dialog';
 import { UtcDateTimeInput, UtcTime } from '@/components/utc-datetime';
 import { utcInputToUnix } from '@/lib/utc-time';
 import { ethers } from 'ethers';
@@ -334,7 +335,20 @@ function ListPanel({ types, mine, showValue, statusOf }: {
   };
 
   const revoke = async (v: Voucher) => {
-    const reason = window.prompt(`Revoke voucher #${v.id}? It moves to the type's revoke destination and can no longer be claimed. Reason (stored on-chain):`, '');
+    const reason = await promptDialog({
+      title: `Revoke voucher #${v.id}?`,
+      message: "It moves to the type's revoke destination and can no longer be claimed.",
+      details: [
+        { label: 'Owner', value: v.owner, copy: v.owner, mono: true },
+        { label: 'Type', value: `#${v.typeId}` },
+        { label: 'Value', value: showValue(v) },
+        { label: 'Expires', value: v.expiryDate ? new Date(v.expiryDate * 1000).toUTCString() : '—' },
+      ],
+      label: 'Reason (stored on-chain)',
+      placeholder: 'e.g. wrong wallet',
+      danger: true,
+      confirmLabel: 'Revoke voucher',
+    });
     if (reason === null) return;
     setBusyId(v.id);
     setMsg(null);
@@ -354,7 +368,18 @@ function ListPanel({ types, mine, showValue, statusOf }: {
     const how = support?.atomic ? `in one atomic transaction${ids.length > REVOKE_BATCH ? ` per ${REVOKE_BATCH}` : ''} (all or none)`
       : support?.supported ? 'as one wallet batch (not atomic — each call can succeed or fail on its own)'
       : `as ${ids.length} separate transactions`;
-    const reason = window.prompt(`Revoke ${ids.length} voucher${ids.length > 1 ? 's' : ''} (#${ids.join(', #')}) ${how}? They move to each type's revoke destination and can no longer be claimed. Reason (stored on-chain, same for all):`, '');
+    const reason = await promptDialog({
+      title: `Revoke ${ids.length} voucher${ids.length > 1 ? 's' : ''}?`,
+      message: "They move to each type's revoke destination and can no longer be claimed.",
+      details: [
+        { label: `Vouchers (${ids.length})`, value: `#${ids.join(', #')}`, copy: ids.join(','), mono: true },
+        { label: 'Sent', value: how },
+      ],
+      label: 'Reason (stored on-chain, same for all)',
+      placeholder: 'e.g. wrong wallet',
+      danger: true,
+      confirmLabel: `Revoke ${ids.length}`,
+    });
     if (reason === null) return;
     const why = reason.trim();
     const nft = ctx.write('VoucherNFT');

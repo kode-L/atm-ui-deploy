@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { confirmDialog } from '@/components/confirm-dialog';
 import { NETWORKS } from '@/lib/contracts/config';
 import { emptyBook } from '@/lib/contracts/voucher-v2';
 import { useVoucherV2 } from './context';
@@ -33,11 +34,18 @@ export default function StartFresh({ compact }: { compact?: boolean }) {
   const count = Object.keys(ctx.book.contracts).length + (ctx.book.extraPools || []).length;
   if (!count && !ctx.txLog.length && !done) return null;
 
-  const reset = () => {
-    if (!window.confirm(
-      `Start fresh on ${network}?\n\nThis forgets ${count} saved contract address(es), extra pools, saved tokens and ${ctx.txLog.length} saved transaction(s) in THIS browser, ` +
-      'so Deploy starts from zero. Contracts already deployed on-chain are not touched.\n\nTip: press Cancel and use "Export first" to keep a copy.',
-    )) return;
+  const reset = async () => {
+    if (!(await confirmDialog({
+      title: `Start fresh on ${network}?`,
+      message: 'Forgets these in THIS browser, so Deploy starts from zero. Contracts already deployed on-chain are not touched.',
+      details: [
+        { label: 'Saved addresses', value: `${count} (contracts and extra pools)` },
+        { label: 'Saved transactions', value: String(ctx.txLog.length) },
+      ],
+      warning: 'Tip: press Cancel and use "Export first" to keep a copy.',
+      danger: true,
+      confirmLabel: 'Start fresh',
+    }))) return;
     ctx.replaceBook(emptyBook());
     ctx.clearTxLog();
     ctx.setTypeId(-1);
