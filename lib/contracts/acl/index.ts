@@ -15,11 +15,10 @@ import DAOArtifact from './ATMAccessControlDAO.json';
 import DAOProxyArtifact from './ATMAccessControlDAOProxy.json';
 import FactoryArtifact from './Factory.json';
 import TraderArtifact from './Trader.json';
-import FactoryPorxyArtifact from './FactoryPorxy.json';
 import { networkStorageKey, validAddr } from '@/lib/contracts/config';
 import { LINK_ADDRESSES } from '@/lib/contracts/link';
 
-export type AclContractName = 'ATMAccessControl' | 'ATMAccessControlProxy' | 'ATMAccessControlDAO' | 'ATMAccessControlDAOProxy' | 'Factory' | 'Trader' | 'FactoryPorxy';
+export type AclContractName = 'ATMAccessControl' | 'ATMAccessControlProxy' | 'ATMAccessControlDAO' | 'ATMAccessControlDAOProxy' | 'Factory' | 'Trader';
 
 export const ARTIFACTS: Record<AclContractName, { contractName: string; abi: any[]; bytecode: string }> = {
   ATMAccessControl: ACLArtifact,
@@ -28,7 +27,6 @@ export const ARTIFACTS: Record<AclContractName, { contractName: string; abi: any
   ATMAccessControlDAOProxy: DAOProxyArtifact,
   Factory: FactoryArtifact,
   Trader: TraderArtifact,
-  FactoryPorxy: FactoryPorxyArtifact, // testnet-only test Factory proxy (constructor(impl), admin = deployer)
 };
 
 /**
@@ -51,7 +49,6 @@ export const loadVerifyBundle = async (name: AclContractName): Promise<VerifyBun
     case 'ATMAccessControlDAOProxy': return (await import('./ATMAccessControlDAOProxy.verify.json')).default as VerifyBundle;
     case 'Factory': return (await import('./Factory.verify.json')).default as VerifyBundle;
     case 'Trader': return (await import('./Trader.verify.json')).default as VerifyBundle;
-    case 'FactoryPorxy': return (await import('./FactoryPorxy.verify.json')).default as VerifyBundle;
   }
 };
 

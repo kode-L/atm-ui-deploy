@@ -422,7 +422,7 @@ function FactoryCard({ ctx }: { ctx: Ctx }) {
       </>}
       warning={f && (!aclOk || notProd) ? (
         <div className="space-y-1">
-          {notProd && <p className="text-xs text-red-300">This is the Factory File points at <strong>now</strong>, not the production one ({prod}). Upgrading here upgrades that Factory — restore File first (ATM Upgrader → Test Factory → End session) if you meant the production Factory.</p>}
+          {notProd && <p className="text-xs text-red-300">This is the Factory File points at <strong>now</strong>, not the production one ({prod}). Upgrading here upgrades that Factory — point File back at the production Factory first if you meant that one.</p>}
           {!aclOk && <p className="text-xs text-red-300">The ACL isn&apos;t v1.1.0 yet — upgrade it in <strong>1. ACL</strong> first, or every createLink reverts after this upgrade.</p>}
         </div>
       ) : undefined}
@@ -477,8 +477,8 @@ function FactoryMismatch({ ctx, ns }: { ctx: Ctx | null; ns: number }) {
   if (!isAddr(live) || !isAddr(prod) || sameAddr(live, prod)) return null;
   return (
     <p className="text-xs text-red-300 rounded-lg border border-red-500/40 bg-red-900/20 px-3 py-2">
-      File points at a different Factory (<span className="font-mono">{live}</span>) than production (<span className="font-mono">{prod}</span>) — a test-Factory session may be on.
-      Factory rows on this tab show the one File uses now; links created meanwhile belong to it. Restore it with <strong>ATM Upgrader → Test Factory → End session</strong>.
+      File points at a different Factory (<span className="font-mono">{live}</span>) than production (<span className="font-mono">{prod}</span>).
+      Factory rows on this tab show the one File uses now; links created meanwhile belong to it. The File owner should point File back at the production Factory.
     </p>
   );
 }

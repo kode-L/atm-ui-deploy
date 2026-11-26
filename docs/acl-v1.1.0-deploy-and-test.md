@@ -72,8 +72,8 @@ frozen and blacklisted wallets are **not** blocked from creating connections.
 
 Setup for the tests:
 - **Add two test operators.** The ACL owner calls `setOperator(op, true)`. There's no UI button
-  for this, so use Remix: ATMAccessControl, *At Address* = ACL proxy, with the ABI from
-  `atm-smart-contract/flattened/acl-v1.1.0`.
+  for this, so use Remix: *At Address* = ACL proxy, with the ABI from
+  `atm-smart-contract/integration/acl/abi/ATMAccessControl.json`.
 - **Operator actions are in ACL & Management → ACL proposals:**
   - freeze and blacklist run immediately
   - unfreeze, unblacklist and set safe wallet are proposals that need 2 operator approvals

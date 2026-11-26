@@ -6,7 +6,7 @@
 // Usage: node scripts/sync-acl-contracts.js [path/to/atm-smart-contract]
 // Build first in that repo:
 //   npx hardhat --config hardhat.fork.config.js compile   (ACL, DAO, DAO proxy, Factory, Trader)
-//   npx hardhat --config hardhat.acl.config.js compile    (ACL proxy, Factory proxy)
+//   npx hardhat --config hardhat.acl.config.js compile    (ACL proxy)
 const fs = require('fs');
 const path = require('path');
 
@@ -16,7 +16,6 @@ const out = path.join(__dirname, '..', 'lib', 'contracts', 'acl');
 const CONTRACTS = [
   ['artifacts-fork', 'contracts/ATMAccessControl.sol', 'ATMAccessControl'],
   ['artifacts-acl', 'contracts/proxy/access_control_proxy.sol', 'ATMAccessControlProxy'],
-  ['artifacts-acl', 'contracts/proxy/factory_proxy.sol', 'FactoryPorxy'], // testnet-only test Factory proxy
   ['artifacts-fork', 'contracts/acl/ATMAccessControlDAO.sol', 'ATMAccessControlDAO'],
   ['artifacts-fork', 'contracts/proxy/acl_dao_proxy.sol', 'ATMAccessControlDAOProxy'],
   ['artifacts-fork', 'contracts/factory.sol', 'Factory'],

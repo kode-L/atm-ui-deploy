@@ -13,12 +13,6 @@
       "compiler": "0.8.15+commit.e14f2714",
       "sources": 2
     },
-    "FactoryPorxy": {
-      "source": "contracts/proxy/factory_proxy.sol",
-      "build": "c8f7c1bc83f29e6af0dc0fbe01d68eeb.json",
-      "compiler": "0.8.15+commit.e14f2714",
-      "sources": 2
-    },
     "ATMAccessControlDAO": {
       "source": "contracts/acl/ATMAccessControlDAO.sol",
       "build": "1c07cc93bacb783dad9c3832b8137754.json",
