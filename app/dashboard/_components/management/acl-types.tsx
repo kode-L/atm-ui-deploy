@@ -233,7 +233,9 @@ function ProductionRules({ ctx, types, action }: { ctx: Ctx; types: TypeRow[]; a
     new ethers.Contract(ctx.s.acl!.address, ARTIFACTS.ATMAccessControl.abi, ctx.provider)
       .typeRule(2, ACTIONS[2].id, luca, true).then((v: number) => setLucaRule(Number(v))).catch(() => setLucaRule(null));
   }, [ctx.provider, ctx.s, luca]);
-  const blackOk = !!black?.defaultBlocked;
+  const blackDefaultOk = !!black?.defaultBlocked;
+  const blackRulesOk = !!black && black.rules.every((r) => r === 2);
+  const blackOk = blackDefaultOk && blackRulesOk;
   const frozenOk = !!frozen && frozen.rules.every((r) => r === 2);
   const lucaOk = lucaRule === 1;
   const row = (ok: boolean, text: string) => <li className="flex items-center gap-2">{ok ? <Badge tone="good">set</Badge> : <Badge tone="warn">not set</Badge>}<span>{text}</span></li>;
@@ -241,11 +243,12 @@ function ProductionRules({ ctx, types, action }: { ctx: Ctx; types: TypeRow[]; a
     <Card title={<span>Production rules <span className="text-sm text-txt-secondary font-normal">· {[blackOk, frozenOk, lucaOk].filter(Boolean).length} of 3 set</span></span>} collapsible defaultOpen={!(blackOk && frozenOk && lucaOk)}>
       <div className="space-y-3">
         <ul className="text-xs space-y-1">
-          {row(blackOk, 'BLACKLISTED: blocked from everything, to and from (deny by default, also future actions)')}
+          {row(blackOk, 'BLACKLISTED: blocked from everything, to and from (deny by default, also future actions, and an explicit block on create / join / join fully paid)')}
           {row(frozenOk, 'FROZEN: cannot create any connection (100% or any %), cannot join a part-paid connection')}
           {row(lucaOk, 'FROZEN: may only be userB of a 100% LUCA connection')}
         </ul>
-        {!blackOk && action('BLACKLISTED: block everything', acl.encodeFunctionData('setTypeDefaultBlocked', [1, true]))}
+        {!blackDefaultOk && action('BLACKLISTED: block everything by default', acl.encodeFunctionData('setTypeDefaultBlocked', [1, true]))}
+        {!blackRulesOk && action('BLACKLISTED: block create / join / join fully paid', acl.encodeFunctionData('setTypeRules', [1, ACTIONS.map((a) => a.id), [2, 2, 2]]))}
         {!frozenOk && action('FROZEN: block create / join / join fully paid', acl.encodeFunctionData('setTypeRules', [2, ACTIONS.map((a) => a.id), [2, 2, 2]]))}
         {!lucaOk && isAddr(luca) && action('FROZEN: allow 100% LUCA as userB', acl.encodeFunctionData('setTypeTokenRules', [2, ACTIONS[2].id, [luca], [1]]))}
       </div>

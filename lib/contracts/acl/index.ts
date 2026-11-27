@@ -359,7 +359,8 @@ export async function factoryChecksAcl(provider: ethers.providers.Provider, impl
   return code.toLowerCase().includes(CHECK_CONNECTION_SELECTOR);
 }
 
-/** The three production rules (BLACKLISTED blocks everything; FROZEN blocks create / join, may only be userB of 100% LUCA). */
+/** The three production rules (BLACKLISTED blocks everything: deny by default AND an explicit block on
+ *  create / join / join fully paid; FROZEN blocks create / join, may only be userB of 100% LUCA). */
 export const CONNECTION_ACTIONS = ['CREATE_CONNECTION', 'JOIN_CONNECTION', 'JOIN_FULLY_PAID'].map((k) => ethers.utils.id(k));
 export interface ProductionRuleState { blacklisted: boolean; frozen: boolean; frozenLuca: boolean }
 export async function readProductionRules(provider: ethers.providers.Provider, aclAddr: string, luca: string): Promise<ProductionRuleState> {
@@ -367,13 +368,17 @@ export async function readProductionRules(provider: ethers.providers.Provider, a
   const ZERO = ethers.constants.AddressZero;
   const [info, ...rules] = await Promise.all([
     c.typeInfo(1),
+    ...CONNECTION_ACTIONS.map((a) => c.typeRule(1, a, ZERO, false)),
     ...CONNECTION_ACTIONS.map((a) => c.typeRule(2, a, ZERO, false)),
   ]);
+  const n = CONNECTION_ACTIONS.length;
+  const blocked = (rs: unknown[]) => rs.every((r) => Number(r) === 2);
   const lucaRule = isAddr(luca) ? Number(await c.typeRule(2, CONNECTION_ACTIONS[2], luca, true)) : 0;
-  return { blacklisted: !!info.defaultBlocked, frozen: rules.every((r: number) => Number(r) === 2), frozenLuca: lucaRule === 1 };
+  return { blacklisted: !!info.defaultBlocked && blocked(rules.slice(0, n)), frozen: blocked(rules.slice(n)), frozenLuca: lucaRule === 1 };
 }
 export const productionRuleCalls = (luca: string) => ({
   blacklisted: ACL_IFACE.encodeFunctionData('setTypeDefaultBlocked', [1, true]),
+  blacklistedRules: ACL_IFACE.encodeFunctionData('setTypeRules', [1, CONNECTION_ACTIONS, [2, 2, 2]]),
   frozen: ACL_IFACE.encodeFunctionData('setTypeRules', [2, CONNECTION_ACTIONS, [2, 2, 2]]),
   frozenLuca: isAddr(luca) ? ACL_IFACE.encodeFunctionData('setTypeTokenRules', [2, CONNECTION_ACTIONS[2], [luca], [1]]) : '',
 });

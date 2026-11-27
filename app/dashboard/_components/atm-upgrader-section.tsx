@@ -421,7 +421,7 @@ function RollbackRow({ ctx, k, name, info }: { ctx: Ctx; k: string; name: string
 // ── 4. Production rules: what the ACL stores now, as tick boxes ───────────────
 // Rules live in the ACL: typeInfo(1).defaultBlocked, typeRule(2, action, 0x0, false) and the LUCA
 // token rule typeRule(2, JOIN_FULLY_PAID, LUCA, true). Values: 0 not set, 1 allow, 2 block.
-interface RuleValues { blackDefault: boolean; frozen: number[]; frozenLuca: number }
+interface RuleValues { blackDefault: boolean; black: number[]; frozen: number[]; frozenLuca: number }
 const RULE_TEXT = ['not set', 'allow', 'block'];
 const RULE_TONE: ('muted' | 'good' | 'bad')[] = ['muted', 'good', 'bad'];
 const FROZEN_ACTIONS = [
@@ -434,9 +434,14 @@ const RECOMMENDED = { blackBlock: true, frozenBlock: [true, true, true], lucaAll
 async function readRuleValues(provider: ethers.providers.Provider, acl: string, luca: string): Promise<RuleValues> {
   const c = new ethers.Contract(acl, ARTIFACTS.ATMAccessControl.abi, provider);
   const Z = ethers.constants.AddressZero;
-  const [info, ...frozen] = await Promise.all([c.typeInfo(1), ...CONNECTION_ACTIONS.map((a) => c.typeRule(2, a, Z, false))]);
+  const n = CONNECTION_ACTIONS.length;
+  const [info, ...rules] = await Promise.all([
+    c.typeInfo(1),
+    ...CONNECTION_ACTIONS.map((a) => c.typeRule(1, a, Z, false)),
+    ...CONNECTION_ACTIONS.map((a) => c.typeRule(2, a, Z, false)),
+  ]);
   const frozenLuca = isAddr(luca) ? Number(await c.typeRule(2, CONNECTION_ACTIONS[2], luca, true)) : 0;
-  return { blackDefault: !!info.defaultBlocked, frozen: frozen.map(Number), frozenLuca };
+  return { blackDefault: !!info.defaultBlocked, black: rules.slice(0, n).map(Number), frozen: rules.slice(n).map(Number), frozenLuca };
 }
 
 function ProductionRulesTable({ ctx, luca }: { ctx: Ctx; luca: string }) {
@@ -464,8 +469,10 @@ function ProductionRulesTable({ ctx, luca }: { ctx: Ctx; luca: string }) {
   // what the ticks mean on-chain
   const wantFrozen = frozenBlock.map((b) => (b ? 2 : 0));
   const wantLuca = lucaAllow ? 1 : 0;
+  const wantBlack = CONNECTION_ACTIONS.map(() => (blackBlock ? 2 : 0));
   const changes: { title: string; text: string; data: string }[] = [];
   if (blackBlock !== now.blackDefault) changes.push({ title: `BLACKLISTED: ${blackBlock ? 'block everything' : 'stop blocking by default'}`, text: `setTypeDefaultBlocked(1, ${blackBlock})`, data: aclIface.encodeFunctionData('setTypeDefaultBlocked', [1, blackBlock]) });
+  if (wantBlack.some((v, i) => v !== now.black[i])) changes.push({ title: `BLACKLISTED: ${blackBlock ? 'block' : 'clear'} create / join rules`, text: `setTypeRules(1, [create, join, join 100%], [${wantBlack.map((v) => RULE_TEXT[v]).join(', ')}])`, data: aclIface.encodeFunctionData('setTypeRules', [1, CONNECTION_ACTIONS, wantBlack]) });
   if (wantFrozen.some((v, i) => v !== now.frozen[i])) changes.push({ title: 'FROZEN: create / join rules', text: `setTypeRules(2, [create, join, join 100%], [${wantFrozen.map((v) => RULE_TEXT[v]).join(', ')}])`, data: aclIface.encodeFunctionData('setTypeRules', [2, CONNECTION_ACTIONS, wantFrozen]) });
   if (isAddr(luca) && wantLuca !== now.frozenLuca) changes.push({ title: `FROZEN: ${lucaAllow ? 'allow' : 'clear'} 100% LUCA as user B`, text: `setTypeTokenRules(2, join 100%, [LUCA], [${RULE_TEXT[wantLuca]}])`, data: aclIface.encodeFunctionData('setTypeTokenRules', [2, CONNECTION_ACTIONS[2], [luca], [wantLuca]]) });
 
@@ -474,10 +481,11 @@ function ProductionRulesTable({ ctx, luca }: { ctx: Ctx; luca: string }) {
   const frozenLucaB = wantLuca === 1 ? true : frozenCan(2);
   const yesNo = (ok: boolean) => <span className={ok ? 'text-green-300' : 'text-red-300'}>{ok ? '✓ allowed' : '✗ blocked'}</span>;
   const isMe = sameAddr(owner, ctx.me);
-  const setCount = [now.blackDefault, now.frozen.every((v) => v === 2), now.frozenLuca === 1].filter(Boolean).length;
+  const blackAllBlocked = now.blackDefault && now.black.every((v) => v === 2);
+  const setCount = [blackAllBlocked, now.frozen.every((v) => v === 2), now.frozenLuca === 1].filter(Boolean).length;
   const recommendedNow = setCount === 3;
   // a row differs when the ACL doesn't store what is ticked
-  const diffBlack = blackBlock !== now.blackDefault;
+  const diffBlack = blackBlock !== now.blackDefault || wantBlack.some((v, i) => v !== now.black[i]);
   const diffFrozen = (i: number) => wantFrozen[i] !== now.frozen[i];
   const diffLuca = isAddr(luca) && wantLuca !== now.frozenLuca;
   const rowCls = (d: boolean) => `border-b border-white/5 align-top ${d ? 'bg-yellow-900/20' : ''}`;
@@ -538,8 +546,8 @@ function ProductionRulesTable({ ctx, luca }: { ctx: Ctx; luca: string }) {
           <tbody>
             <tr className={rowCls(diffBlack)}>
               <td className="py-2 pr-3 font-semibold">BLACKLISTED</td>
-              <td className="pr-3">Every action, to and from<div className="text-txt-secondary">also actions added later</div></td>
-              <td className="pr-3">{cell(now.blackDefault, 'default')}</td>
+              <td className="pr-3">Every action, to and from<div className="text-txt-secondary">deny by default (also actions added later) + explicit block on create / join / join 100%</div></td>
+              <td className="pr-3"><div className="flex flex-wrap gap-1">{cell(now.blackDefault, 'default')}{now.black.map((v, i) => <Badge key={i} tone={RULE_TONE[v]}>{['create', 'join', 'join 100%'][i]}: {RULE_TEXT[v]}</Badge>)}</div></td>
               <td className="pr-3">{tick(blackBlock, setBlackBlock, 'Block everything')}</td>
               <td>{yesNo(!blackBlock)}</td>
             </tr>
@@ -564,7 +572,7 @@ function ProductionRulesTable({ ctx, luca }: { ctx: Ctx; luca: string }) {
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <button type="button" className="underline text-txt-secondary hover:text-txt-primary" onClick={() => { setBlackBlock(RECOMMENDED.blackBlock); setFrozenBlock(RECOMMENDED.frozenBlock); setLucaAllow(RECOMMENDED.lucaAllow); }}>Reset to recommended</button>
-        <button type="button" className="underline text-txt-secondary hover:text-txt-primary" onClick={() => { setBlackBlock(now.blackDefault); setFrozenBlock(now.frozen.map((v) => v === 2)); setLucaAllow(now.frozenLuca === 1); }}>Match what the ACL has</button>
+        <button type="button" className="underline text-txt-secondary hover:text-txt-primary" onClick={() => { setBlackBlock(now.blackDefault && now.black.every((v) => v === 2)); setFrozenBlock(now.frozen.map((v) => v === 2)); setLucaAllow(now.frozenLuca === 1); }}>Match what the ACL has</button>
       </div>
 
       {changes.length === 0 ? (
