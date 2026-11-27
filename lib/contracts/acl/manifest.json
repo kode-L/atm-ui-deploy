@@ -3,7 +3,7 @@
   "contracts": {
     "ATMAccessControl": {
       "source": "contracts/ATMAccessControl.sol",
-      "build": "1c07cc93bacb783dad9c3832b8137754.json",
+      "build": "926010f4a33b8d3f23ed890bf677df75.json",
       "compiler": "0.8.15+commit.e14f2714",
       "sources": 2
     },

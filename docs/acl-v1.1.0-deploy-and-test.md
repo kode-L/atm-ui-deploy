@@ -102,11 +102,11 @@ Set up with operators: blacklist wallet **B**, freeze wallet **F**.
 | B1 | Check a connection: creator **B**, any token | ✗ creator blocked by a rule |
 | B2 | Check: creator normal, userB **B**, 100% LUCA | ✗ userB blocked |
 | B3 | Check: creator **F**, BNB 50% / BNB 100% / LUCA 100% / LUCA 37% | ✗ creator blocked (all four) |
-| B4 | Check: creator normal, userB **F**, **100% LUCA** | ✓ allowed |
+| B4 | Check: creator normal, userB **F**, **100% LUCA** | ✗ userB blocked (F has no safe wallet); after operators set F's safe wallet: ✓ allowed |
 | B5 | Check: userB **F**, 100% BNB | ✗ userB blocked |
 | B6 | Check: userB **F**, 50% LUCA | ✗ userB blocked |
 | B7 | Real `createLink` in the app from **F** | reverts `Factory: connection not allowed` |
-| B8 | Real `createLink` normal → userB **F**, 100% LUCA | works |
+| B8 | Real `createLink` normal → userB **F**, 100% LUCA | reverts `Factory: connection not allowed` while F has no safe wallet; works once it has one |
 
 ### C. Custom type (e.g. PARTNER: LUCA only, 100% only, date range)
 
