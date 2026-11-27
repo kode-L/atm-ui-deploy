@@ -231,36 +231,83 @@ export async function readAclSystem(provider: ethers.providers.Provider, chainId
   };
 }
 
-// Other contracts the Management multisig owns (atm-smart-contract docs/ContractOwners.md), so its
-// proposals show names instead of bare addresses.
-const KNOWN_NAMES: Record<number, Record<string, string>> = {
+// Address book: fixed addresses per network (atm-smart-contract integration/acl/addresses.json and
+// docs/ContractOwners.md, checked on chain 2026-11-27). Shown in "Who signs what → Address book" and
+// used to name addresses everywhere in this section. Live contracts (ACL, DAO, Factory, Trader, File and
+// their implementations) are added from the chain on top of these.
+export const KNOWN_NAMES: Record<number, Record<string, string>> = {
   56: {
+    // signers
+    '0x2E9382A37bf3e77A54BA71C7419c928518703A1E': 'Management multisig (8 nodes, executes on the 5th vote, 24h)',
+    '0x585EBA5655270D41abE9E76651B17dEd4Cd35bCF': 'Wallet 0x585E (EIP-7702 EOA): ACL owner + proxy admin, ACL operator',
+    '0xcFC94Ca494033aAC5899034B2761C2cAEC5d0f74': 'ACL operator 0xcFC9',
+    // Management voters (nodes); rename to the person / team that holds each key
+    '0x66FE6cB3979fCEf6F7D009d51fa900D47eF89502': 'Management node 1 (0x66FE)',
+    '0xC82bE99C4Cba83C30C2236D561f0741B264529C6': 'Management node 2 (0xC82b)',
+    '0x0D4F5CEBcEcD89901e9f1e81491509c6E108577A': 'Management node 3 (0x0D4F)',
+    '0x7F7Ba6605C94443fec5733198DB9cabA68bCB53A': 'Management node 4 (0x7F7B)',
+    '0x7f1a0B063238E8097a35a96a2784fa7e7261A78e': 'Management node 5 (0x7f1a)',
+    '0x4eeDAB5d0aB5788cAFFe8e21a698fBCB44c59D32': 'Management node 6 (0x4eeD)',
+    '0x934d7414A07F4077de65615fF1006C57c3AB62FC': 'Management node 7 (0x934d)',
+    '0xa2f6F44029a883553Ba7113345996c283e701aD8': 'Management node 8 (0xa2f6)',
+    // implementations live before the ACL v1.1.0 release (rollback targets)
+    '0x9CC4C195cB5aC34c845bEC3B29a602603ECf51F7': 'ATMAccessControl implementation v1.0.0 (rollback target)',
+    '0x11aA4F8686484779Fd8a87F68E725C131931bC86': 'Factory implementation, before ACL check (rollback target)',
+    '0x240b060fD1c5E8231A454441693678eE42Bf420A': 'Trader implementation v1.0.4 (rollback target)',
+    '0xb3838D992393DcA493a8CC798a0d5aaCE4EeE2a4': 'File implementation v1.0.4',
+    // other contracts
+    '0x0E0293820d9bA914488E7662d1432475b28e147E': 'Link template (cloned for each connection)',
+    '0xF9e3cfC3d030Fcf4926959f7AA4a434FB50CB157': 'Minter proxy',
     '0x607194DB759dE0a4D9918Ab89a85716C995c28e8': 'Crosschain proxy',
     '0x63367192D0626362CFF469C83b2B1d69946f9CCD': 'Incentive proxy',
-    '0x51E6Ac1533032E72e92094867fD5921e3ea1bfa0': 'Luca proxy',
     '0xEC56a45abFf41DF1746fDf4dedc45E909601aa02': 'Pledge proxy',
+    // tokens
+    '0x51E6Ac1533032E72e92094867fD5921e3ea1bfa0': 'LUCA token (proxy)',
     '0x23B186438651e442B06E905F38FbAd5ee87f9C48': 'wLuca',
+    '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56': 'BUSD',
+    '0x2170Ed0880ac9A755fd29B2688956BD959F933F8': 'ETH (BEP-20)',
+    '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c': 'BTCB',
+  },
+  97: {
+    '0x3356ec280f80B2D15aFB0CF09A69cC7ef33d854f': 'Wallet 0x3356 (testnet admin)',
+    '0x2f431a31EFC466502822abbB7f5EF068FA280Ecb': 'Wallet 0x2f43 (testnet admin)',
+    '0x73983E498EE341810f634E6768F3CdccD6981Ac7': 'Verifier wallet (type VERIFIED)',
+    '0xA2C568fe0dcCA15DCcc8ec7ce411fF866E0ff810': 'Verifier wallet (type VERIFIED)',
+    '0xD7a1cA21D73ff98Cc64A81153eD8eF89C2a1EfEF': 'LUCA token (test)',
+    '0x4Bd4327a769322567644Fe6399d67A9654E0cf51': 'Link template (cloned for each connection)',
   },
 };
 
-// ── Names for addresses and decoded calldata ──
-export function nameBook(s: AclSystem | null, extra: Record<string, string> = {}): (a?: string) => string {
-  const m = new Map<string, string>();
-  const put = (a: string | undefined, n: string) => { if (a && isAddr(a) && !m.has(a.toLowerCase())) m.set(a.toLowerCase(), n); };
+/** Every named address of this network: live contracts first, then the fixed book above. */
+export interface BookEntry { address: string; name: string; group: string }
+const groupOf = (n: string) => /implementation/i.test(n) ? 'Implementation' : /token|wluca|busd|btcb|\bETH\b/i.test(n) ? 'Token' : /wallet|operator|multisig|admin|verifier|node/i.test(n) ? 'Signer' : 'Contract';
+export function addressBook(s: AclSystem | null, extra: Record<string, string> = {}): BookEntry[] {
+  const m = new Map<string, BookEntry>();
+  const put = (a: string | undefined, n: string) => { if (a && isAddr(a) && !m.has(a.toLowerCase())) m.set(a.toLowerCase(), { address: a, name: n, group: groupOf(n) }); };
   if (s) {
-    Object.entries(KNOWN_NAMES[s.chainId] || {}).forEach(([a, n]) => put(a, n));
     put(s.acl?.address, 'ATMAccessControl (ACL) proxy');
-    put(s.acl?.implementation, 'ATMAccessControl implementation');
     put(s.dao?.address, 'ATMAccessControlDAO proxy');
-    put(s.dao?.implementation, 'ATMAccessControlDAO implementation');
-    put(s.factory?.address, 'Factory proxy');
-    put(s.factory?.implementation, 'Factory implementation');
     put(s.file?.address, 'File proxy');
+    put(s.factory?.address, 'Factory proxy');
     put(s.trader?.address, 'Trader proxy');
-    put(s.trader?.implementation, 'Trader implementation');
     put(s.management, 'Management multisig');
+    const known = KNOWN_NAMES[s.chainId] || {};
+    const knownOf = (a?: string) => Object.entries(known).find(([k]) => sameAddr(k, a))?.[1];
+    const live = (a: string | undefined, n: string) => put(a, knownOf(a) ? `${n} (live) · ${knownOf(a)}` : `${n} (live)`);
+    live(s.acl?.implementation, 'ATMAccessControl implementation');
+    live(s.dao?.implementation, 'ATMAccessControlDAO implementation');
+    live(s.factory?.implementation, 'Factory implementation');
+    live(s.trader?.implementation, 'Trader implementation');
+    Object.entries(known).forEach(([a, n]) => put(a, n));
   }
   Object.entries(extra).forEach(([a, n]) => put(a, n));
+  const order = ['Contract', 'Signer', 'Implementation', 'Token'];
+  return [...m.values()].sort((x, y) => order.indexOf(x.group) - order.indexOf(y.group));
+}
+
+// ── Names for addresses and decoded calldata ──
+export function nameBook(s: AclSystem | null, extra: Record<string, string> = {}): (a?: string) => string {
+  const m = new Map(addressBook(s, extra).map((e) => [e.address.toLowerCase(), e.name]));
   return (a?: string) => (a ? m.get(a.toLowerCase()) || '' : '');
 }
 

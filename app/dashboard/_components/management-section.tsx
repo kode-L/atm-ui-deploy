@@ -1,13 +1,13 @@
 'use client';
 import React, { ReactNode, useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { KeyRound, Link2, Loader2, RefreshCw, Rocket, Search, ShieldCheck, Users } from 'lucide-react';
+import { BookOpen, KeyRound, Link2, Loader2, RefreshCw, Rocket, Search, ShieldCheck, Users } from 'lucide-react';
 import Card from '@/components/card';
 import TxStatus from '@/components/tx-status';
 import ContractOverview from '@/components/contract-overview';
 import { ETHERSCAN_API_KEY } from '@/lib/contracts/config';
 import { LINK_ADDRESSES } from '@/lib/contracts/link';
-import { Controller, DAO_PROXY_TARGET, ProxyInfo, aclIface, isAddr, newImplKey, readController, readProxyInfo, sameAddr, saveAddr } from '@/lib/contracts/acl';
+import { Controller, DAO_PROXY_TARGET, ProxyInfo, aclIface, addressBook, isAddr, newImplKey, readController, readProxyInfo, sameAddr, saveAddr } from '@/lib/contracts/acl';
 import { useAclCtx } from './management/use-acl-ctx';
 import ManagementCard from './management/management-card';
 import AclProposals from './management/acl-proposals';
@@ -112,7 +112,7 @@ export default function ManagementSection() {
 
       {ctx && (
         <>
-          {tab === 'overview' && <WhoSigns ctx={ctx} />}
+          {tab === 'overview' && <><WhoSigns ctx={ctx} /><AddressBook ctx={ctx} /></>}
           {tab === 'acl' && <AclCard ctx={ctx} />}
           {tab === 'acl-proposals' && <AclProposals ctx={ctx} />}
           {tab === 'dao' && <DaoCard ctx={ctx} />}
@@ -163,6 +163,24 @@ function WhoSigns({ ctx }: { ctx: Ctx }) {
   );
 }
 
+
+// ── Address book: every named address of this network in one place ──────────────
+function AddressBook({ ctx }: { ctx: Ctx }) {
+  const rows = addressBook(ctx.s);
+  return (
+    <Card collapsible title={<span>Address book <span className="text-sm text-txt-secondary font-normal">· {netName(ctx.ns)} · {rows.length} addresses</span></span>} icon={<BookOpen className="w-5 h-5 text-accent" />}>
+      <p className="text-xs text-txt-secondary mb-2">
+        Live contracts read from the chain, plus the fixed signers, rollback implementations and tokens of this network
+        (<code>lib/contracts/acl/index.ts</code> → <code>KNOWN_NAMES</code>). The same names appear everywhere in this section.
+      </p>
+      {rows.length === 0 ? <p className="text-xs text-txt-secondary">Nothing loaded for this network yet.</p> : (
+        <div className="divide-y divide-white/5">
+          {rows.map((r) => <AddrRow key={r.address} ctx={ctx} label={r.group} address={r.address} name={r.name} />)}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 // ── 1. ACL ────────────────────────────────────────────────────────────────────
 function AclCard({ ctx }: { ctx: Ctx }) {
