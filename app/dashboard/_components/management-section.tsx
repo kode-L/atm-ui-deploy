@@ -243,7 +243,8 @@ function DaoCard({ ctx }: { ctx: Ctx }) {
     <>
       <p>
         ATMAccessControlDAO holds user requests and approvals (protection, move-up, safe-wallet votes). Read from <code>ACL.dao()</code>
-        {s.daoSource === 'saved' && <> — <span className="text-yellow-300">this one is only saved in this browser until <strong>3. Link in ACL</strong> sets it</span></>}.
+        {s.daoSource === 'saved' && <> — <span className="text-yellow-300">this one is only saved in this browser until <strong>3. Link in ACL</strong> sets it</span></>}
+        {s.daoSource === 'chain' && <> — <span className="text-yellow-300">not linked yet, so this is the address committed in <code>chain.json</code> until <strong>3. Link in ACL</strong> sets it</span></>}.
       </p>
       <p>Its requests are approved in <strong>DAO requests</strong>.</p>
     </>
@@ -254,7 +255,7 @@ function DaoCard({ ctx }: { ctx: Ctx }) {
       info={dao} artifact="ATMAccessControlDAO" proxyArtifact="ATMAccessControlDAOProxy" impl={impl} setImpl={setImpl} suggestAdmin={s.acl?.admin}
       icon={<Users className="w-5 h-5 text-accent" />}
       intro={<>{intro}<p>Upgrade: deploy the new implementation, then the DAO <strong>proxy admin</strong> (see below) calls <code>upgrad(impl)</code>. Requests and votes are kept.</p></>}
-      warning={s.daoSource === 'saved' ? <p className="text-xs text-yellow-300">Not linked yet: the ACL owner must call <code>setDao</code> in <strong>3. Link in ACL</strong>.</p> : undefined} />
+      warning={s.daoSource === 'saved' || s.daoSource === 'chain' ? <p className="text-xs text-yellow-300">Not linked yet: the ACL owner must call <code>setDao</code> in <strong>3. Link in ACL</strong>.</p> : undefined} />
   );
 }
 

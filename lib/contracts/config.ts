@@ -19,6 +19,8 @@ type ChainDefaults = {
   senatorAddress?: string;
   signNum?: number;
   voucherAdapterAddress?: string;
+  // ATMAccessControlDAO proxy. ACL.dao() wins once setDao links it; until then this is the fallback
+  aclDaoAddress?: string;
   // LUCA-LP burner (the "Luca Void" tab manages tokenVoidAddress, which burns LUCA itself)
   lucaVoidLpAddress?: string;
   // operators' PaymentSplitters, name -> address (stable - always listed in the Splitter tab)

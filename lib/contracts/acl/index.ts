@@ -6,7 +6,7 @@
 //   File        → LINK_ADDRESSES (same as the Link tab)
 //   Factory     → File.factory(), else LINK_ADDRESSES
 //   ACL         → File.accessControl()           (a saved override wins, e.g. a freshly deployed proxy)
-//   ACL DAO     → ACL.dao() (v1.1.0)             (else the freshly deployed proxy saved in this browser)
+//   ACL DAO     → ACL.dao() (v1.1.0)             (else chain.json aclDaoAddress, else the proxy saved in this browser)
 //   Management  → any proxy admin / owner above that answers queryNodes()
 import { ethers } from 'ethers';
 import ACLArtifact from './ATMAccessControl.json';
@@ -15,7 +15,7 @@ import DAOArtifact from './ATMAccessControlDAO.json';
 import DAOProxyArtifact from './ATMAccessControlDAOProxy.json';
 import FactoryArtifact from './Factory.json';
 import TraderArtifact from './Trader.json';
-import { networkStorageKey, validAddr } from '@/lib/contracts/config';
+import { chainAddress, networkStorageKey, validAddr } from '@/lib/contracts/config';
 import { LINK_ADDRESSES } from '@/lib/contracts/link';
 
 export type AclContractName = 'ATMAccessControl' | 'ATMAccessControlProxy' | 'ATMAccessControlDAO' | 'ATMAccessControlDAOProxy' | 'Factory' | 'Trader';
@@ -156,7 +156,7 @@ export interface AclSystem {
   acl: ProxyInfo | null;
   aclSource: 'file' | 'saved' | '';
   dao: ProxyInfo | null;
-  daoSource: 'acl' | 'saved' | '';
+  daoSource: 'acl' | 'chain' | 'saved' | ''; // chain = chain.json, not linked by setDao yet
   aclDao: string;              // ACL.dao() ('' = not readable: ACL below v1.1.0)
   aclV11: boolean;             // ACL has dao() (v1.1.0+)
   management: string;
@@ -198,7 +198,8 @@ export async function readAclSystem(provider: ethers.providers.Provider, chainId
   const aclDaoRaw = aclC ? await str(aclC.dao()) : '';
   const aclV11 = !!aclDaoRaw;
   const savedDao = savedAddr('dao', chainId);
-  const daoAddr = isAddr(aclDaoRaw) ? aclDaoRaw : savedDao;
+  const chainDao = chainAddress(chainId, 'aclDaoAddress');
+  const daoAddr = isAddr(aclDaoRaw) ? aclDaoRaw : chainDao || savedDao;
   const factoryAddr = isAddr(fileFactory) ? fileFactory : link?.factory || '';
 
   const [file, factory, trader, acl, dao] = await Promise.all([
@@ -225,7 +226,7 @@ export async function readAclSystem(provider: ethers.providers.Provider, chainId
   return {
     chainId, file, factory, trader, acl, dao,
     aclSource: savedAcl ? 'saved' : aclAddr ? 'file' : '',
-    daoSource: isAddr(aclDaoRaw) ? 'acl' : savedDao ? 'saved' : '',
+    daoSource: isAddr(aclDaoRaw) ? 'acl' : chainDao ? 'chain' : savedDao ? 'saved' : '',
     aclDao: aclDaoRaw, aclV11,
     management, controllers, blockTime: block?.timestamp || 0,
   };
@@ -250,6 +251,9 @@ export const KNOWN_NAMES: Record<number, Record<string, string>> = {
     '0x4eeDAB5d0aB5788cAFFe8e21a698fBCB44c59D32': 'Management node 6 (0x4eeD)',
     '0x934d7414A07F4077de65615fF1006C57c3AB62FC': 'Management node 7 (0x934d)',
     '0xa2f6F44029a883553Ba7113345996c283e701aD8': 'Management node 8 (0xa2f6)',
+    // ACL v1.1.0 release (deployed 2026-11, read on chain 2026-11-27)
+    '0xE15F97A9C96FA10A3f2e2386B5C5D0690E454993': 'ATMAccessControl implementation v1.1.0',
+    '0xB51BD6861Dd307f657480D27F5b1BD51DC8e5c44': 'ATMAccessControlDAO implementation v1.0.0',
     // implementations live before the ACL v1.1.0 release (rollback targets)
     '0x9CC4C195cB5aC34c845bEC3B29a602603ECf51F7': 'ATMAccessControl implementation v1.0.0 (rollback target)',
     '0x11aA4F8686484779Fd8a87F68E725C131931bC86': 'Factory implementation, before ACL check (rollback target)',

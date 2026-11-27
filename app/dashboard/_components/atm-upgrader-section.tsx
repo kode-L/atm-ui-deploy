@@ -221,13 +221,14 @@ function Steps({ ctx, live, luca, open }: { ctx: Ctx; live: Live; luca: string; 
 
       {/* 2. DAO */}
       <StepCard n={2} title="Deploy the ACL DAO" state={st(daoDone, aclDone)}
-        summary={s.dao ? `${s.dao.version || '…'} at ${short(s.dao.address)}${s.daoSource === 'saved' ? ' · not linked yet' : ''}` : 'new contract'}>
+        summary={s.dao ? `${s.dao.version || '…'} at ${short(s.dao.address)}${s.daoSource === 'saved' || s.daoSource === 'chain' ? ' · not linked yet' : ''}` : 'new contract'}>
         {s.dao ? <StatusRows ctx={ctx} rows={[
           ['DAO proxy', s.dao.address, <Badge key="v" tone="accent">{s.dao.version || '…'}</Badge>],
           ['DAO owner', s.dao.owner, <ControllerTag key="o" ctx={ctx} address={s.dao.owner} />],
           ['DAO proxy admin', s.dao.admin, <ControllerTag key="a" ctx={ctx} address={s.dao.admin} />],
         ]} /> : <p className="text-xs text-txt-secondary">Not deployed yet. Deploy the implementation, then the proxy (File address + owner); the deploying wallet becomes the DAO proxy admin.</p>}
         {s.daoSource === 'saved' && <p className="text-xs text-yellow-300">Kept in this browser until step 3 links it in the ACL.</p>}
+        {s.daoSource === 'chain' && <p className="text-xs text-yellow-300">From <code>chain.json</code>; step 3 still has to link it in the ACL.</p>}
         <GoTo open={open} sub="dao" label="ACL & Management → 2. ACL DAO" done={daoDone} />
       </StepCard>
 
